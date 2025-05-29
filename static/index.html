@@ -1,0 +1,49 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Voice Bot</title>
+</head>
+<body>
+  <h2>Talk to Lina 🤖</h2>
+  <button id="micBtn">🎤 Tap to Speak</button>
+  <audio id="responseAudio" controls></audio>
+
+  <script>
+    const micBtn = document.getElementById("micBtn");
+    const responseAudio = document.getElementById("responseAudio");
+    let mediaRecorder;
+    let audioChunks = [];
+
+    micBtn.onclick = async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = event => {
+        audioChunks.push(event.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.webm");
+
+        const res = await fetch("/process-audio", {
+          method: "POST",
+          body: formData
+        });
+
+        const audioURL = await res.text();
+        responseAudio.src = audioURL;
+        responseAudio.play();
+      };
+
+      setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 sec
+    };
+  </script>
+</body>
+</html>
