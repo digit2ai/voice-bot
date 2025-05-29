@@ -1,4 +1,3 @@
-
 from flask import Flask, request, send_file
 from flask_cors import CORS
 import openai
@@ -22,8 +21,14 @@ def process_audio():
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
         audio_file.save(temp_audio.name)
 
-        transcript = openai.audio.transcribe("whisper-1", file=open(temp_audio.name, "rb"))["text"]
+        # ✅ FIXED: correct transcription for OpenAI SDK v1.0+
+        with open(temp_audio.name, "rb") as audio:
+            transcript = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio
+            ).text
 
+        # Generate GPT response
         response = openai.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -32,12 +37,14 @@ def process_audio():
             ]
         ).choices[0].message.content
 
+        # Convert response to speech
         speech = openai.audio.speech.create(
             model="tts-1-hd",
             voice="nova",
             input=response
         )
 
+        # Save and return audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out_audio:
             out_audio.write(speech.content)
             return send_file(out_audio.name, mimetype="audio/mpeg")
