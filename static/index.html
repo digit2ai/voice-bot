@@ -1,35 +1,74 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Talk to Lina — Your Lawn Care Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
     body {
-      font-family: sans-serif;
-      padding: 20px;
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      background: linear-gradient(135deg, #d0f0ff, #f0faff);
+      overflow: hidden;
       text-align: center;
     }
-    button {
-      padding: 12px 24px;
-      font-size: 18px;
-      margin-top: 20px;
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+    }
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    .mic-button {
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle at center, #52b6ff 0%, #0077cc 100%);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      transition: transform 0.2s ease-in-out;
+      cursor: pointer;
+    }
+    .mic-button:hover {
+      transform: scale(1.05);
+    }
+    .mic-icon {
+      width: 36px;
+      height: 36px;
+      fill: white;
     }
     #status {
-      margin-top: 16px;
-      font-weight: bold;
+      font-size: 1rem;
+      font-weight: 600;
     }
     audio {
-      margin-top: 20px;
       width: 100%;
+      max-width: 320px;
     }
   </style>
 </head>
 <body>
-  <h2>🎙️ Talk to Lina — Your Lawn Care Assistant</h2>
-  <button id="startBtn">🎤 Tap & Speak</button>
-  <div id="status">Ready</div>
-  <audio id="responseAudio" controls></audio>
+  <div class="container">
+    <h2>The Best Voice AI Solution for Lawn Care</h2>
+    <div id="startBtn" class="mic-button">
+      <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/><path d="M19 11a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 0013.8 2H17a1 1 0 000 2h4a1 1 0 001-1v-4a1 1 0 10-2 0v2z"/></svg>
+    </div>
+    <div id="status">Ready</div>
+    <audio id="responseAudio" controls></audio>
+  </div>
 
   <script>
     const startBtn = document.getElementById("startBtn");
@@ -42,8 +81,6 @@
     startBtn.onclick = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        // Choose supported format
         const mimeType = MediaRecorder.isTypeSupported("audio/webm")
           ? "audio/webm"
           : "audio/ogg;codecs=opus";
@@ -52,9 +89,7 @@
         audioChunks = [];
 
         mediaRecorder.ondataavailable = event => {
-          if (event.data.size > 0) {
-            audioChunks.push(event.data);
-          }
+          if (event.data.size > 0) audioChunks.push(event.data);
         };
 
         mediaRecorder.onstop = async () => {
@@ -74,16 +109,13 @@
 
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
-
-            responseAudio.pause();
             responseAudio.src = url;
             responseAudio.load();
             await responseAudio.play();
-
             status.textContent = "✅ Response played";
-          } catch (error) {
-            console.error("Playback error:", error);
-            status.innerHTML = "❌ Failed to process audio";
+          } catch (err) {
+            console.error("Error processing audio:", err);
+            status.textContent = "❌ Failed to process audio";
           }
         };
 
@@ -93,7 +125,7 @@
         setTimeout(() => {
           mediaRecorder.stop();
           status.textContent = "🛑 Stopped, processing...";
-        }, 4000); // 4 sec limit
+        }, 4000);
       } catch (err) {
         console.error("Mic error:", err);
         status.textContent = "❌ Microphone access denied";
