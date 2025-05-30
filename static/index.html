@@ -38,8 +38,10 @@
             body: formData
           });
 
-          const audioURL = await res.text();
+          const audioBlobResponse = await res.blob();
+          const audioURL = URL.createObjectURL(audioBlobResponse);
           responseAudio.src = audioURL;
+          responseAudio.load();
           responseAudio.play();
         };
 
