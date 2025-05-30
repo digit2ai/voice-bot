@@ -1,72 +1,104 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lawn Bot Voice Assistant</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Talk to Lina — Your Lawn Care Assistant</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+      text-align: center;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+    #status {
+      margin-top: 16px;
+      font-weight: bold;
+    }
+    audio {
+      margin-top: 20px;
+      width: 100%;
+    }
+  </style>
 </head>
 <body>
   <h2>🎙️ Talk to Lina — Your Lawn Care Assistant</h2>
   <button id="startBtn">🎤 Tap & Speak</button>
-  <p id="status">Ready to record...</p>
-  <audio id="responseAudio" controls style="margin-top: 20px;"></audio>
+  <div id="status">Ready</div>
+  <audio id="responseAudio" controls></audio>
 
   <script>
-    const startBtn = document.getElementById('startBtn');
-    const status = document.getElementById('status');
-    const responseAudio = document.getElementById('responseAudio');
+    const startBtn = document.getElementById("startBtn");
+    const status = document.getElementById("status");
+    const responseAudio = document.getElementById("responseAudio");
 
-    let recorder;
+    let mediaRecorder;
     let audioChunks = [];
 
-    async function startRecording() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const type = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/ogg';
-      recorder = new MediaRecorder(stream, { mimeType: type });
+    startBtn.onclick = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      audioChunks = [];
+        // Choose supported format
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/ogg;codecs=opus";
 
-      recorder.ondataavailable = event => {
-        if (event.data.size > 0) audioChunks.push(event.data);
-      };
+        mediaRecorder = new MediaRecorder(stream, { mimeType });
+        audioChunks = [];
 
-      recorder.onstop = async () => {
-        status.textContent = "⏳ Uploading...";
-        const blob = new Blob(audioChunks, { type: recorder.mimeType });
-        const formData = new FormData();
-        formData.append("file", blob, "input.webm");
+        mediaRecorder.ondataavailable = event => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
 
-        try {
-          const res = await fetch("/process-audio", {
-            method: "POST",
-            body: formData
-          });
+        mediaRecorder.onstop = async () => {
+          status.textContent = "⏳ Uploading...";
 
-          if (!res.ok) throw new Error("Bad response from server");
-          const audioBlob = await res.blob();
-          const audioURL = URL.createObjectURL(audioBlob);
+          const audioBlob = new Blob(audioChunks, { type: mimeType });
+          const formData = new FormData();
+          formData.append("file", audioBlob, "recording.webm");
 
-          responseAudio.src = audioURL;
-          responseAudio.load();         // REQUIRED for Safari/iOS
-          await responseAudio.play();   // Must be inside a user-initiated event
+          try {
+            const res = await fetch("/process-audio", {
+              method: "POST",
+              body: formData
+            });
 
-          status.textContent = "✅ Response played";
-        } catch (e) {
-          console.error(e);
-          status.textContent = "❌ Failed to process audio";
-        }
-      };
+            if (!res.ok) throw new Error("Failed response");
 
-      status.textContent = "🎙️ Recording...";
-      recorder.start();
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
 
-      setTimeout(() => {
-        recorder.stop();
-        status.textContent = "🛑 Stopped recording";
-      }, 4000); // 4 seconds max
-    }
+            responseAudio.pause();
+            responseAudio.src = url;
+            responseAudio.load();
+            await responseAudio.play();
 
-    startBtn.addEventListener("click", startRecording);
+            status.textContent = "✅ Response played";
+          } catch (error) {
+            console.error("Playback error:", error);
+            status.innerHTML = "❌ Failed to process audio";
+          }
+        };
+
+        mediaRecorder.start();
+        status.textContent = "🎙️ Recording...";
+
+        setTimeout(() => {
+          mediaRecorder.stop();
+          status.textContent = "🛑 Stopped, processing...";
+        }, 4000); // 4 sec limit
+      } catch (err) {
+        console.error("Mic error:", err);
+        status.textContent = "❌ Microphone access denied";
+      }
+    };
   </script>
 </body>
 </html>
