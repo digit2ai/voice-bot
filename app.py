@@ -5,6 +5,7 @@ import os
 import tempfile
 from dotenv import load_dotenv
 
+# Load environment
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -17,24 +18,33 @@ def serve_index():
 
 @app.route('/process-audio', methods=['POST'])
 def process_audio():
-    print("🔊 Received audio POST request...")
+    print("🔊 [Step 1] Received audio POST request")
 
-    audio_file = request.files["file"]
+    audio_file = request.files.get("file")
+    if not audio_file:
+        print("❌ No file uploaded")
+        return "No audio file received", 400
+
+    print(f"📦 File received: {audio_file.filename}, type: {audio_file.content_type}")
+
+    # Save uploaded audio
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
         audio_file.save(temp_audio.name)
         print(f"✅ Saved audio file to: {temp_audio.name}")
 
+    # Transcribe speech
     try:
         with open(temp_audio.name, "rb") as audio:
             transcript = openai.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio
             ).text
-        print(f"📝 Transcript: {transcript}")
+        print(f"📝 [Step 2] Transcript: {transcript}")
     except Exception as e:
-        print("❌ Transcription failed:", e)
+        print("❌ [Transcription Failed]:", e)
         return send_file("static/test.mp3", mimetype="audio/mpeg")
 
+    # Generate GPT-4o reply
     try:
         response = openai.chat.completions.create(
             model="gpt-4o",
@@ -43,27 +53,44 @@ def process_audio():
                 {"role": "user", "content": transcript}
             ]
         ).choices[0].message.content
-        print(f"💬 GPT Reply: {response}")
+        print(f"💬 [Step 3] GPT Reply: {response}")
     except Exception as e:
-        print("❌ GPT failed:", e)
+        print("❌ [GPT Failed]:", e)
         return send_file("static/test.mp3", mimetype="audio/mpeg")
 
+    # Convert reply to speech
     try:
         speech = openai.audio.speech.create(
-            model="tts-1-hd",
+            model="tts-1",
             voice="nova",
             input=response
         )
+        print("🔊 [Step 4] TTS completed")
+    except Exception as e:
+        print("❌ [TTS Failed]:", e)
+        return send_file("static/test.mp3", mimetype="audio/mpeg")
 
+    # Write and return audio
+    try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out_audio:
             out_audio.write(speech.content)
             out_audio.flush()
             os.fsync(out_audio.fileno())
-            print(f"✅ TTS MP3 file saved: {out_audio.name}")
-            print(f"🎧 MP3 size: {os.path.getsize(out_audio.name)} bytes")
-            return send_file(out_audio.name, mimetype="audio/mpeg")
+            file_size = os.path.getsize(out_audio.name)
+            print(f"✅ [Step 5] MP3 created: {file_size} bytes")
+
+            if file_size < 1000:
+                print("⚠️ MP3 file is too small. Returning test.mp3 fallback.")
+                return send_file("static/test.mp3", mimetype="audio/mpeg")
+
+            return send_file(
+                out_audio.name,
+                mimetype="audio/mpeg",
+                as_attachment=False,
+                download_name="response.mp3"
+            )
     except Exception as e:
-        print("❌ TTS failed:", e)
+        print("❌ [File Return Failed]:", e)
         return send_file("static/test.mp3", mimetype="audio/mpeg")
 
 if __name__ == '__main__':
