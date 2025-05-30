@@ -2,47 +2,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Voice Bot</title>
+  <meta charset="UTF-8" />
+  <title>Talk to Lina 🤖</title>
 </head>
 <body>
   <h2>Talk to Lina 🤖</h2>
-  <button id="micBtn">🎤 Tap to Speak</button>
+  <button id="micBtn">🎤 Start Recording</button>
   <audio id="responseAudio" controls></audio>
 
   <script>
     const micBtn = document.getElementById("micBtn");
     const responseAudio = document.getElementById("responseAudio");
+
     let mediaRecorder;
     let audioChunks = [];
+    let isRecording = false;
 
     micBtn.onclick = async () => {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.start();
+      if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-      audioChunks = [];
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
 
-      mediaRecorder.ondataavailable = event => {
-        audioChunks.push(event.data);
-      };
+        mediaRecorder.onstop = async () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append("file", audioBlob, "recording.webm");
 
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        const formData = new FormData();
-        formData.append("file", audioBlob, "recording.webm");
+          const res = await fetch("/process-audio", {
+            method: "POST",
+            body: formData
+          });
 
-        const res = await fetch("/process-audio", {
-          method: "POST",
-          body: formData
-        });
+          const audioURL = await res.text();
+          responseAudio.src = audioURL;
+          responseAudio.play();
+        };
 
-        const audioURL = await res.text();
-        responseAudio.src = audioURL;
-        responseAudio.play();
-      };
-
-      setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 sec
+        mediaRecorder.start();
+        micBtn.innerText = "🛑 Stop Recording";
+        isRecording = true;
+      } else {
+        mediaRecorder.stop();
+        micBtn.innerText = "🎤 Start Recording";
+        isRecording = false;
+      }
     };
   </script>
 </body>
