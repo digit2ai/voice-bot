@@ -24,13 +24,47 @@ def process_audio():
         audio_file.save(temp_audio.name)
         print(f"✅ Saved audio file to: {temp_audio.name}")
 
-    # 🚧 TEMP TEST MODE: return a known good mp3
     try:
-        print("🔁 Returning static test.mp3 instead of TTS output.")
-        return send_file("static/test.mp3", mimetype="audio/mpeg")
+        with open(temp_audio.name, "rb") as audio:
+            transcript = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio
+            ).text
+        print(f"📝 Transcript: {transcript}")
     except Exception as e:
-        print("❌ Test MP3 file error:", e)
-        return "Test MP3 failed", 500
+        print("❌ Transcription failed:", e)
+        return send_file("static/test.mp3", mimetype="audio/mpeg")
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are Lina, a helpful lawn care assistant from TampaLawnPro."},
+                {"role": "user", "content": transcript}
+            ]
+        ).choices[0].message.content
+        print(f"💬 GPT Reply: {response}")
+    except Exception as e:
+        print("❌ GPT failed:", e)
+        return send_file("static/test.mp3", mimetype="audio/mpeg")
+
+    try:
+        speech = openai.audio.speech.create(
+            model="tts-1-hd",
+            voice="nova",
+            input=response
+        )
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as out_audio:
+            out_audio.write(speech.content)
+            out_audio.flush()
+            os.fsync(out_audio.fileno())
+            print(f"✅ TTS MP3 file saved: {out_audio.name}")
+            print(f"🎧 MP3 size: {os.path.getsize(out_audio.name)} bytes")
+            return send_file(out_audio.name, mimetype="audio/mpeg")
+    except Exception as e:
+        print("❌ TTS failed:", e)
+        return send_file("static/test.mp3", mimetype="audio/mpeg")
 
 if __name__ == '__main__':
     app.run(debug=True)
