@@ -82,6 +82,22 @@
       width: 100%;
       max-width: 320px;
     }
+
+    /* Voice bot embed */
+    .voice-bot-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    .voice-bot-wrapper iframe {
+      border: none;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      height: 500px;
+    }
   </style>
 </head>
 <body>
@@ -95,6 +111,16 @@
     </button>
     <div id="status">Pulsa el botón del micrófono y cuéntale a Lina lo que necesitas.</div>
     <audio id="responseAudio" controls></audio>
+  </div>
+
+  <!-- Embedded iframe version for alternate fallback use -->
+  <div class="voice-bot-wrapper">
+    <iframe
+      src="https://voice-bot-r91r.onrender.com/"
+      allow="microphone; camera"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-presentation allow-downloads"
+      title="TampaLawnPro Voice Bot">
+    </iframe>
   </div>
 
   <script>
