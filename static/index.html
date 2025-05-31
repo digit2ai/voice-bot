@@ -15,7 +15,7 @@
       padding: 0;
       font-family: 'Inter', sans-serif;
       background: transparent;
-      color: #4CAF50; /* Green text */
+      color: #4CAF50;
       width: 100%;
       height: 100%;
       display: flex;
@@ -39,19 +39,19 @@
     }
 
     .mic-button {
-  width: 100px;
-  height: 100px;
-  background: radial-gradient(circle, #e3f2fd, #bbdefb);
-  border: none;
-  border-radius: 50%;
-  box-shadow: 0 0 20px rgba(33, 150, 243, 0.4);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  transition: transform 0.2s ease;
-  cursor: pointer;
-  margin: 0 auto 1rem auto; /* ✅ centers it */
-}
+      width: 100px;
+      height: 100px;
+      background: radial-gradient(circle, #e3f2fd, #bbdefb);
+      border: none;
+      border-radius: 50%;
+      box-shadow: 0 0 20px rgba(33, 150, 243, 0.4);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: transform 0.2s ease;
+      cursor: pointer;
+      margin: 0 auto 1rem auto;
+    }
 
     .mic-button:hover {
       transform: scale(1.05);
@@ -63,15 +63,9 @@
     }
 
     @keyframes pulse {
-      0% {
-        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.5);
-      }
-      70% {
-        box-shadow: 0 0 0 20px rgba(33, 150, 243, 0);
-      }
-      100% {
-        box-shadow: 0 0 0 0 rgba(33, 150, 243, 0);
-      }
+      0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.5); }
+      70% { box-shadow: 0 0 0 20px rgba(33, 150, 243, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
     }
 
     .mic-button svg {
@@ -151,6 +145,7 @@
             status.textContent = "✅ Respuesta reproducida";
           } catch (err) {
             console.error("Error processing audio:", err);
+            alert("❌ Error procesando la respuesta. Intenta de nuevo.");
             status.textContent = "❌ Error procesando la respuesta";
           }
         };
@@ -164,7 +159,8 @@
           status.textContent = "🛑 Detenido, procesando...";
         }, 4000);
       } catch (err) {
-        console.error("Mic error:", err);
+        console.error("Mic or fetch error:", err);
+        alert("❌ Error: Verifica los permisos del micrófono en tu dispositivo.");
         status.textContent = "❌ Acceso al micrófono denegado";
       }
     };
