@@ -6,9 +6,8 @@
   <title>Talk to Lina — Tu asistente de jardinería</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
   <style>
-    * {
-      box-sizing: border-box;
-    }
+    * { box-sizing: border-box; }
+
     html, body {
       margin: 0;
       padding: 0;
@@ -21,6 +20,7 @@
       align-items: center;
       justify-content: center;
     }
+
     .container {
       text-align: center;
       background-color: transparent;
@@ -29,11 +29,13 @@
       max-width: 400px;
       width: 90%;
     }
+
     h2 {
       font-size: 1.25rem;
       font-weight: 600;
       margin-bottom: 1.5rem;
     }
+
     .mic-button {
       width: 100px;
       height: 100px;
@@ -48,28 +50,34 @@
       cursor: pointer;
       margin: 0 auto 1rem auto;
     }
+
     .mic-button:hover {
       transform: scale(1.05);
       box-shadow: 0 0 25px rgba(33, 150, 243, 0.6);
     }
+
     .mic-button.recording {
       animation: pulse 1.2s infinite;
     }
+
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.5); }
       70% { box-shadow: 0 0 0 20px rgba(33, 150, 243, 0); }
       100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
     }
+
     .mic-button svg {
       width: 48px;
       height: 48px;
       fill: #2196f3;
     }
+
     #status {
       font-size: 1rem;
       font-weight: 600;
       margin-bottom: 1rem;
     }
+
     audio {
       width: 100%;
       max-width: 320px;
@@ -114,6 +122,13 @@
           status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
 
           const audioBlob = new Blob(audioChunks, { type: mimeType });
+          console.log("🎙️ Audio Blob size:", audioBlob.size);
+
+          if (audioBlob.size < 1000) {
+            alert("❌ La grabación fue muy corta. Intenta de nuevo.");
+            return;
+          }
+
           const formData = new FormData();
           formData.append("file", audioBlob, "recording.webm");
 
@@ -123,7 +138,12 @@
               body: formData
             });
 
-            if (!res.ok) throw new Error("Failed response");
+            if (!res.ok) {
+              const errorText = await res.text();
+              console.error("❌ Server response error:", res.status, errorText);
+              alert("❌ Error procesando la respuesta. Intenta de nuevo.\n" + errorText);
+              return;
+            }
 
             const blob = await res.blob();
             const url = URL.createObjectURL(blob);
@@ -132,28 +152,26 @@
             await responseAudio.play();
             status.textContent = "✅ Respuesta reproducida";
           } catch (err) {
-            console.error("Error processing audio:", err);
-            alert("❌ Error procesando la respuesta. Intenta de nuevo.");
-            status.textContent = "❌ Error procesando la respuesta";
+            console.error("❌ Fetch error:", err);
+            alert("❌ Error procesando la respuesta. Intenta de nuevo.\n" + err.message);
           }
         };
 
         mediaRecorder.start();
         startBtn.classList.add("recording");
-        status.textContent = "🎤 Grabando...";
+        status.textContent = "🎙️ Grabando...";
 
         setTimeout(() => {
           mediaRecorder.stop();
-          status.textContent = "🔝 Detenido, procesando...";
+          status.textContent = "🛑 Detenido, procesando...";
         }, 4000);
+
       } catch (err) {
-        console.error("Mic or fetch error:", err);
-        alert("❌ No pudimos acceder al micrófono. Asegúrate de haberlo permitido en tu navegador.");
+        console.error("❌ Mic error:", err);
+        alert("❌ No se pudo acceder al micrófono.\nVerifica los permisos del navegador.");
         status.textContent = "❌ Acceso al micrófono denegado";
       }
     };
   </script>
 </body>
 </html>
-
-     
