@@ -9,7 +9,6 @@
     * {
       box-sizing: border-box;
     }
-
     html, body {
       margin: 0;
       padding: 0;
@@ -22,7 +21,6 @@
       align-items: center;
       justify-content: center;
     }
-
     .container {
       text-align: center;
       background-color: transparent;
@@ -31,13 +29,11 @@
       max-width: 400px;
       width: 90%;
     }
-
     h2 {
       font-size: 1.25rem;
       font-weight: 600;
       margin-bottom: 1.5rem;
     }
-
     .mic-button {
       width: 100px;
       height: 100px;
@@ -52,34 +48,28 @@
       cursor: pointer;
       margin: 0 auto 1rem auto;
     }
-
     .mic-button:hover {
       transform: scale(1.05);
       box-shadow: 0 0 25px rgba(33, 150, 243, 0.6);
     }
-
     .mic-button.recording {
       animation: pulse 1.2s infinite;
     }
-
     @keyframes pulse {
       0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.5); }
       70% { box-shadow: 0 0 0 20px rgba(33, 150, 243, 0); }
       100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
     }
-
     .mic-button svg {
       width: 48px;
       height: 48px;
       fill: #2196f3;
     }
-
     #status {
       font-size: 1rem;
       font-weight: 600;
       margin-bottom: 1rem;
     }
-
     audio {
       width: 100%;
       max-width: 320px;
@@ -110,9 +100,7 @@
     startBtn.onclick = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/ogg;codecs=opus";
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg;codecs=opus";
 
         mediaRecorder = new MediaRecorder(stream, { mimeType });
         audioChunks = [];
@@ -152,18 +140,20 @@
 
         mediaRecorder.start();
         startBtn.classList.add("recording");
-        status.textContent = "🎙️ Grabando...";
+        status.textContent = "🎤 Grabando...";
 
         setTimeout(() => {
           mediaRecorder.stop();
-          status.textContent = "🛑 Detenido, procesando...";
+          status.textContent = "🔝 Detenido, procesando...";
         }, 4000);
       } catch (err) {
         console.error("Mic or fetch error:", err);
-        alert("❌ Error: Verifica los permisos del micrófono en tu dispositivo.");
+        alert("❌ No pudimos acceder al micrófono. Asegúrate de haberlo permitido en tu navegador.");
         status.textContent = "❌ Acceso al micrófono denegado";
       }
     };
   </script>
 </body>
 </html>
+
+     
