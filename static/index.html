@@ -83,25 +83,17 @@
       max-width: 320px;
     }
 
-    /* Voice bot embed */
-    .voice-bot-wrapper {
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      padding: 2rem 1rem;
-    }
-
-    .voice-bot-wrapper iframe {
-      border: none;
-      border-radius: 12px;
-      width: 100%;
-      max-width: 400px;
-      height: 500px;
+    /* Show mic recorder on mobile, iframe on desktop */
+    .iframe-desktop { display: none; }
+    @media (min-width: 768px) {
+      .iframe-desktop { display: block; }
+      .mobile-app { display: none; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
+  <!-- Mobile version -->
+  <div class="container mobile-app">
     <h2>La mejor solución de voz con IA para servicios profesionales de jardinería.</h2>
     <button id="startBtn" class="mic-button">
       <svg xmlns="http://www.w3.org/2000/svg" height="48" viewBox="0 0 24 24" width="48" fill="#2196f3">
@@ -113,12 +105,14 @@
     <audio id="responseAudio" controls></audio>
   </div>
 
-  <!-- Embedded iframe version for alternate fallback use -->
-  <div class="voice-bot-wrapper">
-    <iframe
-      src="https://voice-bot-r91r.onrender.com/"
-      allow="microphone; camera"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-presentation allow-downloads"
+  <!-- Desktop iframe -->
+  <div class="iframe-desktop">
+    <iframe 
+      src="https://voice-bot-r91r.onrender.com/" 
+      width="100%" 
+      height="500" 
+      style="border: none; border-radius: 12px; max-width: 400px; width: 100%; margin: auto; display: block;" 
+      allow="microphone"
       title="TampaLawnPro Voice Bot">
     </iframe>
   </div>
@@ -131,73 +125,65 @@
     let mediaRecorder;
     let audioChunks = [];
 
-    startBtn.onclick = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg;codecs=opus";
+    if (startBtn) {
+      startBtn.onclick = async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg;codecs=opus";
 
-        mediaRecorder = new MediaRecorder(stream, { mimeType });
-        audioChunks = [];
+          mediaRecorder = new MediaRecorder(stream, { mimeType });
+          audioChunks = [];
 
-        mediaRecorder.ondataavailable = event => {
-          if (event.data.size > 0) audioChunks.push(event.data);
-        };
+          mediaRecorder.ondataavailable = event => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
 
-        mediaRecorder.onstop = async () => {
-          startBtn.classList.remove("recording");
-          status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
+          mediaRecorder.onstop = async () => {
+            startBtn.classList.remove("recording");
+            status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
 
-          const audioBlob = new Blob(audioChunks, { type: mimeType });
-          console.log("🎙️ Audio Blob size:", audioBlob.size);
-
-          if (audioBlob.size < 1000) {
-            alert("❌ La grabación fue muy corta. Intenta de nuevo.");
-            return;
-          }
-
-          const formData = new FormData();
-          formData.append("file", audioBlob, "recording.webm");
-
-          try {
-            const res = await fetch("/process-audio", {
-              method: "POST",
-              body: formData
-            });
-
-            if (!res.ok) {
-              const errorText = await res.text();
-              console.error("❌ Server response error:", res.status, errorText);
-              alert("❌ Error procesando la respuesta. Intenta de nuevo.\n" + errorText);
+            const audioBlob = new Blob(audioChunks, { type: mimeType });
+            if (audioBlob.size < 1000) {
+              alert("❌ La grabación fue muy corta. Intenta de nuevo.");
               return;
             }
 
-            const blob = await res.blob();
-            const url = URL.createObjectURL(blob);
-            responseAudio.src = url;
-            responseAudio.load();
-            await responseAudio.play();
-            status.textContent = "✅ Respuesta reproducida";
-          } catch (err) {
-            console.error("❌ Fetch error:", err);
-            alert("❌ Error procesando la respuesta. Intenta de nuevo.\n" + err.message);
-          }
-        };
+            const formData = new FormData();
+            formData.append("file", audioBlob, "recording.webm");
 
-        mediaRecorder.start();
-        startBtn.classList.add("recording");
-        status.textContent = "🎙️ Grabando...";
+            try {
+              const res = await fetch("/process-audio", { method: "POST", body: formData });
+              if (!res.ok) {
+                const errorText = await res.text();
+                alert("❌ Error procesando la respuesta.\n" + errorText);
+                return;
+              }
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              responseAudio.src = url;
+              responseAudio.load();
+              await responseAudio.play();
+              status.textContent = "✅ Respuesta reproducida";
+            } catch (err) {
+              alert("❌ Error procesando la respuesta.\n" + err.message);
+            }
+          };
 
-        setTimeout(() => {
-          mediaRecorder.stop();
-          status.textContent = "🛑 Detenido, procesando...";
-        }, 4000);
+          mediaRecorder.start();
+          startBtn.classList.add("recording");
+          status.textContent = "🎙️ Grabando...";
 
-      } catch (err) {
-        console.error("❌ Mic error:", err);
-        alert("❌ No se pudo acceder al micrófono.\nVerifica los permisos del navegador.");
-        status.textContent = "❌ Acceso al micrófono denegado";
-      }
-    };
+          setTimeout(() => {
+            mediaRecorder.stop();
+            status.textContent = "🛑 Detenido, procesando...";
+          }, 4000);
+
+        } catch (err) {
+          alert("❌ No se pudo acceder al micrófono.\nVerifica los permisos del navegador.");
+          status.textContent = "❌ Acceso al micrófono denegado";
+        }
+      };
+    }
   </script>
 </body>
 </html>
