@@ -54,7 +54,7 @@ FAQ_BRAIN = {
     "does tampalawnpro offer a satisfaction guarantee": "Absolutely! We offer a 100% satisfaction guarantee. If you’re not happy, we’ll make it right—no questions asked.",
     "can i skip or reschedule a service": "Yes, you can skip or reschedule anytime through your online dashboard. Just let us know at least 24 hours in advance.",
     "how do i pay for services": "All payments are handled securely online. You’ll only be charged after your lawn service is completed.",
-    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability."
+    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability.",
     
     # Spanish
     "que es tampalawnpro": "TampaLawnPro es una plataforma de cuidado del césped impulsada por IA que ayuda a los propietarios a obtener cotizaciones instantáneas y permite a los profesionales automatizar presupuestos, reservas y pagos.",
