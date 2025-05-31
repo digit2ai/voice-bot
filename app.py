@@ -6,7 +6,7 @@ import tempfile
 from dotenv import load_dotenv
 from difflib import get_close_matches
 
-# Load environment
+# Load environment variables
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -30,7 +30,7 @@ FAQ_BRAIN = {
     "what imagery do you use for measurements": "We use county public records to obtain property dimensions, along with Google Maps Platform sources to ensure precise measurements.",
     "how fast is your ai for measurements": "Our AI generates residential property measurements in about 30 to 60 seconds — lightning fast and highly accurate.",
     "what can your software measure": "We can measure lawns, driveways, sidewalks, patios, and even building footprints — ideal for creating accurate property assessments.",
-    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pineelas county, supporting a wide variety of lawn care providers.",
+    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pinellas County, supporting a wide variety of lawn care providers.",
     "do you offer route optimization": "Yes, TampaLawnPro can help you save time and fuel by automatically optimizing your daily service routes for maximum efficiency.",
     "can i send automatic appointment reminders": "Yes. Our system sends automated email and text reminders to your customers, reducing no-shows and improving communication.",
     "is there a customer portal": "Yes. Customers can log in to a secure portal to view service history, pay invoices, and request new appointments at their convenience.",
@@ -40,7 +40,7 @@ FAQ_BRAIN = {
     "can i collect customer reviews": "Yes. After a service is completed, you can automatically request reviews from your customers and showcase your reputation online.",
     "how can i manage my team": "You can assign jobs, track progress, and monitor team performance—all from one central dashboard.",
     "is my customer data safe": "Yes, we use industry-standard encryption and data protection practices to keep your customer and business information secure.",
-    "can i customize service offerings": "Yes. You can tailor your service catalog, pricing, and availability to match your unique business model and target market.”,
+    "can i customize service offerings": "Yes. You can tailor your service catalog, pricing, and availability to match your unique business model and target market.",
     "can i track my income and expenses": "Yes, TampaLawnPro lets you record income and expenses to keep your business finances organized and ready for tax season.",
     "do you offer chemical tracking": "Yes. If you apply fertilizers or treatments, TampaLawnPro allows you to log chemical usage for compliance and reporting purposes.",
     "is there a client database": "Yes. You can manage all your customer information, service history, and notes in one place.",
@@ -58,8 +58,8 @@ FAQ_BRAIN = {
     "does tampalawnpro offer a satisfaction guarantee": "Absolutely! We offer a 100% satisfaction guarantee. If you’re not happy, we’ll make it right—no questions asked.",
     "can i skip or reschedule a service": "Yes, you can skip or reschedule anytime through your online dashboard. Just let us know at least 24 hours in advance.",
     "how do i pay for services": "All payments are handled securely online. You’ll only be charged after your lawn service is completed.",
-    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability."
-    
+    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability.",
+
     # Spanish
     "que es tampalawnpro": "TampaLawnPro es una plataforma de cuidado del césped impulsada por IA que ayuda a los propietarios a obtener cotizaciones instantáneas y permite a los profesionales automatizar presupuestos, reservas y pagos.",
     "como funciona la cotizacion instantanea": "Solo ingresa tu dirección y nuestra IA usará imágenes satelitales para medir tu césped y generar una cotización personalizada al instante—sin visita necesaria.",
@@ -80,14 +80,12 @@ def serve_index():
 @app.route('/process-audio', methods=['POST'])
 def process_audio():
     print("🔊 [Step 1] Received audio POST request")
-
     audio_file = request.files.get("file")
     if not audio_file:
         print("❌ No file uploaded")
         return "No audio file received", 400
 
     print(f"📦 File received: {audio_file.filename}, type: {audio_file.content_type}")
-
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
         audio_file.save(temp_audio.name)
         print(f"✅ Saved audio file to: {temp_audio.name}")
@@ -97,8 +95,10 @@ def process_audio():
             transcript = openai.audio.transcriptions.create(
                 model="whisper-1",
                 file=audio
-            ).text.lower()
+            ).text.lower().strip()
         print(f"📝 [Step 2] Transcript: {transcript}")
+        if not transcript:
+            raise ValueError("Empty transcript")
     except Exception as e:
         print("❌ [Transcription Failed]:", e)
         return send_file("static/test.mp3", mimetype="audio/mpeg")
@@ -139,11 +139,9 @@ def process_audio():
             os.fsync(out_audio.fileno())
             file_size = os.path.getsize(out_audio.name)
             print(f"✅ [Step 5] MP3 created: {file_size} bytes")
-
             if file_size < 1000:
-                print("⚠️ MP3 file is too small. Returning test.mp3 fallback.")
+                print("⚠️ MP3 file is too small. Returning fallback.")
                 return send_file("static/test.mp3", mimetype="audio/mpeg")
-
             return send_file(
                 out_audio.name,
                 mimetype="audio/mpeg",
