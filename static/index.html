@@ -39,19 +39,19 @@
     }
 
     .mic-button {
-      width: 100px;
-      height: 100px;
-      background: radial-gradient(circle, #e3f2fd, #bbdefb);
-      border: none;
-      border-radius: 50%;
-      box-shadow: 0 0 20px rgba(33, 150, 243, 0.4);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      transition: transform 0.2s ease;
-      cursor: pointer;
-      margin-bottom: 1rem;
-    }
+  width: 100px;
+  height: 100px;
+  background: radial-gradient(circle, #e3f2fd, #bbdefb);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 0 0 20px rgba(33, 150, 243, 0.4);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.2s ease;
+  cursor: pointer;
+  margin: 0 auto 1rem auto; /* ✅ centers it */
+}
 
     .mic-button:hover {
       transform: scale(1.05);
