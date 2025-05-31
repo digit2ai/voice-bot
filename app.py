@@ -30,7 +30,7 @@ FAQ_BRAIN = {
     "what imagery do you use for measurements": "We use county public records to obtain property dimensions, along with Google Maps Platform sources to ensure precise measurements.",
     "how fast is your ai for measurements": "Our AI generates residential property measurements in about 30 to 60 seconds — lightning fast and highly accurate.",
     "what can your software measure": "We can measure lawns, driveways, sidewalks, patios, and even building footprints — ideal for creating accurate property assessments.",
-    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pineelas county, supporting a wide variety of lawn care providers.,
+    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pineelas county, supporting a wide variety of lawn care providers.",
     "do you offer route optimization": "Yes, TampaLawnPro can help you save time and fuel by automatically optimizing your daily service routes for maximum efficiency.",
     "can i send automatic appointment reminders": "Yes. Our system sends automated email and text reminders to your customers, reducing no-shows and improving communication.",
     "is there a customer portal": "Yes. Customers can log in to a secure portal to view service history, pay invoices, and request new appointments at their convenience.",
