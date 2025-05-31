@@ -19,15 +19,13 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      text-align: center;
     }
 
     .container {
-      text-align: center;
-      background-color: transparent;
-      border-radius: 1rem;
+      max-width: 420px;
+      width: 100%;
       padding: 2rem;
-      max-width: 400px;
-      width: 90%;
     }
 
     h2 {
@@ -36,154 +34,59 @@
       margin-bottom: 1.5rem;
     }
 
-    .mic-button {
-      width: 100px;
-      height: 100px;
-      background: radial-gradient(circle, #e3f2fd, #bbdefb);
+    iframe {
       border: none;
-      border-radius: 50%;
-      box-shadow: 0 0 20px rgba(33, 150, 243, 0.4);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      transition: transform 0.2s ease;
-      cursor: pointer;
-      margin: 0 auto 1rem auto;
-    }
-
-    .mic-button:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 25px rgba(33, 150, 243, 0.6);
-    }
-
-    .mic-button.recording {
-      animation: pulse 1.2s infinite;
-    }
-
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.5); }
-      70% { box-shadow: 0 0 0 20px rgba(33, 150, 243, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
-    }
-
-    .mic-button svg {
-      width: 48px;
-      height: 48px;
-      fill: #2196f3;
-    }
-
-    #status {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 1rem;
-    }
-
-    audio {
+      border-radius: 12px;
       width: 100%;
-      max-width: 320px;
+      max-width: 400px;
     }
 
-    /* Show mic recorder on mobile, iframe on desktop */
-    .iframe-desktop { display: none; }
-    @media (min-width: 768px) {
-      .iframe-desktop { display: block; }
-      .mobile-app { display: none; }
+    .mobile-button {
+      display: inline-block;
+      padding: 1rem 2rem;
+      background-color: #4CAF50;
+      color: white;
+      text-decoration: none;
+      font-weight: bold;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: background 0.3s ease;
+    }
+
+    .mobile-button:hover {
+      background-color: #45A049;
     }
   </style>
 </head>
 <body>
-  <!-- Mobile version -->
-  <div class="container mobile-app">
+  <div class="container">
     <h2>La mejor solución de voz con IA para servicios profesionales de jardinería.</h2>
-    <button id="startBtn" class="mic-button">
-      <svg xmlns="http://www.w3.org/2000/svg" height="48" viewBox="0 0 24 24" width="48" fill="#2196f3">
-        <path d="M0 0h24v24H0V0z" fill="none"/>
-        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
-      </svg>
-    </button>
-    <div id="status">Pulsa el botón del micrófono y cuéntale a Lina lo que necesitas.</div>
-    <audio id="responseAudio" controls></audio>
-  </div>
 
-  <!-- Desktop iframe -->
-  <div class="iframe-desktop">
-    <iframe 
-      src="https://voice-bot-r91r.onrender.com/" 
-      width="100%" 
-      height="500" 
-      style="border: none; border-radius: 12px; max-width: 400px; width: 100%; margin: auto; display: block;" 
-      allow="microphone"
-      title="TampaLawnPro Voice Bot">
-    </iframe>
+    <!-- Desktop iframe -->
+    <div id="bot-desktop" style="display: none;">
+      <iframe 
+        src="https://voice-bot-r91r.onrender.com/"
+        height="500"
+        allow="microphone"
+        title="TampaLawnPro Voice Bot">
+      </iframe>
+    </div>
+
+    <!-- Mobile Button -->
+    <div id="bot-mobile" style="display: none;">
+      <a 
+        href="https://voice-bot-r91r.onrender.com/" 
+        target="_blank" 
+        rel="noopener noreferrer" 
+        class="mobile-button">
+        🎤 Habla con Lina (abrir asistente)
+      </a>
+    </div>
   </div>
 
   <script>
-    const startBtn = document.getElementById("startBtn");
-    const status = document.getElementById("status");
-    const responseAudio = document.getElementById("responseAudio");
-
-    let mediaRecorder;
-    let audioChunks = [];
-
-    if (startBtn) {
-      startBtn.onclick = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg;codecs=opus";
-
-          mediaRecorder = new MediaRecorder(stream, { mimeType });
-          audioChunks = [];
-
-          mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) audioChunks.push(event.data);
-          };
-
-          mediaRecorder.onstop = async () => {
-            startBtn.classList.remove("recording");
-            status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
-
-            const audioBlob = new Blob(audioChunks, { type: mimeType });
-            if (audioBlob.size < 1000) {
-              alert("❌ La grabación fue muy corta. Intenta de nuevo.");
-              return;
-            }
-
-            const formData = new FormData();
-            formData.append("file", audioBlob, "recording.webm");
-
-            try {
-              const res = await fetch("/process-audio", { method: "POST", body: formData });
-              if (!res.ok) {
-                const errorText = await res.text();
-                alert("❌ Error procesando la respuesta.\n" + errorText);
-                return;
-              }
-              const blob = await res.blob();
-              const url = URL.createObjectURL(blob);
-              responseAudio.src = url;
-              responseAudio.load();
-              await responseAudio.play();
-              status.textContent = "✅ Respuesta reproducida";
-            } catch (err) {
-              alert("❌ Error procesando la respuesta.\n" + err.message);
-            }
-          };
-
-          mediaRecorder.start();
-          startBtn.classList.add("recording");
-          status.textContent = "🎙️ Grabando...";
-
-          setTimeout(() => {
-            mediaRecorder.stop();
-            status.textContent = "🛑 Detenido, procesando...";
-          }, 4000);
-
-        } catch (err) {
-          alert("❌ No se pudo acceder al micrófono.\nVerifica los permisos del navegador.");
-          status.textContent = "❌ Acceso al micrófono denegado";
-        }
-      };
-    }
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    document.getElementById(isMobile ? 'bot-mobile' : 'bot-desktop').style.display = 'block';
   </script>
 </body>
 </html>
