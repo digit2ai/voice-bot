@@ -2,9 +2,9 @@ from flask import Flask, request, send_file
 from flask_cors import CORS
 import openai
 import os
+import tempfile
 from dotenv import load_dotenv
 from difflib import get_close_matches
-from io import BytesIO
 
 # Load environment
 load_dotenv()
@@ -14,7 +14,7 @@ app = Flask(__name__, static_folder='static')
 CORS(app)
 
 FAQ_BRAIN = {
-    # --- English ---
+    # English
     "what is tampalawnpro": "TampaLawnPro is an AI-powered lawn care platform that helps homeowners get instant quotes and lets lawn care pros automate quoting, booking, and payments.",
     "how does the instant quote work": "Just enter your address, and our AI uses satellite imagery to measure your lawn and generate an instant, personalized quote—no site visit needed.",
     "can i book and pay online": "Yes, you can securely book your service and handle all payments online—right from your phone or computer.",
@@ -30,7 +30,7 @@ FAQ_BRAIN = {
     "what imagery do you use for measurements": "We use county public records to obtain property dimensions, along with Google Maps Platform sources to ensure precise measurements.",
     "how fast is your ai for measurements": "Our AI generates residential property measurements in about 30 to 60 seconds — lightning fast and highly accurate.",
     "what can your software measure": "We can measure lawns, driveways, sidewalks, patios, and even building footprints — ideal for creating accurate property assessments.",
-    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pinellas County, supporting a wide variety of lawn care providers.",
+    "where is the service available": "We currently serve businesses across Tampa Bay, Wesley Chapel and Pineelas county, supporting a wide variety of lawn care providers.,
     "do you offer route optimization": "Yes, TampaLawnPro can help you save time and fuel by automatically optimizing your daily service routes for maximum efficiency.",
     "can i send automatic appointment reminders": "Yes. Our system sends automated email and text reminders to your customers, reducing no-shows and improving communication.",
     "is there a customer portal": "Yes. Customers can log in to a secure portal to view service history, pay invoices, and request new appointments at their convenience.",
@@ -40,7 +40,7 @@ FAQ_BRAIN = {
     "can i collect customer reviews": "Yes. After a service is completed, you can automatically request reviews from your customers and showcase your reputation online.",
     "how can i manage my team": "You can assign jobs, track progress, and monitor team performance—all from one central dashboard.",
     "is my customer data safe": "Yes, we use industry-standard encryption and data protection practices to keep your customer and business information secure.",
-    "can i customize service offerings": "Yes. You can tailor your service catalog, pricing, and availability to match your unique business model and target market.",
+    "can i customize service offerings": "Yes. You can tailor your service catalog, pricing, and availability to match your unique business model and target market.”,
     "can i track my income and expenses": "Yes, TampaLawnPro lets you record income and expenses to keep your business finances organized and ready for tax season.",
     "do you offer chemical tracking": "Yes. If you apply fertilizers or treatments, TampaLawnPro allows you to log chemical usage for compliance and reporting purposes.",
     "is there a client database": "Yes. You can manage all your customer information, service history, and notes in one place.",
@@ -58,9 +58,9 @@ FAQ_BRAIN = {
     "does tampalawnpro offer a satisfaction guarantee": "Absolutely! We offer a 100% satisfaction guarantee. If you’re not happy, we’ll make it right—no questions asked.",
     "can i skip or reschedule a service": "Yes, you can skip or reschedule anytime through your online dashboard. Just let us know at least 24 hours in advance.",
     "how do i pay for services": "All payments are handled securely online. You’ll only be charged after your lawn service is completed.",
-    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability.",
+    "does tampalawnpro serve my area": "We serve the entire Tampa Bay area—including Wesley Chapel, Brandon, Riverview, and nearby ZIP codes. Just enter your address to check availability."
     
-    # --- Spanish ---
+    # Spanish
     "que es tampalawnpro": "TampaLawnPro es una plataforma de cuidado del césped impulsada por IA que ayuda a los propietarios a obtener cotizaciones instantáneas y permite a los profesionales automatizar presupuestos, reservas y pagos.",
     "como funciona la cotizacion instantanea": "Solo ingresa tu dirección y nuestra IA usará imágenes satelitales para medir tu césped y generar una cotización personalizada al instante—sin visita necesaria.",
     "puedo reservar y pagar en linea": "Sí, puedes reservar tu servicio y realizar todos los pagos en línea, desde tu celular o computadora.",
@@ -72,7 +72,6 @@ FAQ_BRAIN = {
     "es asequible para pequeños negocios": "Sí, nuestra plataforma está diseñada para escalar contigo, seas un operador independiente o manejes varios equipos.",
     "como empiezo": "Solo visita TampaLawnPro.com para obtener tu cotización instantánea o solicita una demo si eres proveedor."
 }
-
 
 @app.route('/')
 def serve_index():
