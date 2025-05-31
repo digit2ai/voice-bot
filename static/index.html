@@ -67,11 +67,11 @@
 </head>
 <body>
   <div class="container">
-    <h2> La mejor solución de voz con IA para servicios profesionales de jardinería.<i/h2>
+    <h2>La mejor solución de voz con IA para servicios profesionales de jardinería.<i/h2>
     <div id="startBtn" class="mic-button">
       <svg class="mic-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 14a3 3 0 003-3V5a3 3 0 00-6 0v6a3 3 0 003 3z"/><path d="M19 11a1 1 0 00-2 0 5 5 0 01-10 0 1 1 0 00-2 0 7 7 0 0013.8 2H17a1 1 0 000 2h4a1 1 0 001-1v-4a1 1 0 10-2 0v2z"/></svg>
     </div>
-    <div id="status">Ready</div>
+    <div id="status">Pulsa el botón del micrófono y cuéntale a Lina lo que necesitas.</div>
     <audio id="responseAudio" controls></audio>
   </div>
 
@@ -98,7 +98,7 @@
         };
 
         mediaRecorder.onstop = async () => {
-          status.textContent = "⏳ Uploading...";
+          status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
 
           const audioBlob = new Blob(audioChunks, { type: mimeType });
           const formData = new FormData();
@@ -125,15 +125,15 @@
         };
 
         mediaRecorder.start();
-        status.textContent = "🎙️ Recording...";
+        status.textContent = "🎙️ Grabando...";
 
         setTimeout(() => {
           mediaRecorder.stop();
-          status.textContent = "🛑 Stopped, processing...";
+          status.textContent = "🛑 Detenido, procesando...";
         }, 4000);
       } catch (err) {
         console.error("Mic error:", err);
-        status.textContent = "❌ Microphone access denied";
+        status.textContent = "❌ Acceso al micrófono denegado";
       }
     };
   </script>
