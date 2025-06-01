@@ -24,7 +24,7 @@
     .container {
       max-width: 420px;
       width: 100%;
-      padding: 4rem 1rem 2rem 1rem; /* Top padding to push down */
+      padding: 4rem 1rem 2rem 1rem;
       margin-top: 10vh;
     }
 
@@ -77,8 +77,7 @@
     }
 
     audio {
-      width: 100%;
-      max-width: 320px;
+      display: none;
     }
   </style>
 </head>
@@ -92,7 +91,7 @@
       </svg>
     </button>
     <div id="status">Pulsa el botón del micrófono y cuéntale a Lina lo que necesitas.</div>
-    <audio id="responseAudio" controls></audio>
+    <audio id="responseAudio"></audio>
   </div>
 
   <script>
