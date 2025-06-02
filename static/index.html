@@ -78,6 +78,8 @@
 
     audio {
       display: none;
+      margin-top: 1rem;
+      width: 100%;
     }
   </style>
 </head>
@@ -91,7 +93,7 @@
       </svg>
     </button>
     <div id="status">Pulsa el botón del micrófono y cuéntale a Lina lo que necesitas.</div>
-    <audio id="responseAudio"></audio>
+    <audio id="responseAudio" controls></audio>
   </div>
 
   <script>
@@ -119,7 +121,6 @@
           status.textContent = "⏳ Un momento, estoy buscando la mejor respuesta....";
 
           const audioBlob = new Blob(audioChunks, { type: mimeType });
-          console.log("🎙️ Audio Blob size:", audioBlob.size);
 
           if (audioBlob.size < 1000) {
             alert("❌ La grabación fue muy corta. Intenta de nuevo.");
@@ -146,8 +147,16 @@
             const url = URL.createObjectURL(blob);
             responseAudio.src = url;
             responseAudio.load();
-            await responseAudio.play();
-            status.textContent = "✅ Respuesta reproducida";
+            responseAudio.style.display = "block";
+
+            try {
+              await responseAudio.play();
+              status.textContent = "✅ Respuesta reproducida";
+            } catch (err) {
+              console.warn("🔇 Auto-play bloqueado. Usuario debe presionar play.");
+              status.textContent = "🔊 Toca el botón de reproducir para escuchar la respuesta.";
+            }
+
           } catch (err) {
             console.error("❌ Fetch error:", err);
             alert("❌ Error procesando la respuesta. Intenta de nuevo.\n" + err.message);
