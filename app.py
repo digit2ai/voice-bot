@@ -23,9 +23,40 @@ logging.basicConfig(
 
 # FAQ dictionary (shortened for example)
 FAQ_BRAIN = {
-    "what is tampalawnpro": "TampaLawnPro is an AI-powered lawn care platform...",
-    "que es tampalawnpro": "TampaLawnPro es una plataforma de cuidado del césped impulsada por IA..."
-    # You can expand or load this from a file if needed
+    "what is tampalawnpro": (
+        "TampaLawnPro is an AI-powered lawn care platform based in Wesley Chapel, Florida, designed to help homeowners get instant lawn quotes and "
+        "enable lawn care professionals to grow their businesses using automation. Homeowners can receive satellite-based quotes, book services online, "
+        "and connect with trusted local pros. Lawn pros get tools to manage jobs, automate client communication, and run marketing campaigns."
+    ),
+    "que es tampalawnpro": (
+        "TampaLawnPro es una plataforma de cuidado del césped impulsada por inteligencia artificial, con sede en Wesley Chapel, Florida. "
+        "Ayuda a los propietarios a obtener cotizaciones instantáneas usando imágenes satelitales y a reservar servicios en línea. "
+        "Los profesionales del césped pueden automatizar sus operaciones, gestionar clientes y hacer crecer su negocio."
+    ),
+    "how do instant quotes work": (
+        "Just enter your address, and TampaLawnPro uses satellite imagery and AI to instantly measure your lawn and generate a personalized quote—"
+        "no site visit needed."
+    ),
+    "can i book lawn care online": (
+        "Yes. Homeowners can schedule lawn services quickly and securely online, from their phone or computer."
+    ),
+    "are the providers local": (
+        "Yes. TampaLawnPro connects homeowners with vetted, trusted local lawn care professionals in the Tampa Bay area."
+    ),
+    "what tools do lawn pros get": (
+        "Lawn care businesses get a complete suite of tools including online booking, a mobile app, automated reminders, CRM, invoicing, QuickBooks integration, "
+        "local SEO, landing pages, and marketing automation features like email campaigns and lead follow-up."
+    ),
+    "how much does it cost for pros": (
+        "Plans start at $97/month for scheduling tools, $297/month for business operations and marketing setup, and $497/month for full marketing automation including "
+        "Google Ads, reputation management, and monthly analytics."
+    ),
+    "is there a free trial": (
+        "Yes. TampaLawnPro offers a 30-day risk-free trial with a full money-back guarantee for lawn care professionals."
+    ),
+    "where is tampalawnpro based": (
+        "TampaLawnPro is proudly based in Wesley Chapel, Florida, serving homeowners and lawn pros across the greater Tampa Bay area."
+    )
 }
 
 @app.route('/')
