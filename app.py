@@ -23,39 +23,58 @@ logging.basicConfig(
 
 # FAQ dictionary (shortened for example)
 FAQ_BRAIN = {
+    # English
     "what is tampalawnpro": (
-        "TampaLawnPro is an AI-powered lawn care platform based in Wesley Chapel, Florida, designed to help homeowners get instant lawn quotes and "
-        "enable lawn care professionals to grow their businesses using automation. Homeowners can receive satellite-based quotes, book services online, "
-        "and connect with trusted local pros. Lawn pros get tools to manage jobs, automate client communication, and run marketing campaigns."
-    ),
-    "que es tampalawnpro": (
-        "TampaLawnPro es una plataforma de cuidado del césped impulsada por inteligencia artificial, con sede en Wesley Chapel, Florida. "
-        "Ayuda a los propietarios a obtener cotizaciones instantáneas usando imágenes satelitales y a reservar servicios en línea. "
-        "Los profesionales del césped pueden automatizar sus operaciones, gestionar clientes y hacer crecer su negocio."
+        "TampaLawnPro is an AI-powered lawn care platform based in Wesley Chapel, Florida. It helps homeowners get instant lawn quotes using satellite imagery, "
+        "and supports lawn pros with tools for automation, client management, and marketing."
     ),
     "how do instant quotes work": (
-        "Just enter your address, and TampaLawnPro uses satellite imagery and AI to instantly measure your lawn and generate a personalized quote—"
-        "no site visit needed."
+        "Just enter your address, and TampaLawnPro uses satellite imagery and AI to instantly measure your lawn and generate a personalized quote—no site visit needed."
     ),
     "can i book lawn care online": (
-        "Yes. Homeowners can schedule lawn services quickly and securely online, from their phone or computer."
+        "Yes. You can book your lawn services online quickly and securely from your phone or computer."
     ),
     "are the providers local": (
-        "Yes. TampaLawnPro connects homeowners with vetted, trusted local lawn care professionals in the Tampa Bay area."
+        "Yes. TampaLawnPro connects you with vetted, local lawn care professionals in the Tampa Bay area."
     ),
     "what tools do lawn pros get": (
-        "Lawn care businesses get a complete suite of tools including online booking, a mobile app, automated reminders, CRM, invoicing, QuickBooks integration, "
-        "local SEO, landing pages, and marketing automation features like email campaigns and lead follow-up."
+        "Lawn pros get a dashboard with online booking, CRM, mobile app, invoicing, QuickBooks integration, marketing automation, landing pages, and more."
     ),
     "how much does it cost for pros": (
-        "Plans start at $97/month for scheduling tools, $297/month for business operations and marketing setup, and $497/month for full marketing automation including "
-        "Google Ads, reputation management, and monthly analytics."
+        "Plans start at $97/month for scheduling, $297/month for business tools and SEO, and $497/month for full marketing automation including Google Ads and analytics."
     ),
     "is there a free trial": (
-        "Yes. TampaLawnPro offers a 30-day risk-free trial with a full money-back guarantee for lawn care professionals."
+        "Yes, there's a 30-day risk-free trial with a money-back guarantee for lawn pros."
     ),
     "where is tampalawnpro based": (
-        "TampaLawnPro is proudly based in Wesley Chapel, Florida, serving homeowners and lawn pros across the greater Tampa Bay area."
+        "TampaLawnPro is based in Wesley Chapel, Florida and serves the greater Tampa Bay area."
+    ),
+
+    # Spanish
+    "que es tampalawnpro": (
+        "TampaLawnPro es una plataforma de jardinería impulsada por inteligencia artificial con sede en Wesley Chapel, Florida. "
+        "Ayuda a propietarios a obtener cotizaciones instantáneas con imágenes satelitales y permite a los profesionales del césped automatizar sus servicios y atraer más clientes."
+    ),
+    "como funciona la cotización instantanea": (
+        "Solo ingresa tu dirección y TampaLawnPro usa imágenes satelitales e inteligencia artificial para medir tu jardín y darte una cotización personalizada al instante."
+    ),
+    "puedo reservar servicios en linea": (
+        "Sí. Puedes reservar servicios de jardinería en línea de forma rápida y segura desde tu celular o computadora."
+    ),
+    "los proveedores son locales": (
+        "Sí. TampaLawnPro te conecta con profesionales verificados y confiables en el área de Tampa Bay."
+    ),
+    "que herramientas tienen los profesionales": (
+        "Los profesionales tienen acceso a un panel con funciones como programación, CRM, app móvil, facturación, integración con QuickBooks, páginas de aterrizaje y automatización de marketing."
+    ),
+    "cuanto cuesta para los profesionales": (
+        "Desde $97/mes para programación, $297/mes con herramientas de negocio y SEO, y $497/mes para marketing completo con anuncios y reportes."
+    ),
+    "ofrecen prueba gratuita": (
+        "Sí, hay una prueba gratuita de 30 días con garantía de devolución de dinero para profesionales del césped."
+    ),
+    "donde estan ubicados": (
+        "TampaLawnPro está ubicado en Wesley Chapel, Florida, y atiende toda el área de Tampa Bay."
     )
 }
 
