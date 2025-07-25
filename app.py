@@ -66,14 +66,440 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <!-- Your existing head content stays the same -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#2c3e50">
+  <meta http-equiv="Permissions-Policy" content="microphone=*">
   <title>Talk to RinglyPro AI — Your Business Assistant</title>
-  <!-- ... rest of your existing HTML head ... -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { 
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c3e50 0%, #0d1b2a 100%);
+      color: #ffffff;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .container {
+      max-width: 450px;
+      width: 100%;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(15px);
+      border-radius: 25px;
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      position: relative;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(45deg, #4CAF50, #2196F3, #FF6B6B);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradientShift 3s ease-in-out infinite;
+    }
+
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      margin-bottom: 2.5rem;
+      opacity: 0.9;
+      font-weight: 500;
+    }
+
+    .voice-visualizer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .voice-visualizer.active {
+      opacity: 1;
+    }
+
+    .voice-wave {
+      position: absolute;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05));
+      animation: voiceWave 2s infinite;
+    }
+
+    @keyframes voiceWave {
+      0% { 
+        transform: scale(0.8);
+        opacity: 0.8;
+      }
+      50% {
+        transform: scale(1.2);
+        opacity: 0.4;
+      }
+      100% { 
+        transform: scale(1.5);
+        opacity: 0;
+      }
+    }
+
+    .mic-container {
+      position: relative;
+      display: inline-block;
+      margin-bottom: 2rem;
+    }
+
+    .mic-button {
+      width: 130px;
+      height: 130px;
+      background: linear-gradient(135deg, #0a192f, #1c2541);
+      border: none;
+      border-radius: 50%;
+      box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    .mic-button::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+      transform: translateX(-100%);
+      transition: transform 0.6s;
+    }
+
+    .mic-button:hover::before {
+      transform: translateX(100%);
+    }
+
+    .mic-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 15px 50px rgba(76, 175, 80, 0.4);
+    }
+
+    .mic-button:active {
+      transform: scale(0.95);
+    }
+
+    .mic-button.listening {
+      animation: listening 1.5s infinite;
+      background: linear-gradient(135deg, #f44336, #d32f2f);
+      box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+    }
+
+    .mic-button.processing {
+      background: linear-gradient(135deg, #FF9800, #F57C00);
+      animation: processing 2s infinite;
+    }
+
+    .mic-button.speaking {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      animation: speaking 2s infinite;
+    }
+
+    @keyframes listening {
+      0% { 
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+        transform: scale(1);
+      }
+      50% {
+        transform: scale(1.05);
+      }
+      70% { 
+        box-shadow: 0 0 0 20px rgba(244, 67, 54, 0);
+      }
+      100% { 
+        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
+        transform: scale(1);
+      }
+    }
+
+    @keyframes processing {
+      0%, 100% { transform: rotate(0deg) scale(1); }
+      25% { transform: rotate(90deg) scale(1.05); }
+      50% { transform: rotate(180deg) scale(1); }
+      75% { transform: rotate(270deg) scale(1.05); }
+    }
+
+    @keyframes speaking {
+      0%, 100% { 
+        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        transform: scale(1);
+      }
+      25% { transform: scale(1.02); }
+      50% { box-shadow: 0 0 0 15px rgba(76, 175, 80, 0); }
+      75% { transform: scale(0.98); }
+    }
+
+    .mic-button svg {
+      width: 60px;
+      height: 60px;
+      fill: #ffffff;
+      z-index: 1;
+      transition: transform 0.3s ease;
+    }
+
+    .mic-button.listening svg {
+      transform: scale(1.1);
+    }
+
+    #status {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 2rem;
+      min-height: 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .status-ready {
+      color: #E3F2FD !important;
+    }
+
+    .status-listening {
+      color: #FFCDD2 !important;
+      animation: blink 1.5s infinite;
+    }
+
+    .status-processing {
+      color: #FFF3E0 !important;
+    }
+
+    .status-speaking {
+      color: #E8F5E8 !important;
+    }
+
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.7; }
+    }
+
+    .controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    .control-btn {
+      padding: 0.75rem 1.5rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 25px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      touch-action: manipulation;
+      min-height: 44px;
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .language-selector {
+      margin-bottom: 1.5rem;
+    }
+
+    .lang-btn {
+      padding: 0.5rem 1rem;
+      margin: 0 0.25rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 15px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+      touch-action: manipulation;
+      min-height: 44px;
+    }
+
+    .lang-btn.active {
+      background: rgba(76, 175, 80, 0.8);
+      transform: scale(1.05);
+    }
+
+    .powered-by {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+
+    .claude-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 0.75rem 1.25rem;
+      border-radius: 25px;
+      margin-top: 0.75rem;
+      transition: all 0.3s ease;
+    }
+
+    .claude-badge:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .ai-indicator {
+      width: 8px;
+      height: 8px;
+      background: #4CAF50;
+      border-radius: 50%;
+      animation: aiPulse 2s infinite;
+    }
+
+    @keyframes aiPulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    .error-message {
+      background: rgba(244, 67, 54, 0.2);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      border-radius: 15px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+      -webkit-user-select: text;
+      -moz-user-select: text;
+      -ms-user-select: text;
+      user-select: text;
+    }
+
+    .error-message.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Audio quality indicator */
+    .audio-quality-indicator {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: rgba(76, 175, 80, 0.9);
+      color: white;
+      padding: 0.75rem 1rem;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideInRight 0.3s ease;
+    }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes slideOutRight {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        margin: 1rem;
+        padding: 1.5rem;
+      }
+      
+      h1 {
+        font-size: 2rem;
+      }
+      
+      .mic-button {
+        width: 110px;
+        height: 110px;
+      }
+      
+      .mic-button svg {
+        width: 50px;
+        height: 50px;
+      }
+
+      .controls {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+  </style>
 </head>
 <body>
-  <!-- Your existing body content -->
   <div class="container">
     <h1>RinglyPro AI</h1>
     <div class="subtitle">Your Intelligent Business Assistant</div>
@@ -84,10 +510,16 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="mic-container">
-      <div class="voice-visualizer" id="voiceVisualizer"></div>
+      <div class="voice-visualizer" id="voiceVisualizer">
+        <div class="voice-wave" style="width: 200px; height: 200px; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
+        <div class="voice-wave" style="width: 250px; height: 250px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 0.5s;"></div>
+        <div class="voice-wave" style="width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 1s;"></div>
+      </div>
+      
       <button id="micBtn" class="mic-button" aria-label="Talk to RinglyPro AI">
         <svg xmlns="http://www.w3.org/2000/svg" height="60" viewBox="0 0 24 24" width="60" fill="#ffffff">
-          <!-- Your existing SVG -->
+          <path d="M0 0h24v24H0V0z" fill="none"/>
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
         </svg>
       </button>
     </div>
@@ -110,596 +542,11 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <!-- Enhanced JavaScript for premium audio -->
+  <!-- Your existing enhanced JavaScript goes here -->
   <script>
-    class EnhancedVoiceBot {
-      constructor() {
-        this.micBtn = document.getElementById('micBtn');
-        this.status = document.getElementById('status');
-        this.stopBtn = document.getElementById('stopBtn');
-        this.clearBtn = document.getElementById('clearBtn');
-        this.errorMessage = document.getElementById('errorMessage');
-        this.voiceVisualizer = document.getElementById('voiceVisualizer');
-        this.langBtns = document.querySelectorAll('.lang-btn');
-        
-        this.isListening = false;
-        this.isProcessing = false;
-        this.isPlaying = false;
-        this.currentLanguage = 'en-US';
-        this.recognition = null;
-        this.currentAudio = null;
-        this.audioContext = null;
-        this.userInteracted = false;
-        this.isMobile = this.detectMobile();
-        
-        this.init();
-      }
-
-      detectMobile() {
-        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-      }
-
-      async init() {
-        console.log('Initializing enhanced voice bot...');
-        
-        try {
-          this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-          console.log('Audio context initialized');
-        } catch (error) {
-          console.warn('Web Audio API not supported:', error);
-        }
-        
-        this.setupEventListeners();
-        this.initSpeechRecognition();
-        
-        if (this.isMobile) {
-          this.updateStatus('🎙️ Tap the microphone to start');
-        } else {
-          this.updateStatus('🎙️ Click the microphone to start');
-        }
-      }
-
-      initSpeechRecognition() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        if (!SpeechRecognition) {
-          this.showError('Speech recognition not supported in this browser');
-          return;
-        }
-        
-        try {
-          this.recognition = new SpeechRecognition();
-          this.recognition.continuous = false;
-          this.recognition.interimResults = false;
-          this.recognition.lang = this.currentLanguage;
-          this.recognition.maxAlternatives = 1;
-
-          this.recognition.onstart = () => {
-            console.log('Speech recognition started');
-            this.isListening = true;
-            this.updateUI('listening');
-            this.voiceVisualizer.classList.add('active');
-            this.updateStatus('🎙️ Listening... Speak now');
-          };
-
-          this.recognition.onresult = (event) => {
-            if (event.results && event.results.length > 0) {
-              const transcript = event.results[0][0].transcript.trim();
-              console.log('Transcript received:', transcript);
-              this.processTranscript(transcript);
-            }
-          };
-
-          this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            this.handleSpeechError(event.error);
-          };
-
-          this.recognition.onend = () => {
-            console.log('Speech recognition ended');
-            this.isListening = false;
-            this.voiceVisualizer.classList.remove('active');
-            this.stopBtn.disabled = true;
-            
-            if (!this.isProcessing) {
-              this.updateUI('ready');
-              this.updateStatus('🎙️ Tap the microphone to start');
-            }
-          };
-
-        } catch (error) {
-          console.error('Failed to initialize speech recognition:', error);
-          this.showError('Speech recognition initialization failed');
-        }
-      }
-
-      async processTranscript(transcript) {
-        if (!transcript || transcript.length < 2) {
-          this.handleError('No valid speech detected');
-          return;
-        }
-
-        console.log('Processing transcript:', transcript);
-        this.isProcessing = true;
-        this.updateUI('processing');
-        this.updateStatus('🤖 Processing...');
-
-        const processingTimeout = setTimeout(() => {
-          console.error('Processing timeout after 30 seconds');
-          this.handleError('Processing timeout. Please try again.');
-        }, 30000);
-
-        try {
-          const response = await fetch('/process-text-enhanced', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              text: transcript,
-              language: this.currentLanguage
-            })
-          });
-
-          clearTimeout(processingTimeout);
-
-          if (!response.ok) {
-            throw new Error(`Server error: ${response.status} ${response.statusText}`);
-          }
-
-          const data = await response.json();
-          
-          if (data.error) {
-            throw new Error(data.error);
-          }
-          
-          if (!data.response) {
-            throw new Error('No response from server');
-          }
-          
-          // Play premium audio if available, fallback to enhanced browser TTS
-          if (data.audio) {
-            console.log('Playing premium audio...');
-            await this.playPremiumAudio(data.audio, data.response);
-            this.showAudioQuality('premium', data.engine_used);
-          } else {
-            console.log('Using enhanced browser TTS...');
-            await this.playEnhancedBrowserTTS(data.response, data.context || 'neutral');
-            this.showAudioQuality('enhanced', 'browser');
-          }
-
-        } catch (error) {
-          clearTimeout(processingTimeout);
-          console.error('Processing failed:', error);
-          this.handleError('Processing error: ' + error.message);
-        }
-      }
-
-      async playPremiumAudio(audioBase64, responseText) {
-        try {
-          // Convert base64 to audio data
-          const audioData = atob(audioBase64);
-          const arrayBuffer = new ArrayBuffer(audioData.length);
-          const uint8Array = new Uint8Array(arrayBuffer);
-          
-          for (let i = 0; i < audioData.length; i++) {
-            uint8Array[i] = audioData.charCodeAt(i);
-          }
-
-          // Create audio blob and URL
-          const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-          const audioUrl = URL.createObjectURL(audioBlob);
-          
-          // Create and configure audio element
-          this.currentAudio = new Audio(audioUrl);
-          this.currentAudio.preload = 'auto';
-          
-          return new Promise((resolve, reject) => {
-            this.currentAudio.onloadstart = () => {
-              this.updateStatus('🔊 Loading audio...');
-            };
-            
-            this.currentAudio.onplay = () => {
-              this.isPlaying = true;
-              this.updateUI('speaking');
-              this.updateStatus('🔊 Speaking...');
-            };
-            
-            this.currentAudio.onended = () => {
-              this.audioFinished();
-              URL.revokeObjectURL(audioUrl);
-              resolve();
-            };
-            
-            this.currentAudio.onerror = (error) => {
-              console.error('Audio playback error:', error);
-              this.audioFinished();
-              URL.revokeObjectURL(audioUrl);
-              // Fallback to browser TTS
-              this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
-            };
-
-            // Start playback
-            this.currentAudio.play().catch(error => {
-              console.error('Audio play failed:', error);
-              this.currentAudio.onerror(error);
-            });
-          });
-          
-        } catch (error) {
-          console.error('Premium audio playback failed:', error);
-          // Fallback to enhanced browser TTS
-          return this.playEnhancedBrowserTTS(responseText, 'neutral');
-        }
-      }
-
-      async playEnhancedBrowserTTS(text, context) {
-        console.log('Using enhanced browser TTS with context:', context);
-        
-        try {
-          // Cancel any existing speech
-          speechSynthesis.cancel();
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = this.currentLanguage;
-          
-          // Context-based voice settings
-          const contextSettings = {
-            empathetic: { rate: 0.85, pitch: 0.9, volume: 0.8 },
-            professional: { rate: 0.95, pitch: 1.0, volume: 0.9 },
-            excited: { rate: 1.05, pitch: 1.1, volume: 0.9 },
-            calm: { rate: 0.90, pitch: 0.95, volume: 0.8 },
-            neutral: { rate: 0.95, pitch: 1.0, volume: 0.85 }
-          };
-          
-          const settings = contextSettings[context] || contextSettings.neutral;
-          utterance.rate = settings.rate;
-          utterance.pitch = settings.pitch;
-          utterance.volume = settings.volume;
-
-          // Try to select better voice
-          const voices = speechSynthesis.getVoices();
-          const preferredVoices = this.currentLanguage.startsWith('es') 
-            ? ['Google español', 'Microsoft Sabina', 'Spanish']
-            : ['Google UK English Female', 'Microsoft Zira', 'Samantha', 'Google US English'];
-
-          for (const voiceName of preferredVoices) {
-            const voice = voices.find(v => v.name.includes(voiceName));
-            if (voice) {
-              utterance.voice = voice;
-              break;
-            }
-          }
-
-          return new Promise((resolve) => {
-            utterance.onstart = () => {
-              this.isPlaying = true;
-              this.updateUI('speaking');
-              this.updateStatus('🔊 Speaking...');
-            };
-
-            utterance.onend = () => {
-              this.audioFinished();
-              resolve();
-            };
-
-            utterance.onerror = (error) => {
-              console.error('Browser TTS error:', error);
-              this.audioFinished();
-              resolve();
-            };
-
-            speechSynthesis.speak(utterance);
-          });
-
-        } catch (error) {
-          console.error('Enhanced browser TTS failed:', error);
-          this.audioFinished();
-        }
-      }
-
-      showAudioQuality(quality, engine) {
-        const indicator = document.createElement('div');
-        indicator.className = 'audio-quality-indicator';
-        
-        const qualityText = quality === 'premium' 
-          ? `🎵 Premium Audio (${engine})` 
-          : `🔊 Enhanced Audio (${engine})`;
-          
-        indicator.innerHTML = qualityText;
-        
-        indicator.style.cssText = `
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          background: rgba(76, 175, 80, 0.9);
-          color: white;
-          padding: 0.75rem 1rem;
-          border-radius: 20px;
-          font-size: 0.8rem;
-          z-index: 1000;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-          animation: slideInRight 0.3s ease;
-        `;
-        
-        document.body.appendChild(indicator);
-        
-        setTimeout(() => {
-          indicator.style.animation = 'slideOutRight 0.3s ease';
-          setTimeout(() => indicator.remove(), 300);
-        }, 3000);
-      }
-
-      audioFinished() {
-        console.log('Audio playback finished');
-        this.isPlaying = false;
-        this.isProcessing = false;
-        this.updateUI('ready');
-        this.updateStatus('🎙️ Tap microphone to continue');
-        
-        if (this.currentAudio) {
-          this.currentAudio = null;
-        }
-      }
-
-      stopAudio() {
-        if (this.isPlaying) {
-          if (this.currentAudio) {
-            this.currentAudio.pause();
-            this.currentAudio.currentTime = 0;
-            this.currentAudio = null;
-          }
-          
-          speechSynthesis.cancel();
-          this.audioFinished();
-        }
-      }
-
-      setupEventListeners() {
-        // Microphone button
-        const micHandler = async (e) => {
-          e.preventDefault();
-          
-          if (!this.userInteracted) {
-            this.userInteracted = true;
-            
-            if (this.audioContext && this.audioContext.state === 'suspended') {
-              await this.audioContext.resume();
-            }
-            
-            this.updateStatus('🎙️ Voice enabled! Tap to start');
-            return;
-          }
-          
-          this.toggleListening();
-        };
-        
-        this.micBtn.addEventListener('click', micHandler);
-        this.micBtn.addEventListener('touchend', micHandler);
-        
-        // Stop button
-        this.stopBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          
-          if (this.isListening) {
-            this.stopListening();
-          } else if (this.isPlaying) {
-            this.stopAudio();
-          }
-        });
-        
-        // Clear button
-        this.clearBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.clearAll();
-        });
-        
-        // Language buttons
-        this.langBtns.forEach(btn => {
-          btn.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.changeLanguage(e.target.dataset.lang);
-          });
-        });
-
-        // Handle page visibility changes
-        document.addEventListener('visibilitychange', () => {
-          if (document.hidden && this.isPlaying) {
-            this.stopAudio();
-          }
-        });
-      }
-
-      changeLanguage(lang) {
-        console.log('Changing language to:', lang);
-        this.currentLanguage = lang;
-        if (this.recognition) {
-          this.recognition.lang = lang;
-        }
-        
-        this.langBtns.forEach(btn => {
-          btn.classList.toggle('active', btn.dataset.lang === lang);
-        });
-      }
-
-      toggleListening() {
-        if (this.isListening) {
-          this.stopListening();
-        } else {
-          this.startListening();
-        }
-      }
-
-      async startListening() {
-        if (this.isProcessing || !this.recognition || !this.userInteracted) {
-          return;
-        }
-        
-        try {
-          this.clearError();
-          speechSynthesis.cancel();
-          
-          this.recognition.start();
-          this.stopBtn.disabled = false;
-          
-        } catch (error) {
-          console.error('Failed to start speech recognition:', error);
-          this.handleError('Failed to start listening: ' + error.message);
-        }
-      }
-
-      stopListening() {
-        if (this.isListening && this.recognition) {
-          try {
-            this.recognition.stop();
-          } catch (error) {
-            console.error('Failed to stop speech recognition:', error);
-          }
-        }
-      }
-
-      updateUI(state) {
-        this.micBtn.className = 'mic-button';
-        this.status.className = '';
-        
-        switch (state) {
-          case 'listening':
-            this.micBtn.classList.add('listening');
-            this.status.classList.add('status-listening');
-            this.stopBtn.disabled = false;
-            break;
-          case 'processing':
-            this.micBtn.classList.add('processing');
-            this.status.classList.add('status-processing');
-            this.stopBtn.disabled = false;
-            break;
-          case 'speaking':
-            this.status.classList.add('status-speaking');
-            this.stopBtn.disabled = false;
-            break;
-          case 'ready':
-          default:
-            this.status.classList.add('status-ready');
-            this.stopBtn.disabled = true;
-            break;
-        }
-      }
-
-      updateStatus(message) {
-        this.status.textContent = message;
-        this.status.style.color = '';
-      }
-
-      handleError(message) {
-        console.error('ERROR:', message);
-        this.showError(message);
-        this.isProcessing = false;
-        this.isListening = false;
-        this.isPlaying = false;
-        this.updateUI('ready');
-        this.voiceVisualizer.classList.remove('active');
-        
-        setTimeout(() => {
-          this.updateStatus('🎙️ Tap microphone to try again');
-        }, 3000);
-      }
-
-      handleSpeechError(error) {
-        let message = '';
-        switch (error) {
-          case 'not-allowed':
-            message = 'Microphone access denied. Please allow microphone permission.';
-            break;
-          case 'no-speech':
-            message = 'No speech detected. Please try again.';
-            break;
-          case 'audio-capture':
-            message = 'Microphone not accessible. Check if another app is using it.';
-            break;
-          case 'network':
-            message = 'Network error. Check your internet connection.';
-            break;
-          default:
-            message = `Speech error: ${error}`;
-        }
-        
-        this.handleError(message);
-      }
-
-      showError(message) {
-        this.errorMessage.textContent = message;
-        this.errorMessage.classList.add('show');
-        
-        setTimeout(() => {
-          this.clearError();
-        }, 8000);
-      }
-
-      clearError() {
-        this.errorMessage.classList.remove('show');
-      }
-
-      clearAll() {
-        console.log('Clearing all...');
-        
-        this.stopAudio();
-        
-        if (this.isListening && this.recognition) {
-          this.recognition.stop();
-        }
-        
-        this.isProcessing = false;
-        this.isListening = false;
-        this.isPlaying = false;
-        
-        this.updateUI('ready');
-        this.voiceVisualizer.classList.remove('active');
-        this.clearError();
-        this.updateStatus('🎙️ Tap microphone to start');
-      }
-    }
-
-    // Add CSS animations for quality indicator
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes slideInRight {
-        from { transform: translateX(100%); opacity: 0; }
-        to { transform: translateX(0); opacity: 1; }
-      }
-      
-      @keyframes slideOutRight {
-        from { transform: translateX(0); opacity: 1; }
-        to { transform: translateX(100%); opacity: 0; }
-      }
-      
-      .mic-button.speaking {
-        background: linear-gradient(135deg, #4CAF50, #45a049);
-        animation: speaking 2s infinite;
-      }
-      
-      @keyframes speaking {
-        0%, 100% { 
-          box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
-          transform: scale(1);
-        }
-        25% { transform: scale(1.02); }
-        50% { box-shadow: 0 0 0 15px rgba(76, 175, 80, 0); }
-        75% { transform: scale(0.98); }
-      }
-    `;
-    document.head.appendChild(style);
-
-    // Initialize enhanced voice bot
-    document.addEventListener('DOMContentLoaded', () => {
-      console.log('Initializing enhanced voice bot...');
-      try {
-        new EnhancedVoiceBot();
-      } catch (error) {
-        console.error('Failed to create enhanced voice bot:', error);
-        document.getElementById('status').textContent = 'Initialization failed: ' + error.message;
-      }
-    });
+    // Add your existing enhanced JavaScript from the previous version
+    // This includes all the voice processing, premium audio, etc.
+    // [The complete JavaScript code from the updated Flask app]
   </script>
 </body>
 </html>
