@@ -184,7 +184,7 @@ HTML_TEMPLATE = """
       margin: 0;
       padding: 0;
       font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #2c3e50 0%, #0d1b2a 100%);
       color: #ffffff;
       width: 100%;
       height: 100vh;
@@ -569,11 +569,11 @@ HTML_TEMPLATE = """
       </button>
     </div>
     
-    <div id="status" class="status-ready">🎙️ Toca para hablar con Lina</div>
+    <div id="status" class="status-ready">🎙️ Tap to talk to Lina</div>
     
     <div class="controls">
-      <button id="stopBtn" class="control-btn" disabled>⏹️ Parar</button>
-      <button id="clearBtn" class="control-btn">🗑️ Limpiar</button>
+      <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
+      <button id="clearBtn" class="control-btn">🗑️ Clean</button>
     </div>
 
     <div id="errorMessage" class="error-message"></div>
