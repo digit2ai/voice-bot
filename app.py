@@ -427,7 +427,6 @@ HTML_TEMPLATE = """
       transform: translateY(0);
     }
 
-    /* Audio quality indicator */
     .audio-quality-indicator {
       position: fixed;
       top: 20px;
@@ -542,14 +541,642 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <!-- Your existing enhanced JavaScript goes here -->
   <script>
-    // Add your existing enhanced JavaScript from the previous version
-    // This includes all the voice processing, premium audio, etc.
-    // [The complete JavaScript code from the updated Flask app]
+    // Debug logging function
+    function debugLog(message, data) {
+        console.log(`[DEBUG] ${message}`, data || '');
+        // Also show on screen for mobile debugging
+        const statusEl = document.getElementById('status');
+        if (statusEl && message.includes('ERROR')) {
+            statusEl.textContent = message;
+            statusEl.style.color = '#ff6b6b';
+        }
+    }
+
+    class EnhancedVoiceBot {
+        constructor() {
+            debugLog('Creating EnhancedVoiceBot instance...');
+            
+            this.micBtn = document.getElementById('micBtn');
+            this.status = document.getElementById('status');
+            this.stopBtn = document.getElementById('stopBtn');
+            this.clearBtn = document.getElementById('clearBtn');
+            this.errorMessage = document.getElementById('errorMessage');
+            this.voiceVisualizer = document.getElementById('voiceVisualizer');
+            this.langBtns = document.querySelectorAll('.lang-btn');
+            
+            this.isListening = false;
+            this.isProcessing = false;
+            this.isPlaying = false;
+            this.currentLanguage = 'en-US';
+            this.recognition = null;
+            this.currentAudio = null;
+            this.audioContext = null;
+            this.userInteracted = false;
+            this.isMobile = this.detectMobile();
+            
+            debugLog('Mobile detected:', this.isMobile);
+            debugLog('User agent:', navigator.userAgent);
+            
+            this.init();
+        }
+
+        detectMobile() {
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        }
+
+        async init() {
+            debugLog('Initializing voice bot...');
+            
+            // Check basic browser support
+            const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+            const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+            const hasSpeechSynthesis = !!window.speechSynthesis;
+            
+            debugLog('Browser capabilities:', {
+                getUserMedia: hasGetUserMedia,
+                speechRecognition: hasSpeechRecognition,
+                speechSynthesis: hasSpeechSynthesis
+            });
+            
+            if (!hasSpeechRecognition) {
+                debugLog('ERROR: Speech recognition not supported');
+                this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
+                return;
+            }
+
+            // Initialize audio context
+            try {
+                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                debugLog('Audio context initialized');
+            } catch (error) {
+                debugLog('Audio context initialization failed:', error);
+            }
+
+            this.setupEventListeners();
+            
+            // Always require user interaction for mobile
+            if (this.isMobile) {
+                this.updateStatus('🎙️ Tap the microphone to start');
+            } else {
+                this.initSpeechRecognition();
+                this.userInteracted = true;
+                this.updateStatus('🎙️ Click the microphone to start');
+            }
+        }
+
+        async requestMicrophonePermission() {
+            debugLog('Requesting microphone permission...');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                debugLog('Microphone permission granted');
+                stream.getTracks().forEach(track => track.stop());
+                return true;
+            } catch (error) {
+                debugLog('ERROR: Microphone permission denied', error.message);
+                this.showError('Microphone permission denied. Please allow microphone access.');
+                return false;
+            }
+        }
+
+        initSpeechRecognition() {
+            debugLog('Initializing speech recognition...');
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            try {
+                this.recognition = new SpeechRecognition();
+                
+                // Conservative settings for mobile compatibility
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.lang = this.currentLanguage;
+                this.recognition.maxAlternatives = 1;
+
+                this.recognition.onstart = () => {
+                    debugLog('Speech recognition started');
+                    this.isListening = true;
+                    this.updateUI('listening');
+                    this.voiceVisualizer.classList.add('active');
+                    this.updateStatus('🎙️ Listening... Speak now');
+                };
+
+                this.recognition.onresult = (event) => {
+                    debugLog('Speech recognition result:', event);
+                    if (event.results && event.results.length > 0) {
+                        const transcript = event.results[0][0].transcript.trim();
+                        debugLog('Transcript received:', transcript);
+                        this.processTranscript(transcript);
+                    }
+                };
+
+                this.recognition.onerror = (event) => {
+                    debugLog('ERROR: Speech recognition error', event.error);
+                    this.handleSpeechError(event.error);
+                };
+
+                this.recognition.onend = () => {
+                    debugLog('Speech recognition ended');
+                    this.isListening = false;
+                    this.voiceVisualizer.classList.remove('active');
+                    this.stopBtn.disabled = true;
+                    
+                    if (!this.isProcessing) {
+                        this.updateUI('ready');
+                        this.updateStatus('🎙️ Tap the microphone to start');
+                    }
+                };
+
+                debugLog('Speech recognition initialized successfully');
+            } catch (error) {
+                debugLog('ERROR: Failed to initialize speech recognition', error.message);
+                this.showError('Failed to initialize speech recognition: ' + error.message);
+            }
+        }
+
+        handleSpeechError(error) {
+            debugLog('Handling speech error:', error);
+            
+            let message = '';
+            switch (error) {
+                case 'not-allowed':
+                    message = 'Microphone access denied. Please allow microphone permission in browser settings.';
+                    break;
+                case 'no-speech':
+                    message = 'No speech detected. Please try again.';
+                    break;
+                case 'audio-capture':
+                    message = 'Microphone not accessible. Check if another app is using it.';
+                    break;
+                case 'network':
+                    message = 'Network error. Check your internet connection.';
+                    break;
+                default:
+                    message = `Speech error: ${error}`;
+            }
+            
+            this.handleError(message);
+        }
+
+        async processTranscript(transcript) {
+            if (!transcript || transcript.length < 2) {
+                this.handleError('No valid speech detected');
+                return;
+            }
+
+            debugLog('Processing transcript:', transcript);
+            this.isProcessing = true;
+            this.updateUI('processing');
+            this.updateStatus('🤖 Processing...');
+
+            // Add timeout to prevent getting stuck
+            const processingTimeout = setTimeout(() => {
+                debugLog('ERROR: Processing timeout after 30 seconds');
+                this.handleError('Processing timeout. Please try again.');
+            }, 30000);
+
+            try {
+                debugLog('Sending request to server...');
+                
+                const response = await fetch('/process-text-enhanced', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: transcript,
+                        language: this.currentLanguage
+                    })
+                });
+
+                debugLog('Server response status:', response.status);
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                debugLog('Server response received:', data);
+                
+                // Clear the timeout since we got a response
+                clearTimeout(processingTimeout);
+                
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+                
+                if (!data.response) {
+                    throw new Error('No response from server');
+                }
+                
+                // Play premium audio if available, fallback to enhanced browser TTS
+                if (data.audio) {
+                    debugLog('Playing premium audio...');
+                    await this.playPremiumAudio(data.audio, data.response);
+                    this.showAudioQuality('premium', data.engine_used || 'elevenlabs');
+                } else {
+                    debugLog('Using enhanced browser TTS...');
+                    await this.playEnhancedBrowserTTS(data.response, data.context || 'neutral');
+                    this.showAudioQuality('enhanced', 'browser');
+                }
+
+            } catch (error) {
+                clearTimeout(processingTimeout);
+                debugLog('ERROR: Processing failed', error.message);
+                this.handleError('Processing error: ' + error.message);
+            }
+        }
+
+        async playPremiumAudio(audioBase64, responseText) {
+            debugLog('Playing premium audio...');
+            
+            try {
+                // Convert base64 to audio data
+                const audioData = atob(audioBase64);
+                const arrayBuffer = new ArrayBuffer(audioData.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < audioData.length; i++) {
+                    uint8Array[i] = audioData.charCodeAt(i);
+                }
+
+                // Create audio blob and URL
+                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // Create and configure audio element
+                this.currentAudio = new Audio(audioUrl);
+                this.currentAudio.preload = 'auto';
+                
+                return new Promise((resolve, reject) => {
+                    this.currentAudio.onloadstart = () => {
+                        this.updateStatus('🔊 Loading audio...');
+                    };
+                    
+                    this.currentAudio.onplay = () => {
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        this.updateStatus('🔊 Speaking...');
+                    };
+                    
+                    this.currentAudio.onended = () => {
+                        this.audioFinished();
+                        URL.revokeObjectURL(audioUrl);
+                        resolve();
+                    };
+                    
+                    this.currentAudio.onerror = (error) => {
+                        debugLog('ERROR: Audio playback error', error);
+                        this.audioFinished();
+                        URL.revokeObjectURL(audioUrl);
+                        // Fallback to browser TTS
+                        this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
+                    };
+
+                    // Start playback
+                    this.currentAudio.play().catch(error => {
+                        debugLog('ERROR: Audio play failed', error);
+                        this.currentAudio.onerror(error);
+                    });
+                });
+                
+            } catch (error) {
+                debugLog('ERROR: Premium audio playback failed', error);
+                // Fallback to enhanced browser TTS
+                return this.playEnhancedBrowserTTS(responseText, 'neutral');
+            }
+        }
+
+        async playEnhancedBrowserTTS(text, context) {
+            debugLog('Using enhanced browser TTS with context:', context);
+            
+            try {
+                // Cancel any existing speech
+                speechSynthesis.cancel();
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = this.currentLanguage;
+                
+                // Context-based voice settings
+                const contextSettings = {
+                    empathetic: { rate: 0.85, pitch: 0.9, volume: 0.8 },
+                    professional: { rate: 0.95, pitch: 1.0, volume: 0.9 },
+                    excited: { rate: 1.05, pitch: 1.1, volume: 0.9 },
+                    calm: { rate: 0.90, pitch: 0.95, volume: 0.8 },
+                    neutral: { rate: 0.95, pitch: 1.0, volume: 0.85 }
+                };
+                
+                const settings = contextSettings[context] || contextSettings.neutral;
+                utterance.rate = settings.rate;
+                utterance.pitch = settings.pitch;
+                utterance.volume = settings.volume;
+
+                // Try to select better voice
+                const voices = speechSynthesis.getVoices();
+                const preferredVoices = this.currentLanguage.startsWith('es') 
+                    ? ['Google español', 'Microsoft Sabina', 'Spanish']
+                    : ['Google UK English Female', 'Microsoft Zira', 'Samantha', 'Google US English'];
+
+                for (const voiceName of preferredVoices) {
+                    const voice = voices.find(v => v.name.includes(voiceName));
+                    if (voice) {
+                        utterance.voice = voice;
+                        break;
+                    }
+                }
+
+                return new Promise((resolve) => {
+                    utterance.onstart = () => {
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        this.updateStatus('🔊 Speaking...');
+                    };
+
+                    utterance.onend = () => {
+                        this.audioFinished();
+                        resolve();
+                    };
+
+                    utterance.onerror = (error) => {
+                        debugLog('ERROR: Browser TTS error', error);
+                        this.audioFinished();
+                        resolve();
+                    };
+
+                    speechSynthesis.speak(utterance);
+                });
+
+            } catch (error) {
+                debugLog('ERROR: Enhanced browser TTS failed', error);
+                this.audioFinished();
+            }
+        }
+
+        showAudioQuality(quality, engine) {
+            const indicator = document.createElement('div');
+            indicator.className = 'audio-quality-indicator';
+            
+            const qualityText = quality === 'premium' 
+                ? `🎵 Premium Audio (${engine})` 
+                : `🔊 Enhanced Audio (${engine})`;
+                
+            indicator.innerHTML = qualityText;
+            
+            document.body.appendChild(indicator);
+            
+            setTimeout(() => {
+                indicator.style.animation = 'slideOutRight 0.3s ease';
+                setTimeout(() => indicator.remove(), 300);
+            }, 3000);
+        }
+
+        audioFinished() {
+            debugLog('Audio playback finished');
+            this.isPlaying = false;
+            this.isProcessing = false;
+            this.updateUI('ready');
+            this.updateStatus('🎙️ Tap microphone to continue');
+            
+            if (this.currentAudio) {
+                this.currentAudio = null;
+            }
+        }
+
+        stopAudio() {
+            if (this.isPlaying) {
+                if (this.currentAudio) {
+                    this.currentAudio.pause();
+                    this.currentAudio.currentTime = 0;
+                    this.currentAudio = null;
+                }
+                
+                speechSynthesis.cancel();
+                this.audioFinished();
+            }
+        }
+
+        setupEventListeners() {
+            debugLog('Setting up event listeners...');
+            
+            // Microphone button - handle both click and touch
+            const micHandler = async (e) => {
+                e.preventDefault();
+                debugLog('Microphone button activated');
+                
+                if (!this.userInteracted) {
+                    debugLog('First user interaction - enabling voice features');
+                    this.userInteracted = true;
+                    
+                    // Request microphone permission first
+                    if (this.isMobile) {
+                        const permissionGranted = await this.requestMicrophonePermission();
+                        if (!permissionGranted) {
+                            return;
+                        }
+                    }
+                    
+                    // Resume audio context if suspended
+                    if (this.audioContext && this.audioContext.state === 'suspended') {
+                        await this.audioContext.resume();
+                    }
+                    
+                    this.initSpeechRecognition();
+                    this.updateStatus('🎙️ Voice enabled! Tap microphone to start');
+                    return;
+                }
+                
+                this.toggleListening();
+            };
+            
+            this.micBtn.addEventListener('click', micHandler);
+            this.micBtn.addEventListener('touchend', micHandler);
+            
+            // Stop button
+            this.stopBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                if (this.isListening) {
+                    this.stopListening();
+                } else if (this.isPlaying) {
+                    this.stopAudio();
+                }
+            });
+            
+            // Clear button
+            this.clearBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.clearAll();
+            });
+            
+            // Language buttons
+            this.langBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.changeLanguage(e.target.dataset.lang);
+                });
+            });
+
+            // Handle page visibility changes
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden && this.isPlaying) {
+                    this.stopAudio();
+                }
+            });
+        }
+
+        changeLanguage(lang) {
+            debugLog('Changing language to:', lang);
+            this.currentLanguage = lang;
+            if (this.recognition) {
+                this.recognition.lang = lang;
+            }
+            
+            this.langBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+        }
+
+        toggleListening() {
+            if (this.isListening) {
+                this.stopListening();
+            } else {
+                this.startListening();
+            }
+        }
+
+        async startListening() {
+            if (this.isProcessing || !this.recognition || !this.userInteracted) {
+                debugLog('Cannot start listening:', {
+                    processing: this.isProcessing,
+                    recognition: !!this.recognition,
+                    userInteracted: this.userInteracted
+                });
+                return;
+            }
+            
+            debugLog('Starting speech recognition...');
+            
+            try {
+                this.clearError();
+                speechSynthesis.cancel();
+                
+                this.recognition.start();
+                this.stopBtn.disabled = false;
+                
+            } catch (error) {
+                debugLog('ERROR: Failed to start speech recognition', error.message);
+                this.handleError('Failed to start listening: ' + error.message);
+            }
+        }
+
+        stopListening() {
+            if (this.isListening && this.recognition) {
+                debugLog('Stopping speech recognition...');
+                try {
+                    this.recognition.stop();
+                } catch (error) {
+                    debugLog('ERROR: Failed to stop speech recognition', error.message);
+                }
+            }
+        }
+
+        updateUI(state) {
+            this.micBtn.className = 'mic-button';
+            this.status.className = '';
+            
+            switch (state) {
+                case 'listening':
+                    this.micBtn.classList.add('listening');
+                    this.status.classList.add('status-listening');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'processing':
+                    this.micBtn.classList.add('processing');
+                    this.status.classList.add('status-processing');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'speaking':
+                    this.micBtn.classList.add('speaking');
+                    this.status.classList.add('status-speaking');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'ready':
+                default:
+                    this.status.classList.add('status-ready');
+                    this.stopBtn.disabled = true;
+                    break;
+            }
+        }
+
+        updateStatus(message) {
+            this.status.textContent = message;
+            this.status.style.color = '';
+        }
+
+        handleError(message) {
+            debugLog('ERROR:', message);
+            this.showError(message);
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            this.updateUI('ready');
+            this.voiceVisualizer.classList.remove('active');
+            
+            setTimeout(() => {
+                this.updateStatus('🎙️ Tap microphone to try again');
+            }, 3000);
+        }
+
+        showError(message) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.add('show');
+            
+            setTimeout(() => {
+                this.clearError();
+            }, 8000);
+        }
+
+        clearError() {
+            this.errorMessage.classList.remove('show');
+        }
+
+        clearAll() {
+            debugLog('Clearing all...');
+            
+            this.stopAudio();
+            
+            if (this.isListening && this.recognition) {
+                this.recognition.stop();
+            }
+            
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            
+            this.updateUI('ready');
+            this.voiceVisualizer.classList.remove('active');
+            this.clearError();
+            this.updateStatus('🎙️ Tap microphone to start');
+        }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        debugLog('DOM loaded, creating voice bot...');
+        
+        try {
+            new EnhancedVoiceBot();
+        } catch (error) {
+            console.error('Failed to create voice bot:', error);
+            document.getElementById('status').textContent = 'Failed to initialize: ' + error.message;
+        }
+    });
   </script>
 </body>
 </html>
+"""
 """
 
 @app.route('/')
