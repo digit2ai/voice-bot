@@ -168,13 +168,13 @@ FAQ_BRAIN = {
     )
 }
 
-# Mobile-optimized HTML template with enhanced compatibility
+# HTML template with browser-based speech recognition and synthesis (FIXED VERSION)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -303,8 +303,6 @@ HTML_TEMPLATE = """
       position: relative;
       overflow: hidden;
       touch-action: manipulation;
-      min-width: 130px;
-      min-height: 130px;
     }
 
     .mic-button::before {
@@ -521,116 +519,29 @@ HTML_TEMPLATE = """
       transform: translateY(0);
     }
 
-    /* iOS Safari specific fixes */
-    @supports (-webkit-touch-callout: none) {
-      .container {
-        padding-top: env(safe-area-inset-top);
-        padding-bottom: env(safe-area-inset-bottom);
-        padding-left: env(safe-area-inset-left);
-        padding-right: env(safe-area-inset-right);
-      }
-      
-      html, body {
-        position: fixed;
-        overflow: hidden;
-      }
-      
-      .container {
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-      }
-    }
-
     @media (max-width: 480px) {
-      input, select, textarea {
-        font-size: 16px !important;
-      }
-      
       .container {
-        margin: 0.5rem;
-        padding: 1rem;
-        min-height: calc(100vh - 1rem);
-        width: calc(100vw - 1rem);
+        margin: 1rem;
+        padding: 1.5rem;
       }
       
       h1 {
-        font-size: 1.8rem;
-        margin-bottom: 0.25rem;
-      }
-      
-      .subtitle {
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
+        font-size: 2rem;
       }
       
       .mic-button {
-        width: 120px;
-        height: 120px;
+        width: 110px;
+        height: 110px;
       }
       
       .mic-button svg {
-        width: 45px;
-        height: 45px;
+        width: 50px;
+        height: 50px;
       }
 
       .controls {
         flex-direction: column;
-        gap: 0.75rem;
-      }
-      
-      .control-btn {
-        width: 100%;
-        padding: 1rem;
-        font-size: 1rem;
-      }
-      
-      .lang-btn {
-        padding: 0.75rem 1rem;
-        margin: 0.25rem;
-        font-size: 1rem;
-      }
-      
-      #status {
-        font-size: 1.1rem;
-        min-height: 2.5rem;
-        padding: 0 1rem;
-      }
-    }
-
-    /* Landscape orientation on mobile */
-    @media (max-width: 896px) and (orientation: landscape) {
-      .container {
-        padding: 0.5rem;
-      }
-      
-      h1 {
-        font-size: 1.5rem;
-        margin-bottom: 0.25rem;
-      }
-      
-      .subtitle {
-        font-size: 0.9rem;
-        margin-bottom: 1rem;
-      }
-      
-      .mic-button {
-        width: 100px;
-        height: 100px;
-      }
-      
-      .mic-button svg {
-        width: 40px;
-        height: 40px;
-      }
-      
-      .controls {
-        flex-direction: row;
         gap: 0.5rem;
-      }
-      
-      .control-btn {
-        padding: 0.5rem 1rem;
-        font-size: 0.9rem;
       }
     }
 
@@ -680,7 +591,7 @@ HTML_TEMPLATE = """
       </button>
     </div>
     
-    <div id="status" class="status-ready">🎙️ Tap anywhere to begin</div>
+    <div id="status" class="status-ready">🎙️ Tap to talk to RinglyPro AI</div>
     
     <div class="controls">
       <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
@@ -701,6 +612,8 @@ HTML_TEMPLATE = """
   <script>
     class LinaVoiceBot {
       constructor() {
+        console.log('Creating LinaVoiceBot instance...');
+        
         this.micBtn = document.getElementById('micBtn');
         this.status = document.getElementById('status');
         this.stopBtn = document.getElementById('stopBtn');
@@ -714,10 +627,8 @@ HTML_TEMPLATE = """
         this.currentLanguage = 'en-US';
         this.recognition = null;
         this.synthesis = window.speechSynthesis;
-        this.microphonePermission = null;
         this.userInteracted = false;
         this.isMobile = this.detectMobile();
-        this.isIOS = this.detectIOS();
         
         this.init();
       }
@@ -726,14 +637,9 @@ HTML_TEMPLATE = """
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       }
 
-      detectIOS() {
-        return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      }
-
-      async init() {
+      init() {
         console.log('Initializing voice bot...');
-        console.log('Mobile:', this.isMobile, 'iOS:', this.isIOS);
+        console.log('Mobile detected:', this.isMobile);
         
         if (!this.checkBrowserSupport()) {
           return;
@@ -741,105 +647,23 @@ HTML_TEMPLATE = """
 
         this.setupEventListeners();
         
-        // Initialize speech recognition after user interaction
-        document.addEventListener('click', this.handleFirstUserInteraction.bind(this), { once: true });
-        document.addEventListener('touchstart', this.handleFirstUserInteraction.bind(this), { once: true });
-        
-        if (this.isIOS) {
-          await this.initIOSCompatibility();
-        }
-        
+        // For mobile, require user interaction first
         if (this.isMobile) {
-          await this.requestMicrophonePermission();
+          this.updateStatus('🎙️ Tap anywhere to enable voice features');
+          document.addEventListener('click', this.enableVoiceFeatures.bind(this), { once: true });
+          document.addEventListener('touchstart', this.enableVoiceFeatures.bind(this), { once: true });
+        } else {
+          // Desktop - initialize immediately
+          this.initSpeechRecognition();
+          this.userInteracted = true;
         }
       }
 
-      async handleFirstUserInteraction() {
-        console.log('First user interaction detected');
+      enableVoiceFeatures() {
+        console.log('Enabling voice features after user interaction');
         this.userInteracted = true;
-        
-        // Initialize speech synthesis voices
-        this.loadVoices();
-        
-        // Initialize speech recognition
         this.initSpeechRecognition();
-        
-        // Enable the microphone button
-        this.micBtn.disabled = false;
-        this.updateStatus(this.currentLanguage === 'es-ES' ? 
-          '🎙️ Listo - Toca para hablar' : 
-          '🎙️ Ready - Tap to speak');
-      }
-
-      async initIOSCompatibility() {
-        // iOS Safari needs explicit voice loading
-        this.synthesis.cancel();
-        
-        // Trigger voice loading
-        const utterance = new SpeechSynthesisUtterance('');
-        utterance.volume = 0;
-        this.synthesis.speak(utterance);
-        
-        // Wait for voices to load
-        await this.waitForVoices();
-      }
-
-      async waitForVoices() {
-        return new Promise((resolve) => {
-          if (this.synthesis.getVoices().length > 0) {
-            resolve();
-            return;
-          }
-          
-          const checkVoices = () => {
-            if (this.synthesis.getVoices().length > 0) {
-              resolve();
-            } else {
-              setTimeout(checkVoices, 100);
-            }
-          };
-          
-          this.synthesis.onvoiceschanged = resolve;
-          setTimeout(checkVoices, 100);
-        });
-      }
-
-      loadVoices() {
-        const voices = this.synthesis.getVoices();
-        console.log('Available voices:', voices.map(v => ({ name: v.name, lang: v.lang })));
-      }
-
-      async requestMicrophonePermission() {
-        try {
-          if ('permissions' in navigator) {
-            const permission = await navigator.permissions.query({ name: 'microphone' });
-            this.microphonePermission = permission.state;
-            console.log('Microphone permission:', permission.state);
-            
-            permission.onchange = () => {
-              this.microphonePermission = permission.state;
-              console.log('Microphone permission changed:', permission.state);
-            };
-          }
-          
-          if ('mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices) {
-            try {
-              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-              stream.getTracks().forEach(track => track.stop());
-              console.log('Microphone access granted');
-              return true;
-            } catch (error) {
-              console.warn('Microphone access denied:', error);
-              this.showError(this.currentLanguage === 'es-ES' ? 
-                'Permisos de micrófono necesarios para la función de voz' :
-                'Microphone permission required for voice feature');
-              return false;
-            }
-          }
-        } catch (error) {
-          console.error('Permission check failed:', error);
-          return false;
-        }
+        this.updateStatus('🎙️ Tap to talk to RinglyPro AI');
       }
 
       checkBrowserSupport() {
@@ -847,12 +671,8 @@ HTML_TEMPLATE = """
         
         if (!SpeechRecognition) {
           const message = this.isMobile ? 
-            (this.currentLanguage === 'es-ES' ? 
-              'Usa Chrome o Edge en tu dispositivo móvil para mejor experiencia de voz' :
-              'Use Chrome or Edge on your mobile device for better voice experience') :
-            (this.currentLanguage === 'es-ES' ? 
-              'Tu navegador no soporta reconocimiento de voz. Usa Chrome o Edge.' :
-              'Your browser does not support speech recognition. Use Chrome or Edge.');
+            'Use Chrome or Edge on your mobile device for voice features' :
+            'Your browser does not support speech recognition. Use Chrome or Edge.';
           
           this.showError(message);
           this.micBtn.disabled = true;
@@ -860,9 +680,7 @@ HTML_TEMPLATE = """
         }
         
         if (!('speechSynthesis' in window)) {
-          this.showError(this.currentLanguage === 'es-ES' ? 
-            'Tu navegador no soporta síntesis de voz.' :
-            'Your browser does not support speech synthesis.');
+          this.showError('Your browser does not support speech synthesis.');
           return false;
         }
         
@@ -870,11 +688,8 @@ HTML_TEMPLATE = """
       }
 
       initSpeechRecognition() {
-        if (!this.userInteracted) {
-          console.log('Waiting for user interaction before initializing speech recognition');
-          return;
-        }
-
+        console.log('Initializing speech recognition...');
+        
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         
         if (!SpeechRecognition) {
@@ -882,50 +697,52 @@ HTML_TEMPLATE = """
           return;
         }
 
-        this.recognition = new SpeechRecognition();
-        
-        // Mobile-optimized settings
-        this.recognition.continuous = false;
-        this.recognition.interimResults = false;
-        this.recognition.lang = this.currentLanguage;
-        this.recognition.maxAlternatives = 1;
-        
-        // iOS Safari specific settings
-        if (this.isIOS) {
-          this.recognition.continuous = false;
-        }
-
-        this.recognition.onstart = () => {
-          console.log('Speech recognition started');
-          this.isListening = true;
-          this.updateUI('listening');
-          this.voiceVisualizer.classList.add('active');
-        };
-
-        this.recognition.onresult = (event) => {
-          console.log('Speech recognition result:', event);
-          const transcript = event.results[0][0].transcript.trim();
-          console.log('Transcript:', transcript);
-          this.processTranscript(transcript);
-        };
-
-        this.recognition.onerror = (event) => {
-          console.error('Speech recognition error:', event.error);
-          this.handleSpeechError(event.error);
-        };
-
-        this.recognition.onend = () => {
-          console.log('Speech recognition ended');
-          this.isListening = false;
-          this.voiceVisualizer.classList.remove('active');
-          this.stopBtn.disabled = true;
+        try {
+          this.recognition = new SpeechRecognition();
           
-          if (!this.isProcessing) {
-            this.updateUI('ready');
-          }
-        };
+          // Basic settings that work on both mobile and desktop
+          this.recognition.continuous = false;
+          this.recognition.interimResults = false;
+          this.recognition.lang = this.currentLanguage;
+          this.recognition.maxAlternatives = 1;
 
-        console.log('Speech recognition initialized successfully');
+          this.recognition.onstart = () => {
+            console.log('Speech recognition started');
+            this.isListening = true;
+            this.updateUI('listening');
+            this.voiceVisualizer.classList.add('active');
+          };
+
+          this.recognition.onresult = (event) => {
+            console.log('Speech recognition result:', event);
+            if (event.results && event.results.length > 0) {
+              const transcript = event.results[0][0].transcript.trim();
+              console.log('Transcript:', transcript);
+              this.processTranscript(transcript);
+            }
+          };
+
+          this.recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            this.handleSpeechError(event.error);
+          };
+
+          this.recognition.onend = () => {
+            console.log('Speech recognition ended');
+            this.isListening = false;
+            this.voiceVisualizer.classList.remove('active');
+            this.stopBtn.disabled = true;
+            
+            if (!this.isProcessing) {
+              this.updateUI('ready');
+            }
+          };
+
+          console.log('Speech recognition initialized successfully');
+        } catch (error) {
+          console.error('Error initializing speech recognition:', error);
+          this.showError('Failed to initialize speech recognition');
+        }
       }
 
       handleSpeechError(error) {
@@ -933,82 +750,63 @@ HTML_TEMPLATE = """
         
         switch (error) {
           case 'not-allowed':
-            message = this.currentLanguage === 'es-ES' ? 
-              'Permisos de micrófono denegados. Permite el acceso en configuración del navegador.' :
-              'Microphone permission denied. Please allow access in browser settings.';
+            message = 'Microphone permission denied. Please allow access in browser settings.';
             break;
           case 'no-speech':
-            message = this.currentLanguage === 'es-ES' ? 
-              'No se detectó voz. Intenta hablar más cerca del micrófono.' :
-              'No speech detected. Try speaking closer to the microphone.';
+            message = 'No speech detected. Try speaking closer to the microphone.';
             break;
           case 'audio-capture':
-            message = this.currentLanguage === 'es-ES' ? 
-              'No se pudo acceder al micrófono. Verifica que esté conectado.' :
-              'Could not access microphone. Check if it\'s connected.';
+            message = 'Could not access microphone. Check if it\'s connected.';
             break;
           case 'network':
-            message = this.currentLanguage === 'es-ES' ? 
-              'Error de red. Verifica tu conexión a internet.' :
-              'Network error. Check your internet connection.';
+            message = 'Network error. Check your internet connection.';
             break;
           default:
-            message = this.currentLanguage === 'es-ES' ? 
-              `Error de reconocimiento de voz: ${error}` :
-              `Speech recognition error: ${error}`;
+            message = `Speech recognition error: ${error}`;
         }
         
         this.handleError(message);
       }
 
       setupEventListeners() {
-        // Use both click and touch events for better mobile support
+        // Microphone button
         this.micBtn.addEventListener('click', (e) => {
           e.preventDefault();
           this.toggleListening();
         });
         
-        this.micBtn.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          this.toggleListening();
-        });
+        // For mobile, also listen for touch events
+        if (this.isMobile) {
+          this.micBtn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.toggleListening();
+          });
+        }
         
+        // Stop button
         this.stopBtn.addEventListener('click', (e) => {
           e.preventDefault();
           this.stopListening();
         });
         
-        this.stopBtn.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          this.stopListening();
-        });
-        
+        // Clear button
         this.clearBtn.addEventListener('click', (e) => {
           e.preventDefault();
           this.clearAll();
         });
         
-        this.clearBtn.addEventListener('touchend', (e) => {
-          e.preventDefault();
-          this.clearAll();
-        });
-        
+        // Language buttons
         this.langBtns.forEach(btn => {
           btn.addEventListener('click', (e) => {
             e.preventDefault();
             this.changeLanguage(e.target.dataset.lang);
           });
-          
-          btn.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            this.changeLanguage(e.target.dataset.lang);
-          });
         });
 
-        // Mobile-friendly keyboard shortcuts (disable on mobile to avoid conflicts)
+        // Keyboard shortcuts (desktop only)
         if (!this.isMobile) {
           document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && !this.isListening && !this.isProcessing) {
+            if (e.code === 'Space' && !this.isListening && !this.isProcessing && this.userInteracted) {
               e.preventDefault();
               this.startListening();
             }
@@ -1022,23 +820,12 @@ HTML_TEMPLATE = """
           });
         }
 
-        // Handle page visibility changes (important for mobile)
+        // Handle page visibility changes
         document.addEventListener('visibilitychange', () => {
           if (document.hidden && this.isListening) {
             console.log('Page hidden, stopping speech recognition');
             this.stopListening();
           }
-        });
-
-        // Handle mobile orientation changes
-        window.addEventListener('orientationchange', () => {
-          setTimeout(() => {
-            if (this.isListening) {
-              console.log('Orientation changed, restarting speech recognition');
-              this.stopListening();
-              setTimeout(() => this.startListening(), 500);
-            }
-          }, 100);
         });
       }
 
@@ -1053,37 +840,33 @@ HTML_TEMPLATE = """
         });
 
         const isSpanish = lang === 'es-ES';
-        const statusMessage = this.userInteracted ? 
-          (isSpanish ? '🎙️ Listo - Toca para hablar' : '🎙️ Ready - Tap to speak') :
-          (isSpanish ? '🎙️ Toca cualquier lugar para comenzar' : '🎙️ Tap anywhere to begin');
-        
-        this.updateStatus(statusMessage);
+        if (this.userInteracted) {
+          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
+        } else {
+          this.updateStatus(isSpanish ? '🎙️ Toca cualquier lugar para comenzar' : '🎙️ Tap anywhere to begin');
+        }
       }
 
-      async toggleListening() {
+      toggleListening() {
         if (!this.userInteracted) {
-          await this.handleFirstUserInteraction();
+          this.enableVoiceFeatures();
           return;
         }
 
         if (this.isListening) {
           this.stopListening();
         } else {
-          await this.startListening();
+          this.startListening();
         }
       }
 
-      async startListening() {
-        if (this.isProcessing || !this.recognition) {
-          console.log('Cannot start listening: processing =', this.isProcessing, 'recognition =', !!this.recognition);
-          return;
-        }
-
-        // Check microphone permission on mobile
-        if (this.isMobile && this.microphonePermission === 'denied') {
-          this.showError(this.currentLanguage === 'es-ES' ? 
-            'Permisos de micrófono denegados. Ve a configuración del navegador para permitir.' :
-            'Microphone permission denied. Go to browser settings to allow.');
+      startListening() {
+        if (this.isProcessing || !this.recognition || !this.userInteracted) {
+          console.log('Cannot start listening:', {
+            processing: this.isProcessing,
+            recognition: !!this.recognition,
+            userInteracted: this.userInteracted
+          });
           return;
         }
         
@@ -1092,11 +875,6 @@ HTML_TEMPLATE = """
           
           // Ensure speech synthesis is not speaking
           this.synthesis.cancel();
-          
-          // Add delay for mobile stability
-          if (this.isMobile) {
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
           
           this.recognition.start();
           this.stopBtn.disabled = false;
@@ -1107,9 +885,7 @@ HTML_TEMPLATE = """
           console.log('Speech recognition started successfully');
         } catch (error) {
           console.error('Error starting speech recognition:', error);
-          this.handleError(this.currentLanguage === 'es-ES' ? 
-            'Error al iniciar reconocimiento de voz. Intenta de nuevo.' :
-            'Error starting speech recognition. Please try again.');
+          this.handleError('Error starting speech recognition. Please try again.');
         }
       }
 
@@ -1126,8 +902,7 @@ HTML_TEMPLATE = """
 
       async processTranscript(transcript) {
         if (!transcript || transcript.length < 2) {
-          const isSpanish = this.currentLanguage === 'es-ES';
-          this.handleError(isSpanish ? 'No se detectó voz válida' : 'No valid speech detected');
+          this.handleError('No valid speech detected');
           return;
         }
 
@@ -1158,8 +933,7 @@ HTML_TEMPLATE = """
 
         } catch (error) {
           console.error('Processing error:', error);
-          const errorMsg = isSpanish ? 'Error procesando respuesta' : 'Error processing response';
-          this.handleError(errorMsg + ': ' + error.message);
+          this.handleError('Error processing response: ' + error.message);
         }
       }
 
@@ -1167,7 +941,7 @@ HTML_TEMPLATE = """
         // Ensure any previous speech is cancelled
         this.synthesis.cancel();
         
-        // Wait a bit for the cancellation to take effect (important on mobile)
+        // Wait a bit for the cancellation to take effect
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const utterance = new SpeechSynthesisUtterance(text);
@@ -1176,40 +950,15 @@ HTML_TEMPLATE = """
         utterance.pitch = 1.0;
         utterance.volume = 1.0;
 
-        // Enhanced voice selection for mobile
+        // Try to select a good voice
         const voices = this.synthesis.getVoices();
-        console.log('Selecting voice from', voices.length, 'available voices');
-        
-        let preferredVoice = null;
-        
-        if (this.isMobile) {
-          // Mobile-specific voice selection
-          if (this.isIOS) {
-            // iOS prefers certain voice names
-            preferredVoice = voices.find(voice => 
-              voice.lang.startsWith(this.currentLanguage.split('-')[0]) && 
-              (voice.name.includes('Enhanced') || voice.name.includes('Premium') || voice.localService)
-            );
-          } else {
-            // Android/Chrome mobile
-            preferredVoice = voices.find(voice => 
-              voice.lang.startsWith(this.currentLanguage.split('-')[0]) && 
-              (voice.name.includes('Google') || voice.localService)
-            );
-          }
-        } else {
-          // Desktop voice selection
-          preferredVoice = voices.find(voice => 
-            voice.lang.startsWith(this.currentLanguage.split('-')[0]) && 
-            (voice.name.includes('Natural') || voice.name.includes('Neural') || voice.localService)
-          );
-        }
+        const preferredVoice = voices.find(voice => 
+          voice.lang.startsWith(this.currentLanguage.split('-')[0]) && 
+          (voice.name.includes('Google') || voice.name.includes('Natural') || voice.localService)
+        );
         
         if (preferredVoice) {
           utterance.voice = preferredVoice;
-          console.log('Selected voice:', preferredVoice.name);
-        } else {
-          console.log('Using default voice');
         }
 
         return new Promise((resolve) => {
@@ -1225,25 +974,24 @@ HTML_TEMPLATE = """
             this.isProcessing = false;
             this.updateUI('ready');
             const isSpanish = this.currentLanguage === 'es-ES';
-            this.updateStatus(isSpanish ? '🎙️ Listo - Toca para hablar' : '🎙️ Ready - Tap to speak');
+            this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
             resolve();
           };
 
           utterance.onerror = (error) => {
             console.error('Speech synthesis error:', error);
-            this.handleError(this.currentLanguage === 'es-ES' ? 
-              'Error en síntesis de voz' : 'Speech synthesis error');
+            this.handleError('Speech synthesis error');
             this.isProcessing = false;
             this.updateUI('ready');
             resolve();
           };
 
-          // Add timeout for mobile reliability
+          // Add timeout for reliability
           const timeout = setTimeout(() => {
-            console.warn('Speech synthesis timeout, forcing end');
+            console.warn('Speech synthesis timeout');
             this.synthesis.cancel();
             utterance.onend();
-          }, 30000); // 30 second timeout
+          }, 30000);
 
           const originalOnEnd = utterance.onend;
           utterance.onend = () => {
@@ -1290,12 +1038,11 @@ HTML_TEMPLATE = """
         this.updateUI('ready');
         this.voiceVisualizer.classList.remove('active');
         
-        const isSpanish = this.currentLanguage === 'es-ES';
         setTimeout(() => {
-          const statusMessage = this.userInteracted ? 
-            (isSpanish ? '🎙️ Listo - Toca para hablar' : '🎙️ Ready - Tap to speak') :
-            (isSpanish ? '🎙️ Toca cualquier lugar para comenzar' : '🎙️ Tap anywhere to begin');
-          this.updateStatus(statusMessage);
+          if (this.userInteracted) {
+            const isSpanish = this.currentLanguage === 'es-ES';
+            this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
+          }
         }, 3000);
       }
 
@@ -1323,11 +1070,10 @@ HTML_TEMPLATE = """
         this.voiceVisualizer.classList.remove('active');
         this.clearError();
         
-        const isSpanish = this.currentLanguage === 'es-ES';
-        const statusMessage = this.userInteracted ? 
-          (isSpanish ? '🎙️ Listo - Toca para hablar' : '🎙️ Ready - Tap to speak') :
-          (isSpanish ? '🎙️ Toca cualquier lugar para comenzar' : '🎙️ Tap anywhere to begin');
-        this.updateStatus(statusMessage);
+        if (this.userInteracted) {
+          const isSpanish = this.currentLanguage === 'es-ES';
+          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
+        }
       }
     }
 
@@ -1335,23 +1081,24 @@ HTML_TEMPLATE = """
     document.addEventListener('DOMContentLoaded', () => {
       console.log('DOM loaded, initializing voice bot...');
       
-      // Wait for voices to load with better mobile support
+      // Wait for voices to load
       let voicesLoaded = false;
       
       const initBot = () => {
         if (voicesLoaded) return;
         voicesLoaded = true;
-        console.log('Voices loaded, creating voice bot instance');
+        console.log('Creating voice bot instance');
         new LinaVoiceBot();
       };
 
-      // Multiple strategies to ensure voices are loaded
+      // Check if voices are already loaded
       if (speechSynthesis.getVoices().length > 0) {
         initBot();
       } else {
+        // Wait for voices to load
         speechSynthesis.onvoiceschanged = initBot;
         
-        // Fallback timeout for mobile browsers that might not fire the event
+        // Fallback timeout
         setTimeout(() => {
           if (!voicesLoaded) {
             console.log('Voice loading timeout, initializing anyway');
@@ -1366,9 +1113,7 @@ HTML_TEMPLATE = """
 """
 
 def get_claude_response(user_message, language_context=""):
-    """
-    Get response from Claude AI with emotional intelligence and context awareness
-    """
+    """Get response from Claude AI"""
     system_prompt = """You are RinglyPro AI, a warm, empathetic, and highly knowledgeable AI assistant specializing in business automation and communication solutions for solo professionals and service-based businesses.
 
 Your personality traits:
@@ -1418,7 +1163,6 @@ Remember to be emotionally supportive, understanding, and genuinely helpful in e
         
         response_text = message.content[0].text.strip()
         
-        # Ensure response is appropriate length for voice
         if len(response_text) > 400:
             response_text = response_text[:397] + "..."
             
@@ -1426,27 +1170,7 @@ Remember to be emotionally supportive, understanding, and genuinely helpful in e
         
     except Exception as e:
         logging.error(f"❌ Claude API error: {e}")
-        # Fallback response based on language
-        if "spanish" in user_message.lower() or any(word in user_message.lower() for word in ['qué', 'cómo', 'dónde', 'cuándo']):
-            return "Lo siento, tuve un problema técnico. Por favor intenta de nuevo en un momento."
-        else:
-            return "I'm sorry, I had a technical issue. Please try again in a moment."
-
-def detect_language(text):
-    """Enhanced language detection"""
-    spanish_indicators = [
-        'qué', 'cómo', 'dónde', 'cuándo', 'por', 'para', 'con', 'sin', 'muy', 'más', 
-        'es', 'la', 'el', 'de', 'en', 'y', 'a', 'que', 'se', 'no', 'un', 'una',
-        'pero', 'como', 'su', 'me', 'le', 'te', 'nos', 'los', 'las', 'del', 'al'
-    ]
-    
-    text_lower = text.lower()
-    spanish_count = sum(1 for word in spanish_indicators if f' {word} ' in f' {text_lower} ')
-    
-    # Also check for Spanish characters
-    spanish_chars = sum(1 for char in text if char in 'ñáéíóúü')
-    
-    return "spanish" if (spanish_count > 1 or spanish_chars > 0) else "english"
+        return "I'm sorry, I had a technical issue. Please try again in a moment."
 
 @app.route('/')
 def serve_index():
@@ -1463,11 +1187,6 @@ def process_text():
             
         user_text = data['text'].strip()
         user_language = data.get('language', 'es-ES')
-        user_agent = request.headers.get('User-Agent', '')
-        
-        # Basic mobile detection
-        is_mobile = any(device in user_agent.lower() for device in 
-                       ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry'])
         
         if not user_text or len(user_text) < 2:
             error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
@@ -1477,7 +1196,6 @@ def process_text():
         
         logging.info(f"📝 Processing text: {user_text}")
         logging.info(f"🌐 Language: {user_language}")
-        logging.info(f"📱 Mobile device: {is_mobile}")
         
         # Step 1: Enhanced FAQ matching
         user_text_lower = user_text.lower()
@@ -1490,13 +1208,8 @@ def process_text():
             response_text = FAQ_BRAIN[matched[0]]
             logging.info(f"🤖 Matched FAQ: {matched[0]}")
         else:
-            # Step 2: Fallback to Claude AI with emotional intelligence
+            # Step 2: Fallback to Claude AI
             language_context = f"Please respond in {'Spanish' if user_language.startswith('es') else 'English'}."
-            
-            # Add mobile-specific context if needed
-            if is_mobile:
-                mobile_context = " Keep response concise and mobile-friendly (under 100 words)."
-                language_context += mobile_context
             
             try:
                 response_text = get_claude_response(user_text, language_context)
@@ -1508,15 +1221,10 @@ def process_text():
                               else "I'm sorry, I had a technical issue. Please try again.")
                 return jsonify({"error": fallback_msg}), 500
         
-        # Mobile-optimized response
-        if is_mobile and len(response_text) > 200:
-            response_text = response_text[:197] + "..."
-        
         return jsonify({
             "response": response_text,
             "language": user_language,
-            "matched_faq": bool(matched),
-            "mobile_optimized": is_mobile
+            "matched_faq": bool(matched)
         })
         
     except Exception as e:
@@ -1525,150 +1233,37 @@ def process_text():
 
 @app.route('/health')
 def health_check():
-    """Enhanced health check with mobile diagnostics"""
-    user_agent = request.headers.get('User-Agent', '')
-    is_mobile = any(device in user_agent.lower() for device in 
-                   ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry'])
-    
-    mobile_recommendations = []
-    if is_mobile:
-        mobile_recommendations = [
-            "Use Chrome or Edge browser for best voice support",
-            "Ensure microphone permissions are granted", 
-            "Test in a quiet environment",
-            "Check device is not in silent mode",
-            "Verify stable internet connection"
-        ]
-    
+    """Health check endpoint"""
     return jsonify({
         "status": "healthy",
         "claude_api": "connected" if anthropic_api_key else "missing",
         "timestamp": time.time(),
-        "client_info": {
-            "is_mobile": is_mobile,
-            "user_agent": user_agent[:100] + "..." if len(user_agent) > 100 else user_agent
-        },
         "features": [
             "Claude Sonnet 4 AI",
             "Browser Speech Recognition",
             "Browser Speech Synthesis",
             "Bilingual Support",
             "FAQ Matching",
-            "Mobile Optimization"
-        ],
-        "mobile_recommendations": mobile_recommendations
+            "Mobile Compatibility"
+        ]
     })
 
 @app.route('/mobile-check')
 def mobile_check():
-    """Endpoint to help debug mobile capabilities"""
+    """Mobile compatibility check"""
     user_agent = request.headers.get('User-Agent', '')
     is_mobile = any(device in user_agent.lower() for device in 
                    ['mobile', 'android', 'iphone', 'ipad', 'ipod', 'blackberry'])
-    is_ios = any(device in user_agent.lower() for device in ['iphone', 'ipad', 'ipod'])
-    is_chrome = 'chrome' in user_agent.lower()
-    is_safari = 'safari' in user_agent.lower() and 'chrome' not in user_agent.lower()
     
     return jsonify({
         "is_mobile": is_mobile,
-        "is_ios": is_ios,
-        "is_chrome": is_chrome,
-        "is_safari": is_safari,
         "user_agent": user_agent,
-        "recommendations": {
-            "speech_recognition_supported": is_chrome or (is_safari and is_ios),
-            "speech_synthesis_supported": True,
-            "requires_https": is_mobile,
-            "suggested_settings": {
-                "continuous": False if is_mobile else True,
-                "interimResults": False,
-                "maxAlternatives": 1,
-                "timeout": 10000 if is_mobile else 5000
-            }
-        }
+        "timestamp": time.time()
     })
-
-@app.route('/debug-audio')
-def debug_audio():
-    """Audio debugging endpoint for mobile troubleshooting"""
-    return jsonify({
-        "browser_audio_tests": [
-            {
-                "test": "getUserMedia Support",
-                "js_check": "navigator.mediaDevices && navigator.mediaDevices.getUserMedia"
-            },
-            {
-                "test": "Speech Recognition Support", 
-                "js_check": "window.SpeechRecognition || window.webkitSpeechRecognition"
-            },
-            {
-                "test": "Speech Synthesis Support",
-                "js_check": "window.speechSynthesis"
-            },
-            {
-                "test": "HTTPS Context",
-                "js_check": "location.protocol === 'https:'"
-            },
-            {
-                "test": "Microphone Permissions",
-                "js_check": "navigator.permissions && navigator.permissions.query({name: 'microphone'})"
-            }
-        ],
-        "mobile_specific_checks": [
-            "Check if microphone permission is granted in browser settings",
-            "Ensure HTTPS is enabled (required for mobile)",
-            "Test with Chrome or Edge browsers on mobile",
-            "Check if device is not in silent/do-not-disturb mode",
-            "Verify network connection is stable",
-            "Test with headphones vs device microphone"
-        ],
-        "debugging_steps": [
-            "1. Open browser console (Chrome: Menu > More Tools > Developer Tools)",
-            "2. Look for error messages in console",
-            "3. Check Network tab for failed requests",
-            "4. Test microphone access: navigator.mediaDevices.getUserMedia({audio: true})",
-            "5. Test speech recognition: new webkitSpeechRecognition()",
-            "6. Check available voices: speechSynthesis.getVoices()"
-        ]
-    })
-
-@app.route('/voices')
-def get_voices():
-    """Endpoint to help debug voice availability"""
-    return jsonify({
-        "message": "Use browser console: speechSynthesis.getVoices()",
-        "tip": "This endpoint helps developers check available voices in browser"
-    })
-
-# Add mobile-friendly security headers
-@app.after_request
-def after_request(response):
-    # Enable CORS for mobile apps
-    response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    
-    # Mobile-friendly security headers
-    response.headers.add('X-Content-Type-Options', 'nosniff')
-    response.headers.add('X-Frame-Options', 'DENY')
-    
-    # CSP for mobile browsers
-    csp = (
-        "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline'; "
-        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-        "font-src 'self' https://fonts.gstatic.com; "
-        "media-src 'self' blob:; "
-        "microphone-src 'self'"
-    )
-    response.headers.add('Content-Security-Policy', csp)
-    
-    return response
 
 if __name__ == "__main__":
     # Verify Claude API on startup
     try:
-        # Test Claude API
         test_claude = claude_client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=10,
@@ -1681,27 +1276,19 @@ if __name__ == "__main__":
         print("⚠️  Warning: Claude API connection not verified. Check your API key.")
     
     print("🚀 Starting RinglyPro AI Voice Assistant...")
-    print("🎯 Mobile-Optimized Features:")
-    print("   • Claude Sonnet 4 for emotional intelligence")
-    print("   • Mobile-compatible speech recognition")
-    print("   • iOS Safari & Android Chrome support")
-    print("   • Touch-friendly interface")
-    print("   • User gesture requirement handling")
-    print("   • Enhanced permission management")
+    print("🎯 Features:")
+    print("   • Fixed mobile compatibility issues")
+    print("   • User gesture requirement for mobile")
+    print("   • Simplified but robust voice recognition")
+    print("   • Works on both desktop and mobile")
+    print("   • Claude Sonnet 4 AI responses")
     print("   • Bilingual support (English/Spanish)")
-    print("   • Mobile debugging endpoints")
     print("\n📋 Required environment variables:")
     print("   • ANTHROPIC_API_KEY")
     print("\n🌐 Access the voice assistant at: http://localhost:5000")
-    print("\n📱 Mobile Browser Support:")
+    print("\n📱 Mobile Support:")
     print("   • Chrome Mobile: ✅ Full support")
-    print("   • iOS Safari: ✅ Limited support (requires user interaction)")
+    print("   • iOS Safari: ✅ Limited support")
     print("   • Edge Mobile: ✅ Full support")
-    print("   • Firefox Mobile: ⚠️ Basic support")
-    print("   • Samsung Internet: ❌ No speech recognition")
-    print("\n🔧 Mobile Debug Endpoints:")
-    print("   • /mobile-check - Device capability check")
-    print("   • /debug-audio - Audio troubleshooting guide")
-    print("   • /health - System status with mobile info")
     
     app.run(debug=True, host='0.0.0.0', port=5000)
