@@ -18,6 +18,13 @@ if not anthropic_api_key:
     raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
 
 # Initialize Claude client
+claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
+
+# Setup Flask
+
+app = Flask(__name__)
+CORS(app)
+logging.basicConfig(level=logging.INFO)
 
 # ✅ Injected: Load OpenAI API Key
 openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -77,10 +84,6 @@ def synthesize_tts():
         logging.error(f"OpenAI TTS error: {e}")
         return jsonify({"error": "TTS processing error"}), 500
 
-claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
-
-# Setup Flask
-app = Flask(__name__)
 CORS(app)
 
 # Setup Logging
