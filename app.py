@@ -609,10 +609,21 @@ HTML_TEMPLATE = """
     </div>
   </div>
 
-  <script>
+ <script>
+    // Debug logging function
+    function debugLog(message, data) {
+        console.log(`[DEBUG] ${message}`, data || '');
+        // Also show on screen for mobile debugging
+        const statusEl = document.getElementById('status');
+        if (statusEl && message.includes('ERROR')) {
+            statusEl.textContent = message;
+            statusEl.style.color = '#ff6b6b';
+        }
+    }
+
     class LinaVoiceBot {
       constructor() {
-        console.log('Creating LinaVoiceBot instance...');
+        debugLog('Creating LinaVoiceBot instance...');
         
         this.micBtn = document.getElementById('micBtn');
         this.status = document.getElementById('status');
@@ -630,6 +641,9 @@ HTML_TEMPLATE = """
         this.userInteracted = false;
         this.isMobile = this.detectMobile();
         
+        debugLog('Mobile detected:', this.isMobile);
+        debugLog('User agent:', navigator.userAgent);
+        
         this.init();
       }
 
@@ -638,158 +652,168 @@ HTML_TEMPLATE = """
       }
 
       init() {
-        console.log('Initializing voice bot...');
-        console.log('Mobile detected:', this.isMobile);
+        debugLog('Initializing voice bot...');
         
-        if (!this.checkBrowserSupport()) {
+        // Check basic browser support
+        const hasGetUserMedia = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+        const hasSpeechSynthesis = !!window.speechSynthesis;
+        
+        debugLog('Browser capabilities:', {
+          getUserMedia: hasGetUserMedia,
+          speechRecognition: hasSpeechRecognition,
+          speechSynthesis: hasSpeechSynthesis
+        });
+        
+        if (!hasSpeechRecognition) {
+          debugLog('ERROR: Speech recognition not supported');
+          this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
           return;
         }
 
         this.setupEventListeners();
         
-        // For mobile, require user interaction first
+        // Always require user interaction for mobile
         if (this.isMobile) {
-          this.updateStatus('🎙️ Tap anywhere to enable voice features');
-          document.addEventListener('click', this.enableVoiceFeatures.bind(this), { once: true });
-          document.addEventListener('touchstart', this.enableVoiceFeatures.bind(this), { once: true });
+          this.updateStatus('🎙️ Tap the microphone to start');
         } else {
-          // Desktop - initialize immediately
           this.initSpeechRecognition();
           this.userInteracted = true;
+          this.updateStatus('🎙️ Click the microphone to start');
         }
       }
 
-      enableVoiceFeatures() {
-        console.log('Enabling voice features after user interaction');
-        this.userInteracted = true;
-        this.initSpeechRecognition();
-        this.updateStatus('🎙️ Tap to talk to RinglyPro AI');
-      }
-
-      checkBrowserSupport() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      async requestMicrophonePermission() {
+        debugLog('Requesting microphone permission...');
         
-        if (!SpeechRecognition) {
-          const message = this.isMobile ? 
-            'Use Chrome or Edge on your mobile device for voice features' :
-            'Your browser does not support speech recognition. Use Chrome or Edge.';
-          
-          this.showError(message);
-          this.micBtn.disabled = true;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          debugLog('Microphone permission granted');
+          stream.getTracks().forEach(track => track.stop());
+          return true;
+        } catch (error) {
+          debugLog('ERROR: Microphone permission denied', error.message);
+          this.showError('Microphone permission denied. Please allow microphone access.');
           return false;
         }
-        
-        if (!('speechSynthesis' in window)) {
-          this.showError('Your browser does not support speech synthesis.');
-          return false;
-        }
-        
-        return true;
       }
 
       initSpeechRecognition() {
-        console.log('Initializing speech recognition...');
+        debugLog('Initializing speech recognition...');
         
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         
-        if (!SpeechRecognition) {
-          console.error('Speech recognition not supported');
-          return;
-        }
-
         try {
           this.recognition = new SpeechRecognition();
           
-          // Basic settings that work on both mobile and desktop
+          // Conservative settings for mobile compatibility
           this.recognition.continuous = false;
           this.recognition.interimResults = false;
           this.recognition.lang = this.currentLanguage;
           this.recognition.maxAlternatives = 1;
 
           this.recognition.onstart = () => {
-            console.log('Speech recognition started');
+            debugLog('Speech recognition started');
             this.isListening = true;
             this.updateUI('listening');
             this.voiceVisualizer.classList.add('active');
+            this.updateStatus('🎙️ Listening... Speak now');
           };
 
           this.recognition.onresult = (event) => {
-            console.log('Speech recognition result:', event);
+            debugLog('Speech recognition result:', event);
             if (event.results && event.results.length > 0) {
               const transcript = event.results[0][0].transcript.trim();
-              console.log('Transcript:', transcript);
+              debugLog('Transcript received:', transcript);
               this.processTranscript(transcript);
             }
           };
 
           this.recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
+            debugLog('ERROR: Speech recognition error', event.error);
             this.handleSpeechError(event.error);
           };
 
           this.recognition.onend = () => {
-            console.log('Speech recognition ended');
+            debugLog('Speech recognition ended');
             this.isListening = false;
             this.voiceVisualizer.classList.remove('active');
             this.stopBtn.disabled = true;
             
             if (!this.isProcessing) {
               this.updateUI('ready');
+              this.updateStatus('🎙️ Tap the microphone to start');
             }
           };
 
-          console.log('Speech recognition initialized successfully');
+          debugLog('Speech recognition initialized successfully');
         } catch (error) {
-          console.error('Error initializing speech recognition:', error);
-          this.showError('Failed to initialize speech recognition');
+          debugLog('ERROR: Failed to initialize speech recognition', error.message);
+          this.showError('Failed to initialize speech recognition: ' + error.message);
         }
       }
 
       handleSpeechError(error) {
-        let message = '';
+        debugLog('Handling speech error:', error);
         
+        let message = '';
         switch (error) {
           case 'not-allowed':
-            message = 'Microphone permission denied. Please allow access in browser settings.';
+            message = 'Microphone access denied. Please allow microphone permission in browser settings.';
             break;
           case 'no-speech':
-            message = 'No speech detected. Try speaking closer to the microphone.';
+            message = 'No speech detected. Please try again.';
             break;
           case 'audio-capture':
-            message = 'Could not access microphone. Check if it\'s connected.';
+            message = 'Microphone not accessible. Check if another app is using it.';
             break;
           case 'network':
             message = 'Network error. Check your internet connection.';
             break;
           default:
-            message = `Speech recognition error: ${error}`;
+            message = `Speech error: ${error}`;
         }
         
         this.handleError(message);
       }
 
       setupEventListeners() {
-        // Microphone button
-        this.micBtn.addEventListener('click', (e) => {
+        debugLog('Setting up event listeners...');
+        
+        // Microphone button - handle both click and touch
+        const micHandler = async (e) => {
           e.preventDefault();
+          debugLog('Microphone button activated');
+          
+          if (!this.userInteracted) {
+            debugLog('First user interaction - enabling voice features');
+            this.userInteracted = true;
+            
+            // Request microphone permission first
+            if (this.isMobile) {
+              const permissionGranted = await this.requestMicrophonePermission();
+              if (!permissionGranted) {
+                return;
+              }
+            }
+            
+            this.initSpeechRecognition();
+            this.updateStatus('🎙️ Voice enabled! Tap microphone to start');
+            return;
+          }
+          
           this.toggleListening();
-        });
+        };
         
-        // For mobile, also listen for touch events
-        if (this.isMobile) {
-          this.micBtn.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            this.toggleListening();
-          });
-        }
+        this.micBtn.addEventListener('click', micHandler);
+        this.micBtn.addEventListener('touchend', micHandler);
         
-        // Stop button
+        // Other buttons
         this.stopBtn.addEventListener('click', (e) => {
           e.preventDefault();
           this.stopListening();
         });
         
-        // Clear button
         this.clearBtn.addEventListener('click', (e) => {
           e.preventDefault();
           this.clearAll();
@@ -802,34 +826,10 @@ HTML_TEMPLATE = """
             this.changeLanguage(e.target.dataset.lang);
           });
         });
-
-        // Keyboard shortcuts (desktop only)
-        if (!this.isMobile) {
-          document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space' && !this.isListening && !this.isProcessing && this.userInteracted) {
-              e.preventDefault();
-              this.startListening();
-            }
-          });
-
-          document.addEventListener('keyup', (e) => {
-            if (e.code === 'Space' && this.isListening) {
-              e.preventDefault();
-              this.stopListening();
-            }
-          });
-        }
-
-        // Handle page visibility changes
-        document.addEventListener('visibilitychange', () => {
-          if (document.hidden && this.isListening) {
-            console.log('Page hidden, stopping speech recognition');
-            this.stopListening();
-          }
-        });
       }
 
       changeLanguage(lang) {
+        debugLog('Changing language to:', lang);
         this.currentLanguage = lang;
         if (this.recognition) {
           this.recognition.lang = lang;
@@ -838,21 +838,9 @@ HTML_TEMPLATE = """
         this.langBtns.forEach(btn => {
           btn.classList.toggle('active', btn.dataset.lang === lang);
         });
-
-        const isSpanish = lang === 'es-ES';
-        if (this.userInteracted) {
-          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
-        } else {
-          this.updateStatus(isSpanish ? '🎙️ Toca cualquier lugar para comenzar' : '🎙️ Tap anywhere to begin');
-        }
       }
 
       toggleListening() {
-        if (!this.userInteracted) {
-          this.enableVoiceFeatures();
-          return;
-        }
-
         if (this.isListening) {
           this.stopListening();
         } else {
@@ -860,9 +848,9 @@ HTML_TEMPLATE = """
         }
       }
 
-      startListening() {
+      async startListening() {
         if (this.isProcessing || !this.recognition || !this.userInteracted) {
-          console.log('Cannot start listening:', {
+          debugLog('Cannot start listening:', {
             processing: this.isProcessing,
             recognition: !!this.recognition,
             userInteracted: this.userInteracted
@@ -870,32 +858,28 @@ HTML_TEMPLATE = """
           return;
         }
         
+        debugLog('Starting speech recognition...');
+        
         try {
           this.clearError();
-          
-          // Ensure speech synthesis is not speaking
           this.synthesis.cancel();
           
           this.recognition.start();
           this.stopBtn.disabled = false;
           
-          const isSpanish = this.currentLanguage === 'es-ES';
-          this.updateStatus(isSpanish ? '🎙️ Escuchando... Habla ahora' : '🎙️ Listening... Speak now');
-          
-          console.log('Speech recognition started successfully');
         } catch (error) {
-          console.error('Error starting speech recognition:', error);
-          this.handleError('Error starting speech recognition. Please try again.');
+          debugLog('ERROR: Failed to start speech recognition', error.message);
+          this.handleError('Failed to start listening: ' + error.message);
         }
       }
 
       stopListening() {
         if (this.isListening && this.recognition) {
+          debugLog('Stopping speech recognition...');
           try {
             this.recognition.stop();
-            console.log('Speech recognition stopped');
           } catch (error) {
-            console.error('Error stopping speech recognition:', error);
+            debugLog('ERROR: Failed to stop speech recognition', error.message);
           }
         }
       }
@@ -906,11 +890,10 @@ HTML_TEMPLATE = """
           return;
         }
 
+        debugLog('Processing transcript:', transcript);
         this.isProcessing = true;
         this.updateUI('processing');
-        
-        const isSpanish = this.currentLanguage === 'es-ES';
-        this.updateStatus(isSpanish ? '🤖 RinglyPro AI está pensando...' : '🤖 RinglyPro AI is thinking...');
+        this.updateStatus('🤖 Processing...');
 
         try {
           const response = await fetch('/process-text', {
@@ -929,74 +912,45 @@ HTML_TEMPLATE = """
           }
 
           const data = await response.json();
+          debugLog('Server response received:', data.response.substring(0, 50) + '...');
           await this.speakResponse(data.response);
 
         } catch (error) {
-          console.error('Processing error:', error);
-          this.handleError('Error processing response: ' + error.message);
+          debugLog('ERROR: Processing failed', error.message);
+          this.handleError('Processing error: ' + error.message);
         }
       }
 
       async speakResponse(text) {
-        // Ensure any previous speech is cancelled
-        this.synthesis.cancel();
+        debugLog('Speaking response...');
         
-        // Wait a bit for the cancellation to take effect
+        this.synthesis.cancel();
         await new Promise(resolve => setTimeout(resolve, 100));
         
         const utterance = new SpeechSynthesisUtterance(text);
         utterance.lang = this.currentLanguage;
         utterance.rate = 0.9;
-        utterance.pitch = 1.0;
-        utterance.volume = 1.0;
-
-        // Try to select a good voice
-        const voices = this.synthesis.getVoices();
-        const preferredVoice = voices.find(voice => 
-          voice.lang.startsWith(this.currentLanguage.split('-')[0]) && 
-          (voice.name.includes('Google') || voice.name.includes('Natural') || voice.localService)
-        );
-        
-        if (preferredVoice) {
-          utterance.voice = preferredVoice;
-        }
 
         return new Promise((resolve) => {
           utterance.onstart = () => {
-            console.log('Speech synthesis started');
+            debugLog('Speech synthesis started');
             this.updateUI('speaking');
-            const isSpanish = this.currentLanguage === 'es-ES';
-            this.updateStatus(isSpanish ? '🔊 RinglyPro AI está hablando...' : '🔊 RinglyPro AI is speaking...');
+            this.updateStatus('🔊 Speaking...');
           };
 
           utterance.onend = () => {
-            console.log('Speech synthesis ended');
+            debugLog('Speech synthesis ended');
             this.isProcessing = false;
             this.updateUI('ready');
-            const isSpanish = this.currentLanguage === 'es-ES';
-            this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
+            this.updateStatus('🎙️ Tap microphone to start');
             resolve();
           };
 
           utterance.onerror = (error) => {
-            console.error('Speech synthesis error:', error);
-            this.handleError('Speech synthesis error');
+            debugLog('ERROR: Speech synthesis failed', error);
             this.isProcessing = false;
             this.updateUI('ready');
             resolve();
-          };
-
-          // Add timeout for reliability
-          const timeout = setTimeout(() => {
-            console.warn('Speech synthesis timeout');
-            this.synthesis.cancel();
-            utterance.onend();
-          }, 30000);
-
-          const originalOnEnd = utterance.onend;
-          utterance.onend = () => {
-            clearTimeout(timeout);
-            originalOnEnd();
           };
 
           this.synthesis.speak(utterance);
@@ -1028,10 +982,11 @@ HTML_TEMPLATE = """
 
       updateStatus(message) {
         this.status.textContent = message;
+        this.status.style.color = ''; // Reset color
       }
 
       handleError(message) {
-        console.error('Error:', message);
+        debugLog('ERROR:', message);
         this.showError(message);
         this.isProcessing = false;
         this.isListening = false;
@@ -1039,10 +994,7 @@ HTML_TEMPLATE = """
         this.voiceVisualizer.classList.remove('active');
         
         setTimeout(() => {
-          if (this.userInteracted) {
-            const isSpanish = this.currentLanguage === 'es-ES';
-            this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
-          }
+          this.updateStatus('🎙️ Tap microphone to try again');
         }, 3000);
       }
 
@@ -1052,7 +1004,7 @@ HTML_TEMPLATE = """
         
         setTimeout(() => {
           this.clearError();
-        }, 5000);
+        }, 8000);
       }
 
       clearError() {
@@ -1060,6 +1012,7 @@ HTML_TEMPLATE = """
       }
 
       clearAll() {
+        debugLog('Clearing all...');
         this.synthesis.cancel();
         if (this.isListening && this.recognition) {
           this.recognition.stop();
@@ -1069,45 +1022,23 @@ HTML_TEMPLATE = """
         this.updateUI('ready');
         this.voiceVisualizer.classList.remove('active');
         this.clearError();
-        
-        if (this.userInteracted) {
-          const isSpanish = this.currentLanguage === 'es-ES';
-          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to talk to RinglyPro AI');
-        }
+        this.updateStatus('🎙️ Tap microphone to start');
       }
     }
 
-    // Initialize the voice bot when the page loads
+    // Initialize when page loads
     document.addEventListener('DOMContentLoaded', () => {
-      console.log('DOM loaded, initializing voice bot...');
+      debugLog('DOM loaded, creating voice bot...');
       
-      // Wait for voices to load
-      let voicesLoaded = false;
-      
-      const initBot = () => {
-        if (voicesLoaded) return;
-        voicesLoaded = true;
-        console.log('Creating voice bot instance');
+      // Simple initialization - no complex voice loading
+      try {
         new LinaVoiceBot();
-      };
-
-      // Check if voices are already loaded
-      if (speechSynthesis.getVoices().length > 0) {
-        initBot();
-      } else {
-        // Wait for voices to load
-        speechSynthesis.onvoiceschanged = initBot;
-        
-        // Fallback timeout
-        setTimeout(() => {
-          if (!voicesLoaded) {
-            console.log('Voice loading timeout, initializing anyway');
-            initBot();
-          }
-        }, 2000);
+      } catch (error) {
+        console.error('Failed to create voice bot:', error);
+        document.getElementById('status').textContent = 'Failed to initialize: ' + error.message;
       }
     });
-  </script>
+</script>
 </body>
 </html>
 """
