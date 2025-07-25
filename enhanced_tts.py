@@ -1,6 +1,6 @@
 """
 Enhanced TTS Engine for RinglyPro Voice Assistant
-Supports OpenAI TTS, ElevenLabs, and fallback to browser TTS
+Fixed version with safe OpenAI client initialization
 """
 
 import os
@@ -8,19 +8,33 @@ import requests
 import logging
 import asyncio
 import base64
-from openai import OpenAI
 from typing import Optional, Dict, Any, Tuple
 import json
 import time
 
 class EnhancedTTSEngine:
     def __init__(self):
-        # API clients
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        # Initialize OpenAI client safely
+        self.openai_client = None
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        
+        if openai_api_key:
+            try:
+                from openai import OpenAI
+                self.openai_client = OpenAI(api_key=openai_api_key)
+                logging.info("✅ OpenAI client initialized successfully")
+            except Exception as e:
+                logging.warning(f"⚠️ OpenAI client initialization failed: {e}")
+                logging.info("🎵 Will use ElevenLabs as primary TTS engine")
+                self.openai_client = None
+        else:
+            logging.info("ℹ️ No OpenAI API key found, using ElevenLabs only")
+        
+        # ElevenLabs setup
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
         
         # Configuration
-        self.default_engine = os.getenv("DEFAULT_VOICE_ENGINE", "openai")
+        self.default_engine = os.getenv("DEFAULT_VOICE_ENGINE", "elevenlabs")
         self.audio_quality = os.getenv("AUDIO_QUALITY", "high")
         self.max_duration = int(os.getenv("MAX_AUDIO_DURATION", "30"))
         self.timeout = int(os.getenv("AUDIO_TIMEOUT", "15"))
@@ -164,6 +178,10 @@ class EnhancedTTSEngine:
     async def generate_audio_openai(self, text: str, context: str = "neutral") -> Optional[bytes]:
         """Generate audio using OpenAI TTS"""
         
+        if not self.openai_client:
+            logging.warning("OpenAI client not available")
+            return None
+        
         try:
             # Optimize text for speech
             optimized_text = self.optimize_text_for_speech(text, context)
@@ -209,7 +227,7 @@ class EnhancedTTSEngine:
             logging.error(f"OpenAI TTS generation failed: {e}")
             return None
 
-    async def generate_audio_elevenlabs(self, text: str, context: str = "neutral", voice_type: str = "professional_female") -> Optional[bytes]:
+    async def generate_audio_elevenlabs(self, text: str, context: str = "neutral", voice_type: str = "empathetic_female") -> Optional[bytes]:
         """Generate audio using ElevenLabs"""
         
         if not self.elevenlabs_api_key:
@@ -220,10 +238,10 @@ class EnhancedTTSEngine:
             # Optimize text for speech
             optimized_text = self.optimize_text_for_speech(text, context)
             
-            # Select voice ID
+            # Select voice ID - default to Rachel (empathetic_female)
             voice_id = self.voice_configs["elevenlabs"]["voices"].get(voice_type)
             if not voice_id:
-                voice_id = self.voice_configs["elevenlabs"]["voices"]["professional_female"]
+                voice_id = self.voice_configs["elevenlabs"]["voices"]["empathetic_female"]  # Rachel
             
             # Adjust voice settings based on context
             base_settings = self.voice_configs["elevenlabs"]["settings"].copy()
@@ -282,24 +300,21 @@ class EnhancedTTSEngine:
         audio_data = None
         engine_used = "none"
         
-        if engine == "elevenlabs":
+        # If ElevenLabs is primary or OpenAI is not available
+        if engine == "elevenlabs" or not self.openai_client:
             audio_data = await self.generate_audio_elevenlabs(text, context)
             if audio_data:
                 engine_used = "elevenlabs"
             
-        if not audio_data and engine != "openai":  # Try OpenAI as fallback
-            audio_data = await self.generate_audio_openai(text, context)
-            if audio_data:
-                engine_used = "openai"
-        
-        if not audio_data and engine == "openai":  # OpenAI as primary
+        # If OpenAI is primary and available
+        if not audio_data and self.openai_client and engine == "openai":
             audio_data = await self.generate_audio_openai(text, context)
             if audio_data:
                 engine_used = "openai"
                 
         # Final fallback - return optimized text for browser TTS
         if not audio_data:
-            logging.warning("All TTS engines failed, falling back to browser TTS")
+            logging.warning("All premium TTS engines failed, falling back to browser TTS")
             engine_used = "browser_fallback"
         
         return audio_data, engine_used, context
