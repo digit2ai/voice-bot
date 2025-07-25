@@ -1,15 +1,26 @@
 """
 Speech-Optimized Claude Response Generation
-Generates natural, conversational responses perfect for voice synthesis
+Fixed version with safe Anthropic client initialization
 """
 
-import anthropic
 import logging
 import os
 from typing import Dict, Any
 
-# Initialize Claude client
-claude_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+# Initialize Claude client safely
+claude_client = None
+anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+
+if anthropic_api_key:
+    try:
+        import anthropic
+        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        logging.info("✅ Claude API client initialized successfully")
+    except Exception as e:
+        logging.error(f"❌ Claude API client initialization failed: {e}")
+        claude_client = None
+else:
+    logging.error("❌ ANTHROPIC_API_KEY not found in environment variables")
 
 class SpeechOptimizedClaude:
     def __init__(self):
@@ -158,6 +169,18 @@ Example tone: "Hey there! So basically, I'm your AI assistant and I handle all y
 
     async def generate_speech_response(self, user_message: str, context: str = "neutral", language: str = "english") -> str:
         """Generate optimized response for speech synthesis"""
+        
+        if not claude_client:
+            logging.error("Claude client not available")
+            # Return context-appropriate fallback
+            fallbacks = {
+                "empathetic": "I'm really sorry, I'm having a technical moment right now. But I'm still here to help you - could you try asking me again?",
+                "professional": "I apologize, but I'm experiencing a brief technical issue. Please give me just a moment and try again.",
+                "excited": "Oh no! I'm having a little technical hiccup right now. But don't worry - try me again in just a second!",
+                "calm": "I'm having a technical issue at the moment. Please try your question again, and I'll be right back with you.",
+                "neutral": "Sorry, I had a technical glitch there. Could you try asking that again?"
+            }
+            return fallbacks.get(context, fallbacks["neutral"])
         
         try:
             # Get context-specific system prompt
