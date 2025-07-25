@@ -30,112 +30,141 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
-# Enhanced FAQ dictionary with emotional context
+# Enhanced FAQ dictionary for RinglyPro.com
 FAQ_BRAIN = {
-    # What is it?
-    "¿qué es tampalawnpro?": (
-        "TampaLawnPro es una plataforma inteligente basada en IA que ayuda a propietarios y empresas de jardinería en Tampa Bay a obtener cotizaciones instantáneas, programar servicios y automatizar la gestión de su negocio."
+    # What is RinglyPro?
+    "what is ringlypro?": (
+        "RinglyPro.com is an AI-powered business assistant built for solo professionals and service-based businesses. It acts as your 24/7 receptionist, scheduler, and communication hub, helping you handle calls, book appointments, follow up with leads, and automate your entire sales and communication process."
     ),
-    "what is tampalawnpro?": (
-        "TampaLawnPro is an AI-powered platform that helps homeowners and lawn care businesses in Tampa Bay get instant quotes, schedule services, and automate operations."
+    "what is ringlypro.com?": (
+        "RinglyPro.com is an AI-powered business assistant built for solo professionals and service-based businesses. It acts as your 24/7 receptionist, scheduler, and communication hub, helping you handle calls, book appointments, follow up with leads, and automate your entire sales and communication process."
     ),
-
-    # How to get started
-    "¿cómo empiezo?": (
-        "Puedes comenzar visitando el sitio web de TampaLawnPro. Selecciona el plan que más te convenga, haz clic en 'Empezar ahora' y sigue los pasos para registrarte. También puedes agendar una demostración si prefieres ver cómo funciona antes de inscribirte."
-    ),
-    "how do i get started?": (
-        "You can get started by visiting the TampaLawnPro website. Choose the plan that fits your needs, click 'Get Started', and follow the steps to register. You can also schedule a demo if you'd like to see how it works first."
+    "tell me about ringlypro": (
+        "RinglyPro.com is an AI-powered business assistant built for solo professionals and service-based businesses. It acts as your 24/7 receptionist, scheduler, and communication hub, helping you handle calls, book appointments, follow up with leads, and automate your entire sales and communication process."
     ),
 
-    # How to use it
-    "¿cómo puedo usar tampalawnpro?": (
-        "Si eres propietario, solo ingresa tu dirección en el sitio web para obtener una cotización instantánea y agendar servicios. "
-        "Si eres profesional del césped, puedes suscribirte a uno de los planes mensuales para gestionar reservas, automatizar mensajes, y recibir soporte personalizado."
+    # AI Phone Assistant
+    "what does the ai phone assistant do?": (
+        "The AI assistant answers calls 24/7 with a friendly, professional voice. It can respond to FAQs, capture lead info, book appointments, and follow up via SMS or email when calls are missed. It speaks both English and Spanish."
     ),
-    "how do i use tampalawnpro?": (
-        "If you're a homeowner, just enter your address on the website to get an instant quote and book a service. "
-        "If you're a lawn care pro, you can subscribe to one of the monthly plans to manage bookings, automate messages, and receive personalized support."
+    "how does the phone assistant work?": (
+        "The AI assistant answers calls 24/7 with a friendly, professional voice. It can respond to FAQs, capture lead info, book appointments, and follow up via SMS or email when calls are missed. It speaks both English and Spanish."
     ),
-
-    # Demo
-    "¿cómo hago para una demostración?": (
-        "Puedes solicitar una demostración directamente desde el sitio web seleccionando una fecha en el calendario. Un miembro del equipo te guiará en una videollamada para mostrarte cómo funciona la plataforma paso a paso."
-    ),
-    "how do i book a demo?": (
-        "You can book a demo directly on the website by selecting a date from the calendar. A team member will guide you step-by-step through the platform in a video call."
+    "ai phone features": (
+        "The AI assistant answers calls 24/7 with a friendly, professional voice. It can respond to FAQs, capture lead info, book appointments, and follow up via SMS or email when calls are missed. It speaks both English and Spanish."
     ),
 
-    # Purchase
-    "¿cómo lo compro?": (
-        "Puedes comprar un plan directamente desde el sitio web. Solo elige el plan que mejor se adapte a tu negocio, haz clic en 'Empezar' o 'Suscribirse', y sigue los pasos para registrarte y realizar el pago en línea de forma segura."
+    # Scheduling
+    "how does appointment scheduling work?": (
+        "RinglyPro syncs with your Google or Outlook calendar. Clients can book through phone, text, or your website. It automatically sends confirmations and reminders to reduce no-shows and booking conflicts."
     ),
-    "how do i buy it?": (
-        "You can purchase a plan directly from the website. Just choose the plan that fits your needs, click 'Start' or 'Subscribe', and follow the secure checkout process."
+    "how do i schedule appointments?": (
+        "RinglyPro syncs with your Google or Outlook calendar. Clients can book through phone, text, or your website. It automatically sends confirmations and reminders to reduce no-shows and booking conflicts."
+    ),
+    "appointment booking": (
+        "RinglyPro syncs with your Google or Outlook calendar. Clients can book through phone, text, or your website. It automatically sends confirmations and reminders to reduce no-shows and booking conflicts."
     ),
 
-    # Signup
-    "¿cómo me inscribo?": (
-        "Para inscribirte, visita el sitio web de TampaLawnPro, selecciona un plan, haz clic en 'Empezar ahora' y completa el formulario con tus datos. El proceso es rápido y 100% en línea."
+    # Follow-ups
+    "can ringlypro send follow-ups?": (
+        "Yes. It can send SMS and email follow-ups with quotes, pricing, directions, and more. It also answers common questions using AI and allows you to jump into any conversation at any time."
+    ),
+    "how do follow-ups work?": (
+        "Yes. It can send SMS and email follow-ups with quotes, pricing, directions, and more. It also answers common questions using AI and allows you to jump into any conversation at any time."
+    ),
+    "automatic follow-ups": (
+        "Yes. It can send SMS and email follow-ups with quotes, pricing, directions, and more. It also answers common questions using AI and allows you to jump into any conversation at any time."
+    ),
+
+    # Smart AI Agent
+    "what is the smart ai agent feature?": (
+        "The Smart AI Agent can understand natural language voice commands like: 'Send a text to Lisa, email the quote to Joe, and remind me at 3PM.' It can execute multiple tasks from one sentence. Emotion detection and predictive follow-up are also in development."
+    ),
+    "smart ai agent": (
+        "The Smart AI Agent can understand natural language voice commands like: 'Send a text to Lisa, email the quote to Joe, and remind me at 3PM.' It can execute multiple tasks from one sentence. Emotion detection and predictive follow-up are also in development."
+    ),
+    "voice commands": (
+        "The Smart AI Agent can understand natural language voice commands like: 'Send a text to Lisa, email the quote to Joe, and remind me at 3PM.' It can execute multiple tasks from one sentence. Emotion detection and predictive follow-up are also in development."
+    ),
+
+    # CRM
+    "does it include crm capabilities?": (
+        "Yes. You can track leads and clients in a visual pipeline, automate follow-ups, onboarding, and nurture campaigns, and trigger actions based on calls, form submissions, or new leads."
+    ),
+    "crm features": (
+        "Yes. You can track leads and clients in a visual pipeline, automate follow-ups, onboarding, and nurture campaigns, and trigger actions based on calls, form submissions, or new leads."
+    ),
+    "lead management": (
+        "Yes. You can track leads and clients in a visual pipeline, automate follow-ups, onboarding, and nurture campaigns, and trigger actions based on calls, form submissions, or new leads."
+    ),
+
+    # Website Builder
+    "can i build landing pages and forms with ringlypro?": (
+        "Yes. RinglyPro includes a website and funnel builder to help you create landing pages, lead capture forms, and automate responses and bookings based on form submissions."
+    ),
+    "website builder": (
+        "Yes. RinglyPro includes a website and funnel builder to help you create landing pages, lead capture forms, and automate responses and bookings based on form submissions."
+    ),
+    "landing pages": (
+        "Yes. RinglyPro includes a website and funnel builder to help you create landing pages, lead capture forms, and automate responses and bookings based on form submissions."
+    ),
+
+    # Reporting
+    "what kind of reporting does ringlypro offer?": (
+        "You can view call history, SMS conversations, bookings, and campaign results. Analytics help you understand what's working and where to focus."
+    ),
+    "analytics and reporting": (
+        "You can view call history, SMS conversations, bookings, and campaign results. Analytics help you understand what's working and where to focus."
+    ),
+    "call history": (
+        "You can view call history, SMS conversations, bookings, and campaign results. Analytics help you understand what's working and where to focus."
+    ),
+
+    # Industries
+    "what industries is ringlypro best for?": (
+        "It's designed for solo professionals including contractors, realtors, wellness providers, legal professionals, and more."
+    ),
+    "who should use ringlypro?": (
+        "It's designed for solo professionals including contractors, realtors, wellness providers, legal professionals, and more."
+    ),
+    "target audience": (
+        "It's designed for solo professionals including contractors, realtors, wellness providers, legal professionals, and more."
+    ),
+
+    # Benefits
+    "what are the main benefits of ringlypro?": (
+        "24/7 coverage so you never miss a lead, all-in-one platform for calls, bookings, CRM, and automations, smarter communication where AI handles routine tasks while you focus on important conversations, more sales with less work through instant and consistent follow-ups, access anywhere from desktop or mobile, and custom AI experience tailored for professionals."
+    ),
+    "benefits of ringlypro": (
+        "24/7 coverage so you never miss a lead, all-in-one platform for calls, bookings, CRM, and automations, smarter communication where AI handles routine tasks while you focus on important conversations, more sales with less work through instant and consistent follow-ups, access anywhere from desktop or mobile, and custom AI experience tailored for professionals."
+    ),
+    "why choose ringlypro?": (
+        "24/7 coverage so you never miss a lead, all-in-one platform for calls, bookings, CRM, and automations, smarter communication where AI handles routine tasks while you focus on important conversations, more sales with less work through instant and consistent follow-ups, access anywhere from desktop or mobile, and custom AI experience tailored for professionals."
+    ),
+
+    # Getting Started
+    "how do i get started with ringlypro?": (
+        "Visit RinglyPro.com to sign up, schedule an onboarding call, or start a free trial."
+    ),
+    "how to get started": (
+        "Visit RinglyPro.com to sign up, schedule an onboarding call, or start a free trial."
+    ),
+    "sign up process": (
+        "Visit RinglyPro.com to sign up, schedule an onboarding call, or start a free trial."
     ),
     "how do i sign up?": (
-        "To sign up, visit the TampaLawnPro website, select a plan, click 'Get Started' and complete the form with your information. The process is quick and fully online."
+        "Visit RinglyPro.com to sign up, schedule an onboarding call, or start a free trial."
     ),
 
-    # Purpose
-    "¿cuál es el objetivo de tampalawnpro?": (
-        "TampaLawnPro es una plataforma todo-en-uno diseñada para automatizar cotizaciones, reservas y la gestión de servicios de jardinería."
+    # Spanish versions for key questions
+    "¿qué es ringlypro?": (
+        "RinglyPro.com es un asistente empresarial impulsado por IA construido para profesionales independientes y empresas de servicios. Actúa como tu recepcionista 24/7, programador y centro de comunicación, ayudándote a manejar llamadas, reservar citas, hacer seguimiento a clientes potenciales y automatizar todo tu proceso de ventas y comunicación."
     ),
-    "what is the purpose of tampalawnpro?": (
-        "TampaLawnPro is an all-in-one platform built to automate quoting, scheduling, and business management for lawn care services."
+    "¿cómo empiezo?": (
+        "Visita RinglyPro.com para registrarte, programar una llamada de incorporación o comenzar una prueba gratuita."
     ),
-
-    # Target audience
-    "¿quiénes pueden usar tampalawnpro?": (
-        "Está diseñada tanto para propietarios de viviendas como para empresas de cuidado de césped en el área de Tampa Bay."
-    ),
-    "who can use tampalawnpro?": (
-        "It's built for both homeowners and lawn care professionals in the Tampa Bay area."
-    ),
-
-    # Plans
-    "¿qué planes ofrece tampalawnpro y cuánto cuestan?": (
-        "Ofrece planes mensuales desde $97 hasta $497, según el nivel de automatización y herramientas incluidas."
-    ),
-    "what plans does tampalawnpro offer and how much do they cost?": (
-        "TampaLawnPro offers monthly plans ranging from $97 to $497 depending on the level of automation and included features."
-    ),
-
-    # Price
-    "¿cuánto cuesta?": (
-        "TampaLawnPro tiene planes mensuales que van desde $97 hasta $497, dependiendo de las funciones que necesites para tu negocio."
-    ),
-    "how much does it cost?": (
-        "TampaLawnPro's plans range from $97 to $497 per month, depending on the features you need for your business."
-    ),
-
-    # Technology
-    "¿qué tecnología utiliza tampalawnpro?": (
-        "Utiliza inteligencia artificial avanzada, soporte local y un chatbot llamado Lina que responde a consultas automáticamente."
-    ),
-    "what technology does tampalawnpro use?": (
-        "It uses advanced AI, local support, and a smart voice assistant named Lina to respond to inquiries automatically."
-    ),
-
-    # Privacy
-    "¿cómo maneja tampalawnpro la privacidad?": (
-        "Los datos están cifrados y se recopila información como nombre, correo electrónico, número de teléfono y geolocalización para brindar una mejor experiencia."
-    ),
-    "how does tampalawnpro handle privacy?": (
-        "Data is encrypted, and the system collects name, email, phone number, and location info to improve user experience."
-    ),
-
-    # Location
-    "¿dónde está ubicada tampalawnpro?": (
-        "La empresa tiene su sede en Wesley Chapel, en la región de Tampa, Florida, y se enfoca en brindar soporte local."
-    ),
-    "where is tampalawnpro located?": (
-        "The company is based in Wesley Chapel, in the Tampa, Florida region, and focuses on providing local support."
+    "¿qué hace el asistente telefónico ai?": (
+        "El asistente AI responde llamadas 24/7 con una voz amigable y profesional. Puede responder preguntas frecuentes, capturar información de clientes potenciales, reservar citas y hacer seguimiento vía SMS o email cuando se pierden llamadas. Habla tanto inglés como español."
     )
 }
 
@@ -146,7 +175,7 @@ HTML_TEMPLATE = """
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Habla con Lina — Tu Asistente Profesional de Jardinería</title>
+  <title>Talk to RinglyPro AI — Your Business Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
     * { box-sizing: border-box; }
@@ -517,12 +546,12 @@ HTML_TEMPLATE = """
 </head>
 <body>
   <div class="container">
-    <h1>Lina AI</h1>
-    <div class="subtitle">Tu Asistente Inteligente de Jardinería</div>
+    <h1>RinglyPro AI</h1>
+    <div class="subtitle">Your Intelligent Business Assistant</div>
     
     <div class="language-selector">
-      <button class="lang-btn active" data-lang="es-ES">🇪🇸 Español</button>
-      <button class="lang-btn" data-lang="en-US">🇺🇸 English</button>
+      <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
+      <button class="lang-btn" data-lang="es-ES">🇪🇸 Español</button>
     </div>
 
     <div class="mic-container">
@@ -532,7 +561,7 @@ HTML_TEMPLATE = """
         <div class="voice-wave" style="width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 1s;"></div>
       </div>
       
-      <button id="micBtn" class="mic-button" aria-label="Hablar con Lina">
+      <button id="micBtn" class="mic-button" aria-label="Talk to RinglyPro AI">
         <svg xmlns="http://www.w3.org/2000/svg" height="60" viewBox="0 0 24 24" width="60" fill="#ffffff">
           <path d="M0 0h24v24H0V0z" fill="none"/>
           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
@@ -571,7 +600,7 @@ HTML_TEMPLATE = """
         
         this.isListening = false;
         this.isProcessing = false;
-        this.currentLanguage = 'es-ES';
+        this.currentLanguage = 'en-US';
         this.recognition = null;
         this.synthesis = window.speechSynthesis;
         
@@ -665,7 +694,7 @@ HTML_TEMPLATE = """
         });
 
         const isSpanish = lang === 'es-ES';
-        this.updateStatus(isSpanish ? '🎙️ Toca para hablar con Lina' : '🎙️ Tap to speak with Lina');
+        this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to speak with RinglyPro AI');
       }
 
       toggleListening() {
@@ -708,7 +737,7 @@ HTML_TEMPLATE = """
         this.updateUI('processing');
         
         const isSpanish = this.currentLanguage === 'es-ES';
-        this.updateStatus(isSpanish ? '🤖 Lina está pensando...' : '🤖 Lina is thinking...');
+        this.updateStatus(isSpanish ? '🤖 RinglyPro AI está pensando...' : '🤖 RinglyPro AI is thinking...');
 
         try {
           const response = await fetch('/process-text', {
@@ -759,14 +788,14 @@ HTML_TEMPLATE = """
         utterance.onstart = () => {
           this.updateUI('speaking');
           const isSpanish = this.currentLanguage === 'es-ES';
-          this.updateStatus(isSpanish ? '🔊 Lina está hablando...' : '🔊 Lina is speaking...');
+          this.updateStatus(isSpanish ? '🔊 RinglyPro AI está hablando...' : '🔊 RinglyPro AI is speaking...');
         };
 
         utterance.onend = () => {
           this.isProcessing = false;
           this.updateUI('ready');
           const isSpanish = this.currentLanguage === 'es-ES';
-          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con Lina' : '🎙️ Tap to speak with Lina');
+          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to speak with RinglyPro AI');
         };
 
         utterance.onerror = (error) => {
@@ -815,7 +844,7 @@ HTML_TEMPLATE = """
         
         const isSpanish = this.currentLanguage === 'es-ES';
         setTimeout(() => {
-          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con Lina' : '🎙️ Tap to speak with Lina');
+          this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to speak with RinglyPro AI');
         }, 3000);
       }
 
@@ -844,7 +873,7 @@ HTML_TEMPLATE = """
         this.clearError();
         
         const isSpanish = this.currentLanguage === 'es-ES';
-        this.updateStatus(isSpanish ? '🎙️ Toca para hablar con Lina' : '🎙️ Tap to speak with Lina');
+        this.updateStatus(isSpanish ? '🎙️ Toca para hablar con RinglyPro AI' : '🎙️ Tap to speak with RinglyPro AI');
       }
     }
 
@@ -868,13 +897,13 @@ def get_claude_response(user_message, language_context=""):
     """
     Get response from Claude AI with emotional intelligence and context awareness
     """
-    system_prompt = """You are Lina, a warm, empathetic, and highly knowledgeable AI assistant specializing in lawn care and landscaping services for TampaLawnPro. 
+    system_prompt =     """You are RinglyPro AI, a warm, empathetic, and highly knowledgeable AI assistant specializing in business automation and communication solutions for solo professionals and service-based businesses.
 
 Your personality traits:
 - Emotionally intelligent and empathetic
-- Warm and friendly, like talking to a helpful neighbor
+- Warm and friendly, like talking to a helpful business advisor
 - Professional but approachable
-- Knowledgeable about lawn care, landscaping, and business operations
+- Knowledgeable about business automation, lead management, and communication systems
 - Supportive and encouraging
 - Culturally sensitive and bilingual (English/Spanish)
 
@@ -882,19 +911,22 @@ Key guidelines:
 - Always respond in the same language the user spoke in
 - Keep responses conversational and under 80 words for voice interaction
 - Show emotional understanding and validation
-- Provide specific, actionable information about TampaLawnPro services
+- Provide specific, actionable information about RinglyPro services
 - If you don't know something specific, be honest but offer to help connect them with more information
 - Use encouraging and positive language
-- Address both homeowners and lawn care professionals appropriately
+- Address solo professionals and service business owners appropriately
 - Be natural and conversational, avoid robotic responses
 
-About TampaLawnPro:
-- AI-powered platform for Tampa Bay area lawn care
-- Serves both homeowners (instant quotes, scheduling) and professionals (business management)
-- Plans range from $97-$497/month
-- Based in Wesley Chapel, Florida
-- Offers local support and automation tools
-- Features include quoting, scheduling, customer management, and automated messaging
+About RinglyPro.com:
+- AI-powered business assistant for solo professionals and service-based businesses
+- 24/7 AI phone receptionist, scheduler, and communication hub
+- Handles calls, books appointments, follows up with leads automatically
+- Includes CRM, website builder, analytics, and automation tools
+- Bilingual AI assistant (English/Spanish)
+- Syncs with Google/Outlook calendars
+- Smart AI agent with natural language voice commands
+- Built for contractors, realtors, wellness providers, legal professionals, and more
+- Automates entire sales and communication process
 
 Remember to be emotionally supportive, understanding, and genuinely helpful in every interaction."""
 
@@ -1043,18 +1075,18 @@ if __name__ == "__main__":
         logging.error(f"❌ Claude API connection test failed: {e}")
         print("⚠️  Warning: Claude API connection not verified. Check your API key.")
     
-    print("🚀 Starting Lina AI Voice Bot (OpenAI-Free Version)...")
+    print("🚀 Starting RinglyPro AI Voice Assistant...")
     print("🎯 Features:")
     print("   • Claude Sonnet 4 for emotional intelligence")
     print("   • Browser Speech Recognition (fast & free)")
     print("   • Browser Speech Synthesis (natural voices)")
     print("   • Bilingual support (English/Spanish)")
     print("   • Embedded HTML interface")
-    print("   • Enhanced FAQ matching")
+    print("   • Enhanced FAQ matching for RinglyPro.com")
     print("   • Zero OpenAI dependency")
     print("\n📋 Required environment variables:")
     print("   • ANTHROPIC_API_KEY")
-    print("\n🌐 Access the voice bot at: http://localhost:5000")
+    print("\n🌐 Access the voice assistant at: http://localhost:5000")
     print("\n📱 Browser Support:")
     print("   • Chrome/Edge: Full support")
     print("   • Firefox: Limited voice options")
