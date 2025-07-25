@@ -2,3 +2,7 @@ flask
 flask-cors
 openai
 python-dotenv
+pip install openai==1.12.0
+pip install elevenlabs==0.2.26
+pip install pydub==0.25.1
+pip install aiofiles==23.2.1
