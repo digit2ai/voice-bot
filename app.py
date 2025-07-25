@@ -18,6 +18,65 @@ if not anthropic_api_key:
     raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
 
 # Initialize Claude client
+
+# ✅ Injected: Load OpenAI API Key
+openai_api_key = os.getenv("OPENAI_API_KEY")
+if not openai_api_key:
+    raise ValueError("OPENAI_API_KEY not found")
+
+# ✅ Injected: format_for_tts function
+def format_for_tts(text):
+    import re
+    text = text.strip().replace("\n", " ")
+    if text.endswith("."):
+        text = text[:-1]
+    contractions = {
+        r"\bI am\b": "I'm",
+        r"\bYou are\b": "You're",
+        r"\bDo not\b": "Don't",
+        r"\bIt is\b": "It's",
+        r"\bWe will\b": "We'll",
+        r"\bLet us\b": "Let's",
+    }
+    for pattern, repl in contractions.items():
+        text = re.sub(pattern, repl, text, flags=re.IGNORECASE)
+    text = re.sub(r",\s*", ", <break time='300ms'/> ", text)
+    return f"<speak><prosody rate='medium'>{text}</prosody></speak>"
+
+# ✅ Injected: OpenAI TTS endpoint
+@app.route("/synthesize-tts", methods=["POST"])
+def synthesize_tts():
+    import requests
+    from flask import Response
+    data = request.get_json()
+    text = data.get("text")
+    voice = data.get("voice", "nova")
+    model = "tts-1-hd"
+    if not text:
+        return jsonify({"error": "Missing text"}), 400
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers={
+                "Authorization": f"Bearer {openai_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": model,
+                "input": text,
+                "voice": voice,
+                "response_format": "mp3",
+                "speed": 1.0
+            }
+        )
+        if response.status_code != 200:
+            logging.error(f"TTS error: {response.text}")
+            return jsonify({"error": "TTS generation failed"}), 500
+        return Response(response.content, mimetype="audio/mpeg")
+    except Exception as e:
+        logging.error(f"OpenAI TTS error: {e}")
+        return jsonify({"error": "TTS processing error"}), 500
+
 claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
 
 # Setup Flask
@@ -1184,7 +1243,8 @@ def process_text():
         logging.info("✅ Sending successful response")
         return jsonify({
             "response": response_text,
-            "language": user_language,
+            "tts_ssml": format_for_tts(response_text),
+        "language": user_language,
             "matched_faq": bool(matched)
         })
         
