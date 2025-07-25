@@ -1,8 +1,8 @@
-flask
-flask-cors
-openai
-python-dotenv
-pip install openai==1.12.0
-pip install elevenlabs==0.2.26
-pip install pydub==0.25.1
-pip install aiofiles==23.2.1
+flask==2.3.3
+flask-cors==4.0.0
+anthropic==0.25.0
+openai==1.12.0
+elevenlabs==0.2.26
+aiofiles==23.2.1
+python-dotenv==1.0.0
+requests==2.31.0
