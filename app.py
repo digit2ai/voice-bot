@@ -895,7 +895,15 @@ HTML_TEMPLATE = """
         this.updateUI('processing');
         this.updateStatus('🤖 Processing...');
 
+        // Add timeout to prevent getting stuck
+        const processingTimeout = setTimeout(() => {
+          debugLog('ERROR: Processing timeout after 30 seconds');
+          this.handleError('Processing timeout. Please try again.');
+        }, 30000);
+
         try {
+          debugLog('Sending request to server...');
+          
           const response = await fetch('/process-text', {
             method: 'POST',
             headers: {
@@ -907,15 +915,31 @@ HTML_TEMPLATE = """
             })
           });
 
+          debugLog('Server response status:', response.status);
+
           if (!response.ok) {
-            throw new Error(`Server error: ${response.status}`);
+            throw new Error(`Server error: ${response.status} ${response.statusText}`);
           }
 
           const data = await response.json();
-          debugLog('Server response received:', data.response.substring(0, 50) + '...');
+          debugLog('Server response received:', data);
+          
+          // Clear the timeout since we got a response
+          clearTimeout(processingTimeout);
+          
+          if (data.error) {
+            throw new Error(data.error);
+          }
+          
+          if (!data.response) {
+            throw new Error('No response from server');
+          }
+          
+          debugLog('Speaking response:', data.response.substring(0, 50) + '...');
           await this.speakResponse(data.response);
 
         } catch (error) {
+          clearTimeout(processingTimeout);
           debugLog('ERROR: Processing failed', error.message);
           this.handleError('Processing error: ' + error.message);
         }
@@ -1113,7 +1137,10 @@ def process_text():
     
     try:
         data = request.get_json()
+        logging.info(f"📋 Request data: {data}")
+        
         if not data or 'text' not in data:
+            logging.error("❌ Missing text data")
             return jsonify({"error": "Missing text data"}), 400
             
         user_text = data['text'].strip()
@@ -1123,9 +1150,10 @@ def process_text():
             error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
                         if user_language.startswith('es') 
                         else "Text too short. Please try again.")
+            logging.error(f"❌ Text too short: '{user_text}'")
             return jsonify({"error": error_msg}), 400
         
-        logging.info(f"📝 Processing text: {user_text}")
+        logging.info(f"📝 Processing text: '{user_text}'")
         logging.info(f"🌐 Language: {user_language}")
         
         # Step 1: Enhanced FAQ matching
@@ -1143,8 +1171,9 @@ def process_text():
             language_context = f"Please respond in {'Spanish' if user_language.startswith('es') else 'English'}."
             
             try:
+                logging.info("🧠 Calling Claude API...")
                 response_text = get_claude_response(user_text, language_context)
-                logging.info(f"🧠 Claude Response: {response_text}")
+                logging.info(f"✅ Claude Response received: {response_text[:100]}...")
             except Exception as e:
                 logging.error(f"❌ Claude API error: {e}")
                 fallback_msg = ("Lo siento, tuve un problema técnico. Por favor intenta de nuevo." 
@@ -1152,6 +1181,7 @@ def process_text():
                               else "I'm sorry, I had a technical issue. Please try again.")
                 return jsonify({"error": fallback_msg}), 500
         
+        logging.info("✅ Sending successful response")
         return jsonify({
             "response": response_text,
             "language": user_language,
@@ -1210,7 +1240,8 @@ if __name__ == "__main__":
     print("🎯 Features:")
     print("   • Fixed mobile compatibility issues")
     print("   • User gesture requirement for mobile")
-    print("   • Simplified but robust voice recognition")
+    print("   • Processing timeout protection (30 seconds)")
+    print("   • Enhanced debugging and error handling")
     print("   • Works on both desktop and mobile")
     print("   • Claude Sonnet 4 AI responses")
     print("   • Bilingual support (English/Spanish)")
@@ -1222,5 +1253,5 @@ if __name__ == "__main__":
     print("   • iOS Safari: ✅ Limited support")
     print("   • Edge Mobile: ✅ Full support")
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
-        
+    app.run(debug=True, host='0.0.0.0', port=5000)error);
+            this.handleSpeechError(event.
