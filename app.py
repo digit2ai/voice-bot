@@ -1222,6 +1222,22 @@ def mobile_check():
         "timestamp": time.time()
     })
 
+# Place this above if __name__ == "__main__"
+@app.after_request
+def allow_iframe_embedding(response):
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+
+# Allow iframe embedding from any domain (place this ABOVE the if __name__ == "__main__" block)
+@app.after_request
+def allow_iframe_embedding(response):
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+
 if __name__ == "__main__":
     # Verify Claude API on startup
     try:
@@ -1231,11 +1247,10 @@ if __name__ == "__main__":
             messages=[{"role": "user", "content": "Hello"}]
         )
         logging.info("✅ Claude API connection successful")
-        
     except Exception as e:
         logging.error(f"❌ Claude API connection test failed: {e}")
         print("⚠️  Warning: Claude API connection not verified. Check your API key.")
-    
+
     print("🚀 Starting RinglyPro AI Voice Assistant...")
     print("🎯 Features:")
     print("   • Fixed mobile compatibility issues")
@@ -1252,6 +1267,6 @@ if __name__ == "__main__":
     print("   • Chrome Mobile: ✅ Full support")
     print("   • iOS Safari: ✅ Limited support")
     print("   • Edge Mobile: ✅ Full support")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)error);
-            this.handleSpeechError(event.
+
+    # ✅ Start the Flask app
+    app.run(debug=True, host='0.0.0.0', port=5000)
