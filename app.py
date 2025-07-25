@@ -277,7 +277,7 @@ HTML_TEMPLATE = """
     .mic-button {
       width: 130px;
       height: 130px;
-      background: linear-gradient(135deg, #4CAF50, #45a049);
+      background: linear-gradient(135deg, #0a192f, #1c2541);
       border: none;
       border-radius: 50%;
       box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3);
