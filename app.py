@@ -1069,7 +1069,7 @@ def serve_index():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/process-text-enhanced', methods=['POST'])
-async def process_text_enhanced():
+def process_text_enhanced():
     """Enhanced text processing with premium TTS"""
     logging.info("📥 Received enhanced text processing request")
     
@@ -1140,29 +1140,56 @@ async def process_text_enhanced():
                 return jsonify({"error": fallback_msg}), 500
         
         # Step 3: Generate premium audio
+# Step 3: Try to generate premium audio (simplified)
         audio_data = None
-        engine_used = "none"
+        engine_used = "browser_fallback"
         
         try:
-            logging.info(f"🎵 Generating audio with context: {context}")
+            logging.info(f"🎵 Attempting audio generation with context: {context}")
             
-            # Run async TTS generation
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            audio_bytes, engine_used, detected_context = loop.run_until_complete(
-                tts_engine.generate_audio(response_text, user_text)
-            )
-            loop.close()
-            
-            if audio_bytes:
-                audio_data = base64.b64encode(audio_bytes).decode('utf-8')
-                logging.info(f"✅ Audio generated successfully using {engine_used}")
-            else:
-                logging.warning(f"⚠️ Audio generation failed, using fallback")
-                
+            # Try ElevenLabs directly if available
+            elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+            if elevenlabs_key and len(response_text) < 500:
+                try:
+                    import requests
+                    
+                    # Simple ElevenLabs call
+                    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"  # Rachel voice
+                    
+                    headers = {
+                        "Accept": "audio/mpeg",
+                        "Content-Type": "application/json",
+                        "xi-api-key": elevenlabs_key
+                    }
+                    
+                    # Optimize text for speech
+                    optimized_text = response_text.replace("cannot", "can't").replace("will not", "won't").replace("do not", "don't")
+                    
+                    data = {
+                        "text": optimized_text,
+                        "model_id": "eleven_multilingual_v2",
+                        "voice_settings": {
+                            "stability": 0.75,
+                            "similarity_boost": 0.85,
+                            "style": 0.5,
+                            "use_speaker_boost": True
+                        }
+                    }
+                    
+                    tts_response = requests.post(url, json=data, headers=headers, timeout=10)
+                    
+                    if tts_response.status_code == 200:
+                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                        engine_used = "elevenlabs"
+                        logging.info(f"✅ ElevenLabs audio generated successfully")
+                    else:
+                        logging.warning(f"ElevenLabs failed: {tts_response.status_code}")
+                        
+                except Exception as tts_error:
+                    logging.error(f"ElevenLabs TTS error: {tts_error}")
+                    
         except Exception as e:
             logging.error(f"❌ Audio generation error: {e}")
-            engine_used = "browser_fallback"
         
         # Step 4: Return response
         response_payload = {
