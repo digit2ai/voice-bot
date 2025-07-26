@@ -832,56 +832,94 @@ HTML_TEMPLATE = '''
             }
         }
 
-        async playEnhancedBrowserTTS(text, context) {
-            try {
-                // 🔇 Stop speech recognition during TTS
-                if (this.recognition && this.isListening) {
-                    this.recognition.stop();
-                    debugLog('🔇 Stopped speech recognition during TTS');
-                }
-                
-                speechSynthesis.cancel();
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = this.currentLanguage;
-                utterance.rate = 0.95;
-                utterance.pitch = 1.0;
-                utterance.volume = 0.85;
+        // 📱 Replace your playEnhancedBrowserTTS method with this mobile-enhanced version:
 
-                return new Promise((resolve) => {
-                    utterance.onstart = () => {
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus('🔊 Speaking...');
-                    };
-
-                    utterance.onend = () => {
-                        debugLog('🔊 Browser TTS ended');
-                        this.audioFinished();
-                        
-                        // 🔇 Wait before allowing new input
-                        setTimeout(() => {
-                            this.updateStatus('🎙️ Tap microphone to continue');
-                        }, 1000);
-                        
-                        resolve();
-                    };
-
-                    utterance.onerror = (error) => {
-                        debugLog('ERROR: Browser TTS error', error);
-                        this.audioFinished();
-                        resolve();
-                    };
-
-                    speechSynthesis.speak(utterance);
-                });
-
-            } catch (error) {
-                debugLog('ERROR: Enhanced browser TTS failed', error);
-                this.audioFinished();
-            }
+async playEnhancedBrowserTTS(text, context) {
+    try {
+        // 🔇 Stop speech recognition during TTS
+        if (this.recognition && this.isListening) {
+            this.recognition.stop();
+            debugLog('🔇 Stopped speech recognition during TTS');
         }
+        
+        speechSynthesis.cancel();
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = this.currentLanguage;
+        
+        // 📱 MOBILE-OPTIMIZED TTS SETTINGS
+        if (this.isMobile) {
+            debugLog('📱 Using mobile TTS settings...');
+            utterance.rate = 0.9;    // Slightly slower for mobile
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;  // Full volume for mobile
+            
+            // 📱 Try to select a good mobile voice
+            const voices = speechSynthesis.getVoices();
+            debugLog('📱 Available voices:', voices.length);
+            
+            if (voices.length > 0) {
+                // Look for a good English voice on mobile
+                const preferredVoice = voices.find(voice => 
+                    voice.lang.startsWith('en') && 
+                    (voice.name.includes('Female') || voice.name.includes('woman') || voice.name.includes('Google'))
+                ) || voices.find(voice => voice.lang.startsWith('en'));
+                
+                if (preferredVoice) {
+                    utterance.voice = preferredVoice;
+                    debugLog('📱 Using mobile voice:', preferredVoice.name);
+                }
+            }
+        } else {
+            // Desktop settings (keep working)
+            utterance.rate = 0.95;
+            utterance.pitch = 1.0;
+            utterance.volume = 0.85;
+        }
+
+        return new Promise((resolve) => {
+            utterance.onstart = () => {
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                this.updateStatus(this.isMobile ? '📱 Speaking...' : '🔊 Speaking...');
+                debugLog(this.isMobile ? '📱 Mobile TTS started' : '🔊 Desktop TTS started');
+            };
+
+            utterance.onend = () => {
+                debugLog(this.isMobile ? '📱 Mobile TTS ended' : '🔊 Desktop TTS ended');
+                this.audioFinished();
+                
+                // 🔇 Wait before allowing new input
+                setTimeout(() => {
+                    this.updateStatus('🎙️ Tap microphone to continue');
+                }, 1000);
+                
+                resolve();
+            };
+
+            utterance.onerror = (error) => {
+                debugLog('ERROR: Browser TTS error', error);
+                this.audioFinished();
+                resolve();
+            };
+
+            // 📱 MOBILE TTS: Load voices first if needed
+            if (this.isMobile && speechSynthesis.getVoices().length === 0) {
+                debugLog('📱 Loading mobile voices...');
+                speechSynthesis.addEventListener('voiceschanged', () => {
+                    speechSynthesis.speak(utterance);
+                }, { once: true });
+            } else {
+                speechSynthesis.speak(utterance);
+            }
+        });
+
+    } catch (error) {
+        debugLog('ERROR: Enhanced browser TTS failed', error);
+        this.audioFinished();
+    }
+}
 
         showAudioQuality(quality, engine) {
             const indicator = document.createElement('div');
