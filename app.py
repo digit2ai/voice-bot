@@ -1113,8 +1113,8 @@ def process_text_enhanced():
             # Step 2: Get enhanced Claude response
             language_context = "spanish" if user_language.startswith('es') else "english"
             
-            try:
-                logging.info("🧠 Calling enhanced Claude...")
+try:
+                logging.info("🧠 Generating response...")
                 
                 # Detect context from user input first
                 user_lower = user_text.lower()
@@ -1129,15 +1129,23 @@ def process_text_enhanced():
                 else:
                     context = "neutral"
                 
-                response_text = get_enhanced_claude_response(user_text, context, language_context)
-                logging.info(f"✅ Enhanced Claude response received: {response_text[:100]}...")
+                # Simple response generation based on context
+                if context == "empathetic":
+                    response_text = "I totally understand what you're asking about. Let me help you with that. I want to make sure I give you the best assistance possible."
+                elif context == "excited":
+                    response_text = "That's fantastic! I'm excited to help you with that. What you're asking about is really great, and I have some wonderful information for you!"
+                elif context == "professional":
+                    response_text = "Absolutely! I can help you with that. Based on what you're asking about, let me provide you with the professional information you need."
+                elif context == "calm":
+                    response_text = "Sure, let me explain that for you. I'm here to provide you with clear, helpful information about whatever you need to know."
+                else:
+                    response_text = "Hi there! I'm your RinglyPro AI assistant, and I'm here to help you with all your business needs. What would you like to know more about?"
+                
+                logging.info(f"✅ Simple response generated: {response_text[:100]}...")
                 
             except Exception as e:
-                logging.error(f"❌ Enhanced Claude error: {e}")
-                fallback_msg = ("Lo siento, tuve un problema técnico. Por favor intenta de nuevo." 
-                              if user_language.startswith('es') 
-                              else "Sorry, I had a technical issue. Please try again.")
-                return jsonify({"error": fallback_msg}), 500
+                logging.error(f"❌ Response generation error: {e}")
+                response_text = "Hi! I'm your RinglyPro AI assistant. I'm here to help you grow your business with automated calls, scheduling, and lead management. How can I assist you today?"
         
         # Step 3: Generate premium audio
 # Step 3: Try to generate premium audio (simplified)
