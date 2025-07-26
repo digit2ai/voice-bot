@@ -989,6 +989,10 @@ HTML_TEMPLATE = '''
                         this.updateUI('speaking');
                         this.updateStatus('🔊 Rachel speaking...');
                         if (loadTimeout) clearTimeout(loadTimeout);
+                        
+                        // 🔇 CRITICAL: Cancel any speech synthesis immediately when premium audio starts
+                        speechSynthesis.cancel();
+                        debugLog('🔇 CANCELLED speech synthesis - premium audio is playing');
                     };
                     
                     this.currentAudio.onended = () => {
@@ -1013,9 +1017,13 @@ HTML_TEMPLATE = '''
                         
                         this.audioFinished();
                         
-                        // 📱 ONLY USE TTS FALLBACK IF PREMIUM AUDIO FAILS
+                        // 🔇 CRITICAL FIX: ONLY fallback to TTS if premium audio completely fails
                         debugLog('📱 Premium audio failed, using TTS fallback');
-                        this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
+                        
+                        // 🔇 MAKE SURE we don't have double resolution
+                        if (!hasResolved) {
+                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
+                        }
                     };
                     
                     const playAudio = async () => {
@@ -1119,6 +1127,12 @@ HTML_TEMPLATE = '''
 
         async playEnhancedBrowserTTS(text, context) {
             try {
+                // 🔇 CRITICAL: Don't play TTS if premium audio is already playing
+                if (this.isPlaying) {
+                    debugLog('🔇 BLOCKING TTS: Premium audio is already playing');
+                    return;
+                }
+                
                 if (this.recognition && this.isListening) {
                     this.recognition.stop();
                     debugLog('🔇 Stopped speech recognition during TTS');
@@ -1158,6 +1172,14 @@ HTML_TEMPLATE = '''
 
                 return new Promise((resolve) => {
                     utterance.onstart = () => {
+                        // 🔇 DOUBLE CHECK: Don't start if premium audio started playing
+                        if (this.currentAudio) {
+                            debugLog('🔇 CANCELLING TTS: Premium audio detected');
+                            speechSynthesis.cancel();
+                            resolve();
+                            return;
+                        }
+                        
                         this.isPlaying = true;
                         this.updateUI('speaking');
                         this.updateStatus(this.isMobile ? '📱 Speaking...' : '🔊 Speaking...');
