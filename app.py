@@ -563,6 +563,7 @@ HTML_TEMPLATE = '''
             this.audioContext = null;
             this.userInteracted = false;
             this.isMobile = this.detectMobile();
+            this.audioURLs = new Set(); // 📱 Track audio URLs for cleanup
             
             this.init();
         }
@@ -685,6 +686,53 @@ HTML_TEMPLATE = '''
                 indicator.style.transition = 'opacity 0.3s ease';
                 setTimeout(() => indicator.remove(), 300);
             }, 3000);
+        }
+
+        // 📱 MOBILE AUDIO STATE RESET - Add this method to your class
+        resetMobileAudioState() {
+            if (this.isMobile) {
+                debugLog('📱 Resetting mobile audio state...');
+                
+                // Clear any existing audio
+                if (this.currentAudio) {
+                    try {
+                        this.currentAudio.pause();
+                        this.currentAudio.src = '';
+                        this.currentAudio = null;
+                    } catch (error) {
+                        debugLog('📱 Audio reset error (non-critical):', error);
+                        this.currentAudio = null;
+                    }
+                }
+                
+                // 📱 CLEANUP ALL AUDIO URLs
+                this.audioURLs.forEach(url => {
+                    try {
+                        URL.revokeObjectURL(url);
+                    } catch (error) {
+                        debugLog('📱 URL cleanup error (non-critical):', error);
+                    }
+                });
+                this.audioURLs.clear();
+                
+                // Reset audio context if needed
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    this.audioContext.resume().catch(error => {
+                        debugLog('📱 Audio context resume error:', error);
+                    });
+                }
+                
+                // Cancel any speech synthesis
+                speechSynthesis.cancel();
+                
+                // Reset UI state
+                this.isPlaying = false;
+                this.isProcessing = false;
+                this.updateUI('ready');
+                this.updateStatus('📱 Ready for voice command');
+                
+                debugLog('📱 Mobile audio state reset complete');
+            }
         }
 
         async requestMicrophonePermission() {
@@ -855,6 +903,7 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // 📱 MOBILE LOADING FIX - Improved playPremiumAudio method
         async playPremiumAudio(audioBase64, responseText) {
             try {
                 if (this.recognition && this.isListening) {
@@ -877,12 +926,15 @@ HTML_TEMPLATE = '''
                 });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 
+                // 📱 TRACK URL FOR CLEANUP
+                this.audioURLs.add(audioUrl);
+                
                 this.currentAudio = new Audio();
                 
                 if (this.isMobile) {
                     debugLog('📱 Configuring for mobile device...');
                     this.currentAudio.crossOrigin = 'anonymous';
-                    this.currentAudio.preload = 'auto';
+                    this.currentAudio.preload = 'metadata'; // 📱 CHANGED: Use metadata instead of auto
                     this.currentAudio.volume = 0.9;
                     this.currentAudio.playbackRate = 1.0;
                     this.currentAudio.setAttribute('webkit-playsinline', 'true');
@@ -897,14 +949,21 @@ HTML_TEMPLATE = '''
                 
                 return new Promise((resolve, reject) => {
                     let loadTimeout;
+                    let hasResolved = false; // 📱 PREVENT DOUBLE RESOLUTION
+                    
+                    const resolveOnce = (value) => {
+                        if (!hasResolved) {
+                            hasResolved = true;
+                            resolve(value);
+                        }
+                    };
                     
                     if (this.isMobile) {
                         loadTimeout = setTimeout(() => {
                             debugLog('📱 Mobile audio loading timeout, using TTS fallback');
-                            this.currentAudio = null;
-                            URL.revokeObjectURL(audioUrl);
-                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
-                        }, 10000);
+                            this.cleanupCurrentAudio();
+                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
+                        }, 8000); // 📱 REDUCED TIMEOUT
                     }
                     
                     this.currentAudio.onloadstart = () => {
@@ -928,13 +987,12 @@ HTML_TEMPLATE = '''
                     this.currentAudio.onended = () => {
                         debugLog('📱 Mobile premium audio ended');
                         this.audioFinished();
-                        URL.revokeObjectURL(audioUrl);
                         
                         setTimeout(() => {
                             this.updateStatus('🎙️ Tap microphone to continue');
                         }, 1000);
                         
-                        resolve();
+                        resolveOnce();
                     };
                     
                     this.currentAudio.onerror = (error) => {
@@ -943,13 +1001,12 @@ HTML_TEMPLATE = '''
                         if (loadTimeout) clearTimeout(loadTimeout);
                         
                         this.audioFinished();
-                        URL.revokeObjectURL(audioUrl);
                         
                         if (this.isMobile) {
                             debugLog('📱 Mobile audio failed, using TTS fallback');
-                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
+                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
                         } else {
-                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
+                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
                         }
                     };
                     
@@ -957,9 +1014,25 @@ HTML_TEMPLATE = '''
                         try {
                             debugLog('📱 Attempting to play mobile audio...');
                             
+                            // 📱 ENSURE AUDIO CONTEXT IS READY
                             if (this.audioContext && this.audioContext.state === 'suspended') {
                                 await this.audioContext.resume();
                                 debugLog('📱 Audio context resumed for mobile');
+                            }
+                            
+                            // 📱 MOBILE SPECIFIC: Wait a bit for audio to be ready
+                            if (this.isMobile && this.currentAudio.readyState < 2) {
+                                debugLog('📱 Waiting for mobile audio to be ready...');
+                                await new Promise(resolve => {
+                                    const checkReady = () => {
+                                        if (this.currentAudio.readyState >= 2) {
+                                            resolve();
+                                        } else {
+                                            setTimeout(checkReady, 100);
+                                        }
+                                    };
+                                    checkReady();
+                                });
                             }
                             
                             const playPromise = this.currentAudio.play();
@@ -991,16 +1064,41 @@ HTML_TEMPLATE = '''
                         }
                     };
                     
-                    if (this.currentAudio.readyState >= 2) {
-                        playAudio();
+                    // 📱 MOBILE SPECIFIC: Start playing immediately for mobile
+                    if (this.isMobile) {
+                        // Load the audio first, then play
+                        this.currentAudio.load();
+                        setTimeout(() => {
+                            if (this.currentAudio && !hasResolved) {
+                                playAudio();
+                            }
+                        }, 100);
                     } else {
-                        this.currentAudio.addEventListener('canplay', playAudio, { once: true });
+                        if (this.currentAudio.readyState >= 2) {
+                            playAudio();
+                        } else {
+                            this.currentAudio.addEventListener('canplay', playAudio, { once: true });
+                        }
                     }
                 });
                 
             } catch (error) {
                 debugLog('📱 Mobile premium audio setup failed:', error);
                 return this.playEnhancedBrowserTTS(responseText, 'neutral');
+            }
+        }
+
+        // 📱 HELPER METHOD FOR AUDIO CLEANUP
+        cleanupCurrentAudio() {
+            if (this.currentAudio) {
+                try {
+                    this.currentAudio.pause();
+                    this.currentAudio.src = '';
+                    this.currentAudio = null;
+                } catch (error) {
+                    debugLog('📱 Audio cleanup error (non-critical):', error);
+                    this.currentAudio = null;
+                }
             }
         }
 
@@ -1101,14 +1199,34 @@ HTML_TEMPLATE = '''
             }, 3000);
         }
 
+        // 📱 MOBILE CLEANUP FIX - Improved audioFinished method
         audioFinished() {
-            debugLog('Audio playback finished');
+            debugLog('📱 Audio playback finished - cleaning up mobile resources');
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
             
-            if (this.currentAudio) {
-                this.currentAudio = null;
+            // 📱 MOBILE AUDIO CLEANUP
+            this.cleanupCurrentAudio();
+            
+            // 📱 CLEANUP AUDIO URLs
+            this.audioURLs.forEach(url => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    debugLog('📱 URL cleanup error (non-critical):', error);
+                }
+            });
+            this.audioURLs.clear();
+            
+            // 📱 MOBILE MEMORY CLEANUP
+            if (this.isMobile) {
+                // Force garbage collection hint
+                setTimeout(() => {
+                    if (window.gc) {
+                        window.gc();
+                    }
+                }, 1000);
             }
         }
 
@@ -1116,6 +1234,14 @@ HTML_TEMPLATE = '''
             const micHandler = async (e) => {
                 e.preventDefault();
                 debugLog('Microphone button activated');
+                
+                // 📱 MOBILE STATE RESET BEFORE NEW INTERACTION
+                if (this.isMobile && this.userInteracted) {
+                    this.resetMobileAudioState();
+                    
+                    // Small delay to ensure cleanup is complete
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
                 
                 if (!this.userInteracted) {
                     debugLog('First user interaction - enabling voice features');
@@ -1149,6 +1275,11 @@ HTML_TEMPLATE = '''
                     this.stopListening();
                 } else if (this.isPlaying) {
                     this.stopAudio();
+                }
+                
+                // 📱 MOBILE RESET AFTER STOP
+                if (this.isMobile) {
+                    setTimeout(() => this.resetMobileAudioState(), 300);
                 }
             });
             
@@ -1209,13 +1340,12 @@ HTML_TEMPLATE = '''
             }
         }
 
+        // 📱 IMPROVED stopAudio method for better mobile handling
         stopAudio() {
             if (this.isPlaying) {
-                if (this.currentAudio) {
-                    this.currentAudio.pause();
-                    this.currentAudio.currentTime = 0;
-                    this.currentAudio = null;
-                }
+                debugLog('📱 Stopping mobile audio...');
+                
+                this.cleanupCurrentAudio();
                 speechSynthesis.cancel();
                 this.audioFinished();
             }
@@ -1277,11 +1407,21 @@ HTML_TEMPLATE = '''
             this.errorMessage.classList.remove('show');
         }
 
+        // 📱 ENHANCED clearAll method for mobile
         clearAll() {
+            debugLog('📱 Clearing all mobile audio resources...');
+            
             this.stopAudio();
+            
             if (this.isListening && this.recognition) {
-                this.recognition.stop();
+                try {
+                    this.recognition.stop();
+                } catch (error) {
+                    debugLog('📱 Recognition stop error (non-critical):', error);
+                }
             }
+            
+            // 📱 RESET ALL STATES
             this.isProcessing = false;
             this.isListening = false;
             this.isPlaying = false;
@@ -1289,6 +1429,16 @@ HTML_TEMPLATE = '''
             this.voiceVisualizer.classList.remove('active');
             this.clearError();
             this.updateStatus('🎙️ Tap microphone to start');
+            
+            // 📱 MOBILE CLEANUP
+            if (this.isMobile) {
+                speechSynthesis.cancel();
+                
+                // Clear any pending timeouts
+                setTimeout(() => {
+                    this.updateStatus('📱 Ready for next command');
+                }, 500);
+            }
         }
     }
 
@@ -1531,7 +1681,9 @@ def health_check():
             "Browser Speech Recognition",
             "Bilingual Support",
             "FAQ Matching",
-            "iOS Audio Compatibility"
+            "iOS Audio Compatibility",
+            "Mobile State Reset System",
+            "Audio Memory Management"
         ]
     })
 
@@ -1574,6 +1726,8 @@ if __name__ == "__main__":
     print("   • Enhanced mobile compatibility")
     print("   • Smart audio fallback system")
     print("   • Real-time audio quality indicators")
+    print("   • Mobile state reset system")
+    print("   • Audio memory management")
     print("\n📋 API Keys Status:")
     print(f"   • Claude API: {'✅ Connected' if anthropic_api_key else '❌ Missing'}")
     print(f"   • OpenAI TTS: {'✅ Available' if openai_api_key else '❌ Missing'}")
@@ -1584,5 +1738,7 @@ if __name__ == "__main__":
     print("\n📱 Mobile Premium Audio: ✅ iOS Compatible")
     print("🔇 Echo Prevention: ✅ Frontend + Backend protection")
     print("🎵 Audio Quality: Premium Rachel voice with mobile optimization")
+    print("📱 Mobile Loading Fix: ✅ State reset + Audio cleanup")
+    print("🧹 Memory Management: ✅ URL cleanup + Resource management")
 
     app.run(debug=True, host='0.0.0.0', port=5000)
