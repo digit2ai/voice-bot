@@ -1109,11 +1109,11 @@ def process_text_enhanced():
                 context = "excited"
             else:
                 context = "professional"
-        else:
+else:
             # Step 2: Get enhanced Claude response
             language_context = "spanish" if user_language.startswith('es') else "english"
             
-try:
+            try:
                 logging.info("🧠 Generating response...")
                 
                 # Detect context from user input first
@@ -1147,8 +1147,7 @@ try:
                 logging.error(f"❌ Response generation error: {e}")
                 response_text = "Hi! I'm your RinglyPro AI assistant. I'm here to help you grow your business with automated calls, scheduling, and lead management. How can I assist you today?"
         
-        # Step 3: Generate premium audio
-# Step 3: Try to generate premium audio (simplified)
+        # Step 3: Try to generate premium audio (simplified)
         audio_data = None
         engine_used = "browser_fallback"
         
