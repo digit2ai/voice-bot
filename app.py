@@ -568,84 +568,7 @@ HTML_TEMPLATE = '''
         }
 
         detectMobile() {
-            return jsonify({"error": "Invalid engine specified"}), 400
-            
-        loop.close()
-        
-        if audio_bytes:
-            audio_data = base64.b64encode(audio_bytes).decode('utf-8')
-            return jsonify({
-                "success": True,
-                "audio": audio_data,
-                "engine_used": engine_used,
-                "context": context,
-                "text_processed": tts_engine.optimize_text_for_speech(text, context)
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": "Audio generation failed",
-                "engine_tested": engine
-            })
-            
-    except Exception as e:
-        logging.error(f"TTS test error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-# Allow iframe embedding
-@app.after_request
-def allow_iframe_embedding(response):
-    response.headers['X-Frame-Options'] = 'ALLOWALL'
-    response.headers['Content-Security-Policy'] = "frame-ancestors *"
-    return response
-
-if __name__ == "__main__":
-    # Verify API connections on startup
-    try:
-        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
-        test_claude = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Hello"}]
-        )
-        logging.info("✅ Claude API connection successful")
-    except Exception as e:
-        logging.error(f"❌ Claude API connection test failed: {e}")
-        print("⚠️  Warning: Claude API connection not verified.")
-
-    # Test TTS engines
-    if openai_api_key:
-        logging.info("✅ OpenAI API key found")
-    else:
-        logging.warning("⚠️  OpenAI API key not found - premium TTS unavailable")
-
-    if os.getenv("ELEVENLABS_API_KEY"):
-        logging.info("✅ ElevenLabs API key found")
-    else:
-        logging.warning("⚠️  ElevenLabs API key not found - premium TTS limited")
-
-    print("🚀 Starting Enhanced RinglyPro AI Voice Assistant...")
-    print("🎯 Enhanced Features:")
-    print("   • Premium TTS with ElevenLabs Rachel voice")
-    print("   • Mobile Premium Audio Support (iOS Compatible)")
-    print("   • Echo prevention system (frontend + backend)")
-    print("   • Speech-optimized responses")
-    print("   • Enhanced mobile compatibility")
-    print("   • Smart audio fallback system")
-    print("   • Real-time audio quality indicators")
-    print("\n📋 API Keys Status:")
-    print(f"   • Claude API: {'✅ Connected' if anthropic_api_key else '❌ Missing'}")
-    print(f"   • OpenAI TTS: {'✅ Available' if openai_api_key else '❌ Missing'}")
-    print(f"   • ElevenLabs TTS: {'✅ Available' if os.getenv('ELEVENLABS_API_KEY') else '❌ Missing'}")
-    print("\n🌐 Access URLs:")
-    print("   • Main App: http://localhost:5000")
-    print("   • Health Check: http://localhost:5000/health")
-    print("   • TTS Test: http://localhost:5000/tts-test")
-    print("\n📱 Mobile Premium Audio: ✅ iOS Compatible")
-    print("🔇 Echo Prevention: ✅ Frontend + Backend protection")
-    print("🎵 Audio Quality: Premium Rachel voice with mobile optimization")
-
-    app.run(debug=True, host='0.0.0.0', port=5000) /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         }
 
         async init() {
@@ -895,7 +818,7 @@ if __name__ == "__main__":
                     body: JSON.stringify({
                         text: transcript,
                         language: this.currentLanguage,
-                        mobile: this.isMobile  // 📱 Send mobile flag to backend
+                        mobile: this.isMobile
                     })
                 });
 
@@ -932,10 +855,8 @@ if __name__ == "__main__":
             }
         }
 
-        // 📱 MOBILE PREMIUM AUDIO PLAYER - iOS Compatible
         async playPremiumAudio(audioBase64, responseText) {
             try {
-                // 🔇 Stop speech recognition during audio
                 if (this.recognition && this.isListening) {
                     this.recognition.stop();
                     debugLog('🔇 Stopped speech recognition during audio');
@@ -943,7 +864,6 @@ if __name__ == "__main__":
                 
                 debugLog('📱 Starting mobile premium audio playback...');
                 
-                // 📱 MOBILE AUDIO PROCESSING
                 const audioData = atob(audioBase64);
                 const arrayBuffer = new ArrayBuffer(audioData.length);
                 const uint8Array = new Uint8Array(arrayBuffer);
@@ -952,50 +872,39 @@ if __name__ == "__main__":
                     uint8Array[i] = audioData.charCodeAt(i);
                 }
 
-                // 📱 MOBILE-OPTIMIZED BLOB CREATION
                 const audioBlob = new Blob([arrayBuffer], { 
                     type: this.isMobile ? 'audio/mp3' : 'audio/mpeg'
                 });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 
-                // 📱 MOBILE AUDIO SETUP
                 this.currentAudio = new Audio();
                 
                 if (this.isMobile) {
                     debugLog('📱 Configuring for mobile device...');
-                    
-                    // 📱 iOS COMPATIBLE SETTINGS
                     this.currentAudio.crossOrigin = 'anonymous';
                     this.currentAudio.preload = 'auto';
-                    this.currentAudio.volume = 0.9;  // Slightly lower for mobile speakers
+                    this.currentAudio.volume = 0.9;
                     this.currentAudio.playbackRate = 1.0;
-                    
-                    // 📱 MOBILE AUDIO PROPERTIES
                     this.currentAudio.setAttribute('webkit-playsinline', 'true');
                     this.currentAudio.setAttribute('playsinline', 'true');
                     this.currentAudio.muted = false;
-                    
                 } else {
-                    // Desktop settings
                     this.currentAudio.preload = 'auto';
                     this.currentAudio.volume = 0.85;
                 }
                 
-                // Set source after configuration
                 this.currentAudio.src = audioUrl;
                 
                 return new Promise((resolve, reject) => {
-                    let hasStarted = false;
                     let loadTimeout;
                     
-                    // 📱 MOBILE LOADING TIMEOUT
                     if (this.isMobile) {
                         loadTimeout = setTimeout(() => {
                             debugLog('📱 Mobile audio loading timeout, using TTS fallback');
                             this.currentAudio = null;
                             URL.revokeObjectURL(audioUrl);
                             this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
-                        }, 10000);  // 10 second timeout for mobile
+                        }, 10000);
                     }
                     
                     this.currentAudio.onloadstart = () => {
@@ -1010,7 +919,6 @@ if __name__ == "__main__":
                     
                     this.currentAudio.onplay = () => {
                         debugLog('📱 Mobile premium audio playing');
-                        hasStarted = true;
                         this.isPlaying = true;
                         this.updateUI('speaking');
                         this.updateStatus('🔊 Rachel speaking...');
@@ -1037,7 +945,6 @@ if __name__ == "__main__":
                         this.audioFinished();
                         URL.revokeObjectURL(audioUrl);
                         
-                        // 📱 MOBILE ERROR HANDLING
                         if (this.isMobile) {
                             debugLog('📱 Mobile audio failed, using TTS fallback');
                             this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
@@ -1046,18 +953,15 @@ if __name__ == "__main__":
                         }
                     };
                     
-                    // 📱 MOBILE PLAY ATTEMPT
                     const playAudio = async () => {
                         try {
                             debugLog('📱 Attempting to play mobile audio...');
                             
-                            // 📱 ENSURE AUDIO CONTEXT IS ACTIVE (iOS requirement)
                             if (this.audioContext && this.audioContext.state === 'suspended') {
                                 await this.audioContext.resume();
                                 debugLog('📱 Audio context resumed for mobile');
                             }
                             
-                            // 📱 PLAY WITH PROMISE HANDLING
                             const playPromise = this.currentAudio.play();
                             
                             if (playPromise !== undefined) {
@@ -1068,12 +972,10 @@ if __name__ == "__main__":
                         } catch (playError) {
                             debugLog('📱 Mobile play error:', playError.name, playError.message);
                             
-                            // 📱 HANDLE SPECIFIC MOBILE ERRORS
                             if (playError.name === 'NotAllowedError') {
                                 debugLog('📱 Mobile audio blocked by browser policy');
                                 this.updateStatus('🔊 Please tap screen to enable audio');
                                 
-                                // 📱 WAIT FOR USER INTERACTION
                                 const enableAudio = () => {
                                     this.currentAudio.play().catch(() => {
                                         this.currentAudio.onerror(playError);
@@ -1084,18 +986,14 @@ if __name__ == "__main__":
                                 document.addEventListener('click', enableAudio, { once: true });
                                 
                             } else {
-                                // Other errors - fallback to TTS
                                 this.currentAudio.onerror(playError);
                             }
                         }
                     };
                     
-                    // 📱 START PLAYBACK
                     if (this.currentAudio.readyState >= 2) {
-                        // Audio already loaded
                         playAudio();
                     } else {
-                        // Wait for audio to load
                         this.currentAudio.addEventListener('canplay', playAudio, { once: true });
                     }
                 });
@@ -1106,10 +1004,8 @@ if __name__ == "__main__":
             }
         }
 
-        // 📱 MOBILE-ENHANCED BROWSER TTS
         async playEnhancedBrowserTTS(text, context) {
             try {
-                // 🔇 Stop speech recognition during TTS
                 if (this.recognition && this.isListening) {
                     this.recognition.stop();
                     debugLog('🔇 Stopped speech recognition during TTS');
@@ -1121,19 +1017,16 @@ if __name__ == "__main__":
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = this.currentLanguage;
                 
-                // 📱 MOBILE-OPTIMIZED TTS SETTINGS
                 if (this.isMobile) {
                     debugLog('📱 Using mobile TTS settings...');
-                    utterance.rate = 0.9;    // Slightly slower for mobile
+                    utterance.rate = 0.9;
                     utterance.pitch = 1.0;
-                    utterance.volume = 1.0;  // Full volume for mobile
+                    utterance.volume = 1.0;
                     
-                    // 📱 Try to select a good mobile voice
                     const voices = speechSynthesis.getVoices();
                     debugLog('📱 Available voices:', voices.length);
                     
                     if (voices.length > 0) {
-                        // Look for a good English voice on mobile
                         const preferredVoice = voices.find(voice => 
                             voice.lang.startsWith('en') && 
                             (voice.name.includes('Female') || voice.name.includes('woman') || voice.name.includes('Google'))
@@ -1145,7 +1038,6 @@ if __name__ == "__main__":
                         }
                     }
                 } else {
-                    // Desktop settings (keep working)
                     utterance.rate = 0.95;
                     utterance.pitch = 1.0;
                     utterance.volume = 0.85;
@@ -1163,7 +1055,6 @@ if __name__ == "__main__":
                         debugLog(this.isMobile ? '📱 Mobile TTS ended' : '🔊 Desktop TTS ended');
                         this.audioFinished();
                         
-                        // 🔇 Wait before allowing new input
                         setTimeout(() => {
                             this.updateStatus('🎙️ Tap microphone to continue');
                         }, 1000);
@@ -1177,7 +1068,6 @@ if __name__ == "__main__":
                         resolve();
                     };
 
-                    // 📱 MOBILE TTS: Load voices first if needed
                     if (this.isMobile && speechSynthesis.getVoices().length === 0) {
                         debugLog('📱 Loading mobile voices...');
                         speechSynthesis.addEventListener('voiceschanged', () => {
@@ -1498,7 +1388,6 @@ def process_text_enhanced():
                 
                 logging.info(f"📱 Generating mobile-optimized ElevenLabs audio...")
                 
-                # 📱 MOBILE-OPTIMIZED ELEVENLABS SETTINGS
                 url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
                 
                 headers = {
@@ -1507,37 +1396,32 @@ def process_text_enhanced():
                     "xi-api-key": elevenlabs_key
                 }
                 
-                # 📱 Mobile-optimized text and settings
-                mobile_text = response_text[:180]  # Shorter for mobile
+                mobile_text = response_text[:180]
                 mobile_text = mobile_text.replace("RinglyPro", "Ringly Pro")
                 mobile_text = mobile_text.replace("AI", "A.I.")
                 
-                # 📱 MOBILE-SPECIFIC ELEVENLABS CONFIG
                 tts_data = {
                     "text": mobile_text,
-                    "model_id": "eleven_flash_v2_5" if is_mobile else "eleven_multilingual_v2",  # Use fastest model for mobile
+                    "model_id": "eleven_flash_v2_5" if is_mobile else "eleven_multilingual_v2",
                     "voice_settings": {
-                        "stability": 0.8,        # Higher stability for mobile
-                        "similarity_boost": 0.9, # Higher similarity for clarity
-                        "style": 0.2,            # Lower style for consistency
-                        "use_speaker_boost": False  # Disable for mobile compatibility
+                        "stability": 0.8,
+                        "similarity_boost": 0.9,
+                        "style": 0.2,
+                        "use_speaker_boost": False
                     }
                 }
                 
                 if is_mobile:
-                    tts_data["optimize_streaming_latency"] = 4  # Maximum optimization for mobile
-                    tts_data["output_format"] = "mp3_44100_128"  # Mobile-optimized format
+                    tts_data["optimize_streaming_latency"] = 4
+                    tts_data["output_format"] = "mp3_44100_128"
                 
-                # 📱 Shorter timeout for mobile networks
                 timeout = 6 if is_mobile else 10
                 tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                 
                 if tts_response.status_code == 200:
-                    # 📱 MOBILE AUDIO OPTIMIZATION
                     audio_content = tts_response.content
                     
-                    # Verify audio content is valid
-                    if len(audio_content) > 1000:  # Minimum size check
+                    if len(audio_content) > 1000:
                         audio_data = base64.b64encode(audio_content).decode('utf-8')
                         engine_used = "elevenlabs_mobile" if is_mobile else "elevenlabs"
                         logging.info(f"✅ {'Mobile' if is_mobile else 'Desktop'} ElevenLabs audio generated ({len(audio_content)} bytes)")
@@ -1595,13 +1479,11 @@ def process_text():
                         else "Text too short. Please try again.")
             return jsonify({"error": error_msg}), 400
         
-        # Use FAQ matching or fallback to simple Claude response
         faq_response, is_faq = get_faq_response(user_text)
         
         if is_faq:
             response_text = faq_response
         else:
-            # Simple Claude fallback (your original logic)
             try:
                 claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
                 message = claude_client.messages.create(
@@ -1653,31 +1535,54 @@ def health_check():
         ]
     })
 
-@app.route('/tts-test', methods=['POST'])
-async def tts_test():
-    """Test endpoint for TTS engines"""
+# Allow iframe embedding
+@app.after_request
+def allow_iframe_embedding(response):
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+if __name__ == "__main__":
     try:
-        data = request.get_json()
-        text = data.get('text', 'Hello, this is a test of the RinglyPro AI voice system.')
-        context = data.get('context', 'neutral')
-        engine = data.get('engine', 'auto')
-        
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        if engine == 'auto':
-            audio_bytes, engine_used, detected_context = loop.run_until_complete(
-                tts_engine.generate_audio(text, "test input")
-            )
-        elif engine == 'openai':
-            audio_bytes = loop.run_until_complete(
-                tts_engine.generate_audio_openai(text, context)
-            )
-            engine_used = "openai" if audio_bytes else "failed"
-        elif engine == 'elevenlabs':
-            audio_bytes = loop.run_until_complete(
-                tts_engine.generate_audio_elevenlabs(text, context)
-            )
-            engine_used = "elevenlabs" if audio_bytes else "failed"
-        else:
-            return
+        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        test_claude = claude_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        logging.info("✅ Claude API connection successful")
+    except Exception as e:
+        logging.error(f"❌ Claude API connection test failed: {e}")
+        print("⚠️  Warning: Claude API connection not verified.")
+
+    if openai_api_key:
+        logging.info("✅ OpenAI API key found")
+    else:
+        logging.warning("⚠️  OpenAI API key not found - premium TTS unavailable")
+
+    if os.getenv("ELEVENLABS_API_KEY"):
+        logging.info("✅ ElevenLabs API key found")
+    else:
+        logging.warning("⚠️  ElevenLabs API key not found - premium TTS limited")
+
+    print("🚀 Starting Enhanced RinglyPro AI Voice Assistant...")
+    print("🎯 Enhanced Features:")
+    print("   • Premium TTS with ElevenLabs Rachel voice")
+    print("   • Mobile Premium Audio Support (iOS Compatible)")
+    print("   • Echo prevention system (frontend + backend)")
+    print("   • Speech-optimized responses")
+    print("   • Enhanced mobile compatibility")
+    print("   • Smart audio fallback system")
+    print("   • Real-time audio quality indicators")
+    print("\n📋 API Keys Status:")
+    print(f"   • Claude API: {'✅ Connected' if anthropic_api_key else '❌ Missing'}")
+    print(f"   • OpenAI TTS: {'✅ Available' if openai_api_key else '❌ Missing'}")
+    print(f"   • ElevenLabs TTS: {'✅ Available' if os.getenv('ELEVENLABS_API_KEY') else '❌ Missing'}")
+    print("\n🌐 Access URLs:")
+    print("   • Main App: http://localhost:5000")
+    print("   • Health Check: http://localhost:5000/health")
+    print("\n📱 Mobile Premium Audio: ✅ iOS Compatible")
+    print("🔇 Echo Prevention: ✅ Frontend + Backend protection")
+    print("🎵 Audio Quality: Premium Rachel voice with mobile optimization")
+
+    app.run(debug=True, host='0.0.0.0', port=5000)
