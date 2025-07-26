@@ -1279,7 +1279,7 @@ HTML_TEMPLATE = '''
                     this.resetMobileAudioState();
                     
                     // 📱 LONGER DELAY for mobile to ensure complete cleanup
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    await new Promise(resolve => setTimeout(resolve, 800)); // Increased delay
                 }
                 
                 if (!this.userInteracted) {
@@ -1305,6 +1305,7 @@ HTML_TEMPLATE = '''
                 // 📱 MOBILE: Additional check to prevent multiple simultaneous requests
                 if (this.isMobile && (this.isProcessing || this.isPlaying || this.isListening)) {
                     debugLog('📱 Mobile: Blocking interaction - another process is active');
+                    this.updateStatus('📱 Please wait, processing...');
                     return;
                 }
                 
@@ -1365,12 +1366,36 @@ HTML_TEMPLATE = '''
                 return;
             }
             
+            // 📱 MOBILE FIX: Ensure recognition is completely stopped before starting
+            if (this.isMobile && this.isListening) {
+                debugLog('📱 Mobile: Recognition already active, stopping first...');
+                try {
+                    this.recognition.stop();
+                    // Wait for it to fully stop
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                    this.isListening = false;
+                } catch (error) {
+                    debugLog('📱 Mobile: Error stopping recognition:', error);
+                    this.isListening = false;
+                }
+            }
+            
+            // 📱 MOBILE FIX: Double-check state before starting
+            if (this.isListening) {
+                debugLog('📱 Mobile: Still listening, aborting start attempt');
+                return;
+            }
+            
             try {
                 this.clearError();
                 speechSynthesis.cancel();
+                
+                debugLog('📱 Mobile: Starting speech recognition...');
                 this.recognition.start();
                 this.stopBtn.disabled = false;
+                
             } catch (error) {
+                debugLog('📱 Mobile: Start listening error:', error);
                 this.handleError('Failed to start listening: ' + error.message);
             }
         }
