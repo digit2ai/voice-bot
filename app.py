@@ -1158,7 +1158,7 @@ def process_text_enhanced():
                     # Optimize text for speech
                     optimized_text = response_text.replace("cannot", "can't").replace("will not", "won't").replace("do not", "don't")
                     
-                    data = {
+                    tts_data = {
                         "text": optimized_text,
                         "model_id": "eleven_multilingual_v2",
                         "voice_settings": {
