@@ -545,511 +545,661 @@ HTML_TEMPLATE = '''
         }
     }
 
-    class EnhancedVoiceBot {
-        constructor() {
-            debugLog('Creating EnhancedVoiceBot instance...');
-            
-            this.micBtn = document.getElementById('micBtn');
-            this.status = document.getElementById('status');
-            this.stopBtn = document.getElementById('stopBtn');
-            this.clearBtn = document.getElementById('clearBtn');
-            this.errorMessage = document.getElementById('errorMessage');
-            this.voiceVisualizer = document.getElementById('voiceVisualizer');
-            this.langBtns = document.querySelectorAll('.lang-btn');
-            
-            this.isListening = false;
-            this.isProcessing = false;
-            this.isPlaying = false;
-            this.currentLanguage = 'en-US';
-            this.recognition = null;
-            this.currentAudio = null;
-            this.audioContext = null;
-            this.userInteracted = false;
-            this.isMobile = this.detectMobile();
-            
-            this.init();
+class EnhancedVoiceBot {
+    constructor() {
+        debugLog('Creating EnhancedVoiceBot instance...');
+        
+        this.micBtn = document.getElementById('micBtn');
+        this.status = document.getElementById('status');
+        this.stopBtn = document.getElementById('stopBtn');
+        this.clearBtn = document.getElementById('clearBtn');
+        this.errorMessage = document.getElementById('errorMessage');
+        this.voiceVisualizer = document.getElementById('voiceVisualizer');
+        this.langBtns = document.querySelectorAll('.lang-btn');
+        
+        this.isListening = false;
+        this.isProcessing = false;
+        this.isPlaying = false;
+        this.currentLanguage = 'en-US';
+        this.recognition = null;
+        this.currentAudio = null;
+        this.audioContext = null;
+        this.userInteracted = false;
+        this.isMobile = this.detectMobile();
+        
+        // 🔇 ECHO PREVENTION: New properties to prevent Rachel from hearing herself
+        this.rachelIsSpeaking = false;
+        this.lastResponseTime = 0;
+        this.cooldownPeriod = 1500; // 1.5 second cooldown after Rachel speaks
+        this.lastUserInput = '';
+        
+        this.init();
+    }
+
+    detectMobile() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    async init() {
+        debugLog('Initializing voice bot...');
+        
+        const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+        
+        if (!hasSpeechRecognition) {
+            debugLog('ERROR: Speech recognition not supported');
+            this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
+            return;
         }
 
-        detectMobile() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            debugLog('Audio context initialized');
+        } catch (error) {
+            debugLog('Audio context initialization failed:', error);
         }
 
-        async init() {
-            debugLog('Initializing voice bot...');
-            
-            const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-            
-            if (!hasSpeechRecognition) {
-                debugLog('ERROR: Speech recognition not supported');
-                this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
-                return;
-            }
-
-            try {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                debugLog('Audio context initialized');
-            } catch (error) {
-                debugLog('Audio context initialization failed:', error);
-            }
-
-            this.setupEventListeners();
-            
-            if (this.isMobile) {
-                this.updateStatus('🎙️ Tap the microphone to start');
-            } else {
-                this.initSpeechRecognition();
-                this.userInteracted = true;
-                this.updateStatus('🎙️ Click the microphone to start');
-            }
-        }
-
-        async requestMicrophonePermission() {
-            debugLog('Requesting microphone permission...');
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                debugLog('Microphone permission granted');
-                stream.getTracks().forEach(track => track.stop());
-                return true;
-            } catch (error) {
-                debugLog('ERROR: Microphone permission denied', error.message);
-                this.showError('Microphone permission denied. Please allow microphone access.');
-                return false;
-            }
-        }
-
-        initSpeechRecognition() {
-            debugLog('Initializing speech recognition...');
-            
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            try {
-                this.recognition = new SpeechRecognition();
-                this.recognition.continuous = false;
-                this.recognition.interimResults = false;
-                this.recognition.lang = this.currentLanguage;
-                this.recognition.maxAlternatives = 1;
-
-                this.recognition.onstart = () => {
-                    debugLog('Speech recognition started');
-                    this.isListening = true;
-                    this.updateUI('listening');
-                    this.voiceVisualizer.classList.add('active');
-                    this.updateStatus('🎙️ Listening... Speak now');
-                };
-
-                this.recognition.onresult = (event) => {
-                    debugLog('Speech recognition result:', event);
-                    if (event.results && event.results.length > 0) {
-                        const transcript = event.results[0][0].transcript.trim();
-                        debugLog('Transcript received:', transcript);
-                        this.processTranscript(transcript);
-                    }
-                };
-
-                this.recognition.onerror = (event) => {
-                    debugLog('ERROR: Speech recognition error', event.error);
-                    this.handleSpeechError(event.error);
-                };
-
-                this.recognition.onend = () => {
-                    debugLog('Speech recognition ended');
-                    this.isListening = false;
-                    this.voiceVisualizer.classList.remove('active');
-                    this.stopBtn.disabled = true;
-                    
-                    if (!this.isProcessing) {
-                        this.updateUI('ready');
-                        this.updateStatus('🎙️ Tap the microphone to start');
-                    }
-                };
-
-                debugLog('Speech recognition initialized successfully');
-            } catch (error) {
-                debugLog('ERROR: Failed to initialize speech recognition', error.message);
-                this.showError('Failed to initialize speech recognition: ' + error.message);
-            }
-        }
-
-        handleSpeechError(error) {
-            let message = '';
-            switch (error) {
-                case 'not-allowed':
-                    message = 'Microphone access denied. Please allow microphone permission.';
-                    break;
-                case 'no-speech':
-                    message = 'No speech detected. Please try again.';
-                    break;
-                case 'audio-capture':
-                    message = 'Microphone not accessible. Check if another app is using it.';
-                    break;
-                case 'network':
-                    message = 'Network error. Check your internet connection.';
-                    break;
-                default:
-                    message = 'Speech error: ' + error;
-            }
-            this.handleError(message);
-        }
-
-        async processTranscript(transcript) {
-            if (!transcript || transcript.length < 2) {
-                this.handleError('No valid speech detected');
-                return;
-            }
-
-            debugLog('Processing transcript:', transcript);
-            this.isProcessing = true;
-            this.updateUI('processing');
-            this.updateStatus('🤖 Processing...');
-
-            const processingTimeout = setTimeout(() => {
-                debugLog('ERROR: Processing timeout after 30 seconds');
-                this.handleError('Processing timeout. Please try again.');
-            }, 30000);
-
-            try {
-                const response = await fetch('/process-text-enhanced', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        text: transcript,
-                        language: this.currentLanguage
-                    })
-                });
-
-                clearTimeout(processingTimeout);
-
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.status);
-                }
-
-                const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-                
-                if (!data.response) {
-                    throw new Error('No response from server');
-                }
-                
-                if (data.audio) {
-                    debugLog('Playing premium audio...');
-                    await this.playPremiumAudio(data.audio, data.response);
-                    this.showAudioQuality('premium', data.engine_used || 'elevenlabs');
-                } else {
-                    debugLog('Using enhanced browser TTS...');
-                    await this.playEnhancedBrowserTTS(data.response, data.context || 'neutral');
-                    this.showAudioQuality('enhanced', 'browser');
-                }
-
-            } catch (error) {
-                clearTimeout(processingTimeout);
-                debugLog('ERROR: Processing failed', error.message);
-                this.handleError('Processing error: ' + error.message);
-            }
-        }
-
-        async playPremiumAudio(audioBase64, responseText) {
-            try {
-                const audioData = atob(audioBase64);
-                const arrayBuffer = new ArrayBuffer(audioData.length);
-                const uint8Array = new Uint8Array(arrayBuffer);
-                
-                for (let i = 0; i < audioData.length; i++) {
-                    uint8Array[i] = audioData.charCodeAt(i);
-                }
-
-                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                this.currentAudio = new Audio(audioUrl);
-                this.currentAudio.preload = 'auto';
-                
-                return new Promise((resolve) => {
-                    this.currentAudio.onloadstart = () => {
-                        this.updateStatus('🔊 Loading audio...');
-                    };
-                    
-                    this.currentAudio.onplay = () => {
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus('🔊 Speaking...');
-                    };
-                    
-                    this.currentAudio.onended = () => {
-                        this.audioFinished();
-                        URL.revokeObjectURL(audioUrl);
-                        resolve();
-                    };
-                    
-                    this.currentAudio.onerror = (error) => {
-                        debugLog('ERROR: Audio playback error', error);
-                        this.audioFinished();
-                        URL.revokeObjectURL(audioUrl);
-                        this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
-                    };
-
-                    this.currentAudio.play().catch(error => {
-                        this.currentAudio.onerror(error);
-                    });
-                });
-                
-            } catch (error) {
-                debugLog('ERROR: Premium audio playback failed', error);
-                return this.playEnhancedBrowserTTS(responseText, 'neutral');
-            }
-        }
-
-        async playEnhancedBrowserTTS(text, context) {
-            try {
-                speechSynthesis.cancel();
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = this.currentLanguage;
-                utterance.rate = 0.95;
-                utterance.pitch = 1.0;
-                utterance.volume = 0.85;
-
-                return new Promise((resolve) => {
-                    utterance.onstart = () => {
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus('🔊 Speaking...');
-                    };
-
-                    utterance.onend = () => {
-                        this.audioFinished();
-                        resolve();
-                    };
-
-                    utterance.onerror = (error) => {
-                        debugLog('ERROR: Browser TTS error', error);
-                        this.audioFinished();
-                        resolve();
-                    };
-
-                    speechSynthesis.speak(utterance);
-                });
-
-            } catch (error) {
-                debugLog('ERROR: Enhanced browser TTS failed', error);
-                this.audioFinished();
-            }
-        }
-
-        showAudioQuality(quality, engine) {
-            const indicator = document.createElement('div');
-            indicator.className = 'audio-quality-indicator';
-            
-            const qualityText = quality === 'premium' 
-                ? '🎵 Premium Audio (' + engine + ')' 
-                : '🔊 Enhanced Audio (' + engine + ')';
-                
-            indicator.innerHTML = qualityText;
-            document.body.appendChild(indicator);
-            
-            setTimeout(() => {
-                indicator.style.animation = 'slideOutRight 0.3s ease';
-                setTimeout(() => indicator.remove(), 300);
-            }, 3000);
-        }
-
-        audioFinished() {
-            debugLog('Audio playback finished');
-            this.isPlaying = false;
-            this.isProcessing = false;
-            this.updateUI('ready');
-            this.updateStatus('🎙️ Tap microphone to continue');
-            
-            if (this.currentAudio) {
-                this.currentAudio = null;
-            }
-        }
-
-        setupEventListeners() {
-            const micHandler = async (e) => {
-                e.preventDefault();
-                debugLog('Microphone button activated');
-                
-                if (!this.userInteracted) {
-                    debugLog('First user interaction - enabling voice features');
-                    this.userInteracted = true;
-                    
-                    if (this.isMobile) {
-                        const permissionGranted = await this.requestMicrophonePermission();
-                        if (!permissionGranted) {
-                            return;
-                        }
-                    }
-                    
-                    if (this.audioContext && this.audioContext.state === 'suspended') {
-                        await this.audioContext.resume();
-                    }
-                    
-                    this.initSpeechRecognition();
-                    this.updateStatus('🎙️ Voice enabled! Tap microphone to start');
-                    return;
-                }
-                
-                this.toggleListening();
-            };
-            
-            this.micBtn.addEventListener('click', micHandler);
-            this.micBtn.addEventListener('touchend', micHandler);
-            
-            this.stopBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (this.isListening) {
-                    this.stopListening();
-                } else if (this.isPlaying) {
-                    this.stopAudio();
-                }
-            });
-            
-            this.clearBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.clearAll();
-            });
-            
-            this.langBtns.forEach(btn => {
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    this.changeLanguage(e.target.dataset.lang);
-                });
-            });
-        }
-
-        changeLanguage(lang) {
-            this.currentLanguage = lang;
-            if (this.recognition) {
-                this.recognition.lang = lang;
-            }
-            
-            this.langBtns.forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.lang === lang);
-            });
-        }
-
-        toggleListening() {
-            if (this.isListening) {
-                this.stopListening();
-            } else {
-                this.startListening();
-            }
-        }
-
-        async startListening() {
-            if (this.isProcessing || !this.recognition || !this.userInteracted) {
-                return;
-            }
-            
-            try {
-                this.clearError();
-                speechSynthesis.cancel();
-                this.recognition.start();
-                this.stopBtn.disabled = false;
-            } catch (error) {
-                this.handleError('Failed to start listening: ' + error.message);
-            }
-        }
-
-        stopListening() {
-            if (this.isListening && this.recognition) {
-                try {
-                    this.recognition.stop();
-                } catch (error) {
-                    debugLog('ERROR: Failed to stop speech recognition', error.message);
-                }
-            }
-        }
-
-        stopAudio() {
-            if (this.isPlaying) {
-                if (this.currentAudio) {
-                    this.currentAudio.pause();
-                    this.currentAudio.currentTime = 0;
-                    this.currentAudio = null;
-                }
-                speechSynthesis.cancel();
-                this.audioFinished();
-            }
-        }
-
-        updateUI(state) {
-            this.micBtn.className = 'mic-button';
-            this.status.className = '';
-            
-            switch (state) {
-                case 'listening':
-                    this.micBtn.classList.add('listening');
-                    this.status.classList.add('status-listening');
-                    this.stopBtn.disabled = false;
-                    break;
-                case 'processing':
-                    this.micBtn.classList.add('processing');
-                    this.status.classList.add('status-processing');
-                    this.stopBtn.disabled = false;
-                    break;
-                case 'speaking':
-                    this.micBtn.classList.add('speaking');
-                    this.status.classList.add('status-speaking');
-                    this.stopBtn.disabled = false;
-                    break;
-                case 'ready':
-                default:
-                    this.status.classList.add('status-ready');
-                    this.stopBtn.disabled = true;
-                    break;
-            }
-        }
-
-        updateStatus(message) {
-            this.status.textContent = message;
-            this.status.style.color = '';
-        }
-
-        handleError(message) {
-            this.showError(message);
-            this.isProcessing = false;
-            this.isListening = false;
-            this.isPlaying = false;
-            this.updateUI('ready');
-            this.voiceVisualizer.classList.remove('active');
-            
-            setTimeout(() => {
-                this.updateStatus('🎙️ Tap microphone to try again');
-            }, 3000);
-        }
-
-        showError(message) {
-            this.errorMessage.textContent = message;
-            this.errorMessage.classList.add('show');
-            setTimeout(() => this.clearError(), 8000);
-        }
-
-        clearError() {
-            this.errorMessage.classList.remove('show');
-        }
-
-        clearAll() {
-            this.stopAudio();
-            if (this.isListening && this.recognition) {
-                this.recognition.stop();
-            }
-            this.isProcessing = false;
-            this.isListening = false;
-            this.isPlaying = false;
-            this.updateUI('ready');
-            this.voiceVisualizer.classList.remove('active');
-            this.clearError();
-            this.updateStatus('🎙️ Tap microphone to start');
+        this.setupEventListeners();
+        
+        if (this.isMobile) {
+            this.updateStatus('🎙️ Tap the microphone to start');
+        } else {
+            this.initSpeechRecognition();
+            this.userInteracted = true;
+            this.updateStatus('🎙️ Click the microphone to start');
         }
     }
+
+    async requestMicrophonePermission() {
+        debugLog('Requesting microphone permission...');
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+            debugLog('Microphone permission granted');
+            stream.getTracks().forEach(track => track.stop());
+            return true;
+        } catch (error) {
+            debugLog('ERROR: Microphone permission denied', error.message);
+            this.showError('Microphone permission denied. Please allow microphone access.');
+            return false;
+        }
+    }
+
+    initSpeechRecognition() {
+        debugLog('Initializing speech recognition...');
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        try {
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = this.currentLanguage;
+            this.recognition.maxAlternatives = 1;
+
+            this.recognition.onstart = () => {
+                debugLog('Speech recognition started');
+                this.isListening = true;
+                this.updateUI('listening');
+                this.voiceVisualizer.classList.add('active');
+                this.updateStatus('🎙️ Listening... Speak now');
+            };
+
+            this.recognition.onresult = (event) => {
+                debugLog('Speech recognition result:', event);
+                if (event.results && event.results.length > 0) {
+                    const transcript = event.results[0][0].transcript.trim();
+                    debugLog('Transcript received:', transcript);
+                    
+                    // 🔇 CRITICAL: Check if this is Rachel's echo
+                    if (this.isEchoFromRachel(transcript)) {
+                        debugLog('🔄 ECHO DETECTED from Rachel - ignoring input:', transcript);
+                        this.updateStatus('🎙️ Ready to listen again');
+                        this.updateUI('ready');
+                        return; // DON'T process echo
+                    }
+                    
+                    this.processTranscript(transcript);
+                }
+            };
+
+            this.recognition.onerror = (event) => {
+                debugLog('ERROR: Speech recognition error', event.error);
+                this.handleSpeechError(event.error);
+            };
+
+            this.recognition.onend = () => {
+                debugLog('Speech recognition ended');
+                this.isListening = false;
+                this.voiceVisualizer.classList.remove('active');
+                this.stopBtn.disabled = true;
+                
+                if (!this.isProcessing && !this.rachelIsSpeaking) {
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ Tap the microphone to start');
+                }
+            };
+
+            debugLog('Speech recognition initialized successfully');
+        } catch (error) {
+            debugLog('ERROR: Failed to initialize speech recognition', error.message);
+            this.showError('Failed to initialize speech recognition: ' + error.message);
+        }
+    }
+
+    // 🔇 NEW: Detect if input is Rachel's echo
+    isEchoFromRachel(transcript) {
+        const now = Date.now();
+        const timeSinceRachelSpoke = now - this.lastResponseTime;
+        
+        // If Rachel just spoke and we get input too quickly, it's her echo
+        if (timeSinceRachelSpoke < this.cooldownPeriod) {
+            debugLog(`Input too soon after Rachel (${timeSinceRachelSpoke}ms < ${this.cooldownPeriod}ms) - likely echo`);
+            return true;
+        }
+        
+        // Check if Rachel is currently speaking
+        if (this.rachelIsSpeaking) {
+            debugLog('Rachel is currently speaking - ignoring input');
+            return true;
+        }
+        
+        const lowerTranscript = transcript.toLowerCase();
+        
+        // Common phrases Rachel says that might get picked up as echo
+        const rachelEchoPatterns = [
+            'hi i\'m your ringly pro',
+            'that\'s great',
+            'how can i help',
+            'i can help with scheduling',
+            'ringly pro makes',
+            'i\'m here to help',
+            'what questions do you have',
+            'what can i help',
+            'scheduling super easy',
+            'hello i\'m your',
+            'perfect',
+            'wonderful',
+            'excellent',
+            'absolutely'
+        ];
+        
+        const isRachelEcho = rachelEchoPatterns.some(pattern => 
+            lowerTranscript.includes(pattern)
+        );
+        
+        if (isRachelEcho) {
+            debugLog('Rachel echo pattern detected:', lowerTranscript);
+            return true;
+        }
+        
+        // Check if it's identical to recent user input (another type of echo)
+        if (this.lastUserInput && lowerTranscript === this.lastUserInput.toLowerCase()) {
+            debugLog('Duplicate user input detected');
+            return true;
+        }
+        
+        return false;
+    }
+
+    handleSpeechError(error) {
+        let message = '';
+        switch (error) {
+            case 'not-allowed':
+                message = 'Microphone access denied. Please allow microphone permission.';
+                break;
+            case 'no-speech':
+                message = 'No speech detected. Please try again.';
+                break;
+            case 'audio-capture':
+                message = 'Microphone not accessible. Check if another app is using it.';
+                break;
+            case 'network':
+                message = 'Network error. Check your internet connection.';
+                break;
+            default:
+                message = 'Speech error: ' + error;
+        }
+        this.handleError(message);
+    }
+
+    async processTranscript(transcript) {
+        if (!transcript || transcript.length < 2) {
+            this.handleError('No valid speech detected');
+            return;
+        }
+
+        // 🔇 Store user input and make sure Rachel isn't speaking
+        this.lastUserInput = transcript;
+        
+        if (this.rachelIsSpeaking) {
+            debugLog('Ignoring input - Rachel is still speaking');
+            return;
+        }
+
+        debugLog('Processing legitimate user transcript:', transcript);
+        this.isProcessing = true;
+        this.updateUI('processing');
+        this.updateStatus('🤖 Processing...');
+
+        const processingTimeout = setTimeout(() => {
+            debugLog('ERROR: Processing timeout after 30 seconds');
+            this.handleError('Processing timeout. Please try again.');
+        }, 30000);
+
+        try {
+            const response = await fetch('/process-text-enhanced', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    text: transcript,
+                    language: this.currentLanguage
+                })
+            });
+
+            clearTimeout(processingTimeout);
+
+            if (!response.ok) {
+                throw new Error('Server error: ' + response.status);
+            }
+
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
+            
+            if (!data.response) {
+                throw new Error('No response from server');
+            }
+            
+            if (data.audio) {
+                debugLog('Playing Rachel premium audio...');
+                await this.playRachelAudio(data.audio, data.response);
+                this.showAudioQuality('premium', data.engine_used || 'elevenlabs');
+            } else {
+                debugLog('Using Rachel browser TTS...');
+                await this.playRachelBrowserTTS(data.response, data.context || 'neutral');
+                this.showAudioQuality('enhanced', 'browser');
+            }
+
+        } catch (error) {
+            clearTimeout(processingTimeout);
+            debugLog('ERROR: Processing failed', error.message);
+            this.handleError('Processing error: ' + error.message);
+        }
+    }
+
+    // 🔇 RENAMED: Rachel audio with echo prevention
+    async playRachelAudio(audioBase64, responseText) {
+        try {
+            // 🔇 CRITICAL: Mark Rachel as speaking BEFORE audio starts
+            this.rachelIsSpeaking = true;
+            debugLog('🔊 Rachel starting to speak - microphone will be blocked');
+            
+            const audioData = atob(audioBase64);
+            const arrayBuffer = new ArrayBuffer(audioData.length);
+            const uint8Array = new Uint8Array(arrayBuffer);
+            
+            for (let i = 0; i < audioData.length; i++) {
+                uint8Array[i] = audioData.charCodeAt(i);
+            }
+
+            const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            this.currentAudio = new Audio(audioUrl);
+            this.currentAudio.preload = 'auto';
+            
+            return new Promise((resolve) => {
+                this.currentAudio.onloadstart = () => {
+                    this.updateStatus('🔊 Loading Rachel...');
+                };
+                
+                this.currentAudio.onplay = () => {
+                    debugLog('🔊 Rachel premium audio playing - speech recognition BLOCKED');
+                    this.isPlaying = true;
+                    this.updateUI('speaking');
+                    this.updateStatus('🔊 Rachel is speaking...');
+                };
+                
+                this.currentAudio.onended = () => {
+                    debugLog('🔊 Rachel finished speaking - starting cooldown');
+                    this.audioFinished();
+                    URL.revokeObjectURL(audioUrl);
+                    
+                    // 🔇 CRITICAL: Start cooldown period after Rachel finishes
+                    this.lastResponseTime = Date.now();
+                    this.rachelIsSpeaking = false;
+                    
+                    // Wait a moment before allowing new input
+                    setTimeout(() => {
+                        if (!this.isListening && !this.isProcessing) {
+                            this.updateStatus('🎙️ Tap microphone to continue');
+                        }
+                    }, 500);
+                    
+                    resolve();
+                };
+                
+                this.currentAudio.onerror = (error) => {
+                    debugLog('ERROR: Rachel audio playback error', error);
+                    this.audioFinished();
+                    URL.revokeObjectURL(audioUrl);
+                    this.rachelIsSpeaking = false;
+                    this.playRachelBrowserTTS(responseText, 'neutral').then(resolve);
+                };
+
+                this.currentAudio.play().catch(error => {
+                    this.currentAudio.onerror(error);
+                });
+            });
+            
+        } catch (error) {
+            debugLog('ERROR: Rachel premium audio failed', error);
+            this.rachelIsSpeaking = false;
+            return this.playRachelBrowserTTS(responseText, 'neutral');
+        }
+    }
+
+    // 🔇 RENAMED: Rachel browser TTS with echo prevention
+    async playRachelBrowserTTS(text, context) {
+        try {
+            // 🔇 CRITICAL: Mark Rachel as speaking
+            this.rachelIsSpeaking = true;
+            debugLog('🔊 Rachel browser TTS starting - microphone blocked');
+            
+            speechSynthesis.cancel();
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = this.currentLanguage;
+            utterance.rate = 0.95;
+            utterance.pitch = 1.0;
+            utterance.volume = 0.85;
+
+            return new Promise((resolve) => {
+                utterance.onstart = () => {
+                    this.isPlaying = true;
+                    this.updateUI('speaking');
+                    this.updateStatus('🔊 Rachel is speaking...');
+                };
+
+                utterance.onend = () => {
+                    debugLog('🔊 Rachel browser TTS finished - starting cooldown');
+                    this.audioFinished();
+                    
+                    // 🔇 CRITICAL: Start cooldown period
+                    this.lastResponseTime = Date.now();
+                    this.rachelIsSpeaking = false;
+                    
+                    setTimeout(() => {
+                        if (!this.isListening && !this.isProcessing) {
+                            this.updateStatus('🎙️ Tap microphone to continue');
+                        }
+                    }, 500);
+                    
+                    resolve();
+                };
+
+                utterance.onerror = (error) => {
+                    debugLog('ERROR: Rachel browser TTS error', error);
+                    this.audioFinished();
+                    this.rachelIsSpeaking = false;
+                    resolve();
+                };
+
+                speechSynthesis.speak(utterance);
+            });
+
+        } catch (error) {
+            debugLog('ERROR: Rachel browser TTS failed', error);
+            this.rachelIsSpeaking = false;
+            this.audioFinished();
+        }
+    }
+
+    showAudioQuality(quality, engine) {
+        const indicator = document.createElement('div');
+        indicator.className = 'audio-quality-indicator';
+        
+        const qualityText = quality === 'premium' 
+            ? '🎵 Premium Rachel (' + engine + ')' 
+            : '🔊 Enhanced Rachel (' + engine + ')';
+            
+        indicator.innerHTML = qualityText;
+        document.body.appendChild(indicator);
+        
+        setTimeout(() => {
+            indicator.style.animation = 'slideOutRight 0.3s ease';
+            setTimeout(() => indicator.remove(), 300);
+        }, 3000);
+    }
+
+    audioFinished() {
+        debugLog('Rachel audio finished');
+        this.isPlaying = false;
+        this.isProcessing = false;
+        this.updateUI('ready');
+        
+        if (this.currentAudio) {
+            this.currentAudio = null;
+        }
+    }
+
+    setupEventListeners() {
+        const micHandler = async (e) => {
+            e.preventDefault();
+            debugLog('Microphone button pressed');
+            
+            // 🔇 PREVENT ACTIVATION WHEN RACHEL IS SPEAKING
+            if (this.rachelIsSpeaking) {
+                debugLog('Microphone blocked - Rachel is speaking');
+                this.updateStatus('⏳ Wait for Rachel to finish...');
+                return;
+            }
+            
+            // 🔇 CHECK COOLDOWN PERIOD
+            const timeSinceRachel = Date.now() - this.lastResponseTime;
+            if (timeSinceRachel < this.cooldownPeriod) {
+                debugLog(`Microphone blocked - cooldown active (${timeSinceRachel}ms)`);
+                this.updateStatus('⏳ Please wait a moment...');
+                return;
+            }
+            
+            if (!this.userInteracted) {
+                debugLog('First user interaction - enabling voice features');
+                this.userInteracted = true;
+                
+                if (this.isMobile) {
+                    const permissionGranted = await this.requestMicrophonePermission();
+                    if (!permissionGranted) {
+                        return;
+                    }
+                }
+                
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                }
+                
+                this.initSpeechRecognition();
+                this.updateStatus('🎙️ Voice enabled! Tap microphone to start');
+                return;
+            }
+            
+            this.toggleListening();
+        };
+        
+        this.micBtn.addEventListener('click', micHandler);
+        this.micBtn.addEventListener('touchend', micHandler);
+        
+        this.stopBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (this.isListening) {
+                this.stopListening();
+            } else if (this.isPlaying) {
+                this.stopAudio();
+            }
+        });
+        
+        this.clearBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.clearAll();
+        });
+        
+        this.langBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                this.changeLanguage(e.target.dataset.lang);
+            });
+        });
+    }
+
+    changeLanguage(lang) {
+        this.currentLanguage = lang;
+        if (this.recognition) {
+            this.recognition.lang = lang;
+        }
+        
+        this.langBtns.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.lang === lang);
+        });
+    }
+
+    toggleListening() {
+        if (this.isListening) {
+            this.stopListening();
+        } else {
+            this.startListening();
+        }
+    }
+
+    async startListening() {
+        // 🔇 ENHANCED CHECKS
+        if (this.isProcessing || !this.recognition || !this.userInteracted || this.rachelIsSpeaking) {
+            debugLog('Cannot start listening:', {
+                processing: this.isProcessing,
+                hasRecognition: !!this.recognition,
+                userInteracted: this.userInteracted,
+                rachelSpeaking: this.rachelIsSpeaking
+            });
+            return;
+        }
+        
+        try {
+            this.clearError();
+            speechSynthesis.cancel();
+            this.recognition.start();
+            this.stopBtn.disabled = false;
+        } catch (error) {
+            this.handleError('Failed to start listening: ' + error.message);
+        }
+    }
+
+    stopListening() {
+        if (this.isListening && this.recognition) {
+            try {
+                this.recognition.stop();
+            } catch (error) {
+                debugLog('ERROR: Failed to stop speech recognition', error.message);
+            }
+        }
+    }
+
+    stopAudio() {
+        if (this.isPlaying) {
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio.currentTime = 0;
+                this.currentAudio = null;
+            }
+            speechSynthesis.cancel();
+            this.audioFinished();
+            this.rachelIsSpeaking = false;
+        }
+    }
+
+    updateUI(state) {
+        this.micBtn.className = 'mic-button';
+        this.status.className = '';
+        
+        switch (state) {
+            case 'listening':
+                this.micBtn.classList.add('listening');
+                this.status.classList.add('status-listening');
+                this.stopBtn.disabled = false;
+                break;
+            case 'processing':
+                this.micBtn.classList.add('processing');
+                this.status.classList.add('status-processing');
+                this.stopBtn.disabled = false;
+                break;
+            case 'speaking':
+                this.micBtn.classList.add('speaking');
+                this.status.classList.add('status-speaking');
+                this.stopBtn.disabled = false;
+                break;
+            case 'ready':
+            default:
+                this.status.classList.add('status-ready');
+                this.stopBtn.disabled = true;
+                break;
+        }
+    }
+
+    updateStatus(message) {
+        this.status.textContent = message;
+        this.status.style.color = '';
+    }
+
+    handleError(message) {
+        this.showError(message);
+        this.isProcessing = false;
+        this.isListening = false;
+        this.isPlaying = false;
+        this.rachelIsSpeaking = false;
+        this.updateUI('ready');
+        this.voiceVisualizer.classList.remove('active');
+        
+        setTimeout(() => {
+            this.updateStatus('🎙️ Tap microphone to try again');
+        }, 3000);
+    }
+
+    showError(message) {
+        this.errorMessage.textContent = message;
+        this.errorMessage.classList.add('show');
+        setTimeout(() => this.clearError(), 8000);
+    }
+
+    clearError() {
+        this.errorMessage.classList.remove('show');
+    }
+
+    clearAll() {
+        this.stopAudio();
+        if (this.isListening && this.recognition) {
+            this.recognition.stop();
+        }
+        this.isProcessing = false;
+        this.isListening = false;
+        this.isPlaying = false;
+        this.rachelIsSpeaking = false;
+        this.lastResponseTime = 0;
+        this.lastUserInput = '';
+        this.updateUI('ready');
+        this.voiceVisualizer.classList.remove('active');
+        this.clearError();
+        this.updateStatus('🎙️ Tap microphone to start');
+    }
+}
 
     document.addEventListener('DOMContentLoaded', () => {
         try {
