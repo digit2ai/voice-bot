@@ -1113,7 +1113,7 @@ else:
             # Step 2: Get enhanced Claude response
             language_context = "spanish" if user_language.startswith('es') else "english"
             
-            try:
+try:
                 logging.info("🧠 Generating response...")
                 
                 # Detect context from user input first
