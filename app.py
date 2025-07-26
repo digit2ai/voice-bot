@@ -768,146 +768,74 @@ class EnhancedVoiceBot {
         this.handleError(message);
     }
 
-    async processTranscript(transcript) {
-        if (!transcript || transcript.length < 2) {
-            this.handleError('No valid speech detected');
-            return;
-        }
+// 🔧 Add this to the BEGINNING of your playPremiumAudio method:
 
-        // 🔇 Store user input and make sure Rachel isn't speaking
-        this.lastUserInput = transcript;
+async playPremiumAudio(audioBase64, responseText) {
+    try {
+        // 🔇 SIMPLE FIX: Stop speech recognition during audio
+        if (this.recognition && this.isListening) {
+            this.recognition.stop();
+            debugLog('🔇 Stopped speech recognition during audio');
+        }
         
-        if (this.rachelIsSpeaking) {
-            debugLog('Ignoring input - Rachel is still speaking');
-            return;
+        // ... rest of your existing playPremiumAudio code stays the same ...
+        
+        const audioData = atob(audioBase64);
+        const arrayBuffer = new ArrayBuffer(audioData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        for (let i = 0; i < audioData.length; i++) {
+            uint8Array[i] = audioData.charCodeAt(i);
         }
 
-        debugLog('Processing legitimate user transcript:', transcript);
-        this.isProcessing = true;
-        this.updateUI('processing');
-        this.updateStatus('🤖 Processing...');
+        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        this.currentAudio = new Audio(audioUrl);
+        this.currentAudio.preload = 'auto';
+        
+        return new Promise((resolve) => {
+            this.currentAudio.onloadstart = () => {
+                this.updateStatus('🔊 Loading audio...');
+            };
+            
+            this.currentAudio.onplay = () => {
+                debugLog('🔊 Premium audio started');
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                this.updateStatus('🔊 Speaking...');
+            };
+            
+            this.currentAudio.onended = () => {
+                debugLog('🔊 Premium audio ended');
+                this.audioFinished();
+                URL.revokeObjectURL(audioUrl);
+                
+                // 🔇 SIMPLE FIX: Wait before allowing new input
+                setTimeout(() => {
+                    this.updateStatus('🎙️ Tap microphone to continue');
+                }, 1000); // 1 second delay
+                
+                resolve();
+            };
+            
+            this.currentAudio.onerror = (error) => {
+                debugLog('ERROR: Audio playback error', error);
+                this.audioFinished();
+                URL.revokeObjectURL(audioUrl);
+                this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolve);
+            };
 
-        const processingTimeout = setTimeout(() => {
-            debugLog('ERROR: Processing timeout after 30 seconds');
-            this.handleError('Processing timeout. Please try again.');
-        }, 30000);
-
-        try {
-            const response = await fetch('/process-text-enhanced', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    text: transcript,
-                    language: this.currentLanguage
-                })
+            this.currentAudio.play().catch(error => {
+                this.currentAudio.onerror(error);
             });
-
-            clearTimeout(processingTimeout);
-
-            if (!response.ok) {
-                throw new Error('Server error: ' + response.status);
-            }
-
-            const data = await response.json();
-            
-            if (data.error) {
-                throw new Error(data.error);
-            }
-            
-            if (!data.response) {
-                throw new Error('No response from server');
-            }
-            
-            if (data.audio) {
-                debugLog('Playing Rachel premium audio...');
-                await this.playRachelAudio(data.audio, data.response);
-                this.showAudioQuality('premium', data.engine_used || 'elevenlabs');
-            } else {
-                debugLog('Using Rachel browser TTS...');
-                await this.playRachelBrowserTTS(data.response, data.context || 'neutral');
-                this.showAudioQuality('enhanced', 'browser');
-            }
-
-        } catch (error) {
-            clearTimeout(processingTimeout);
-            debugLog('ERROR: Processing failed', error.message);
-            this.handleError('Processing error: ' + error.message);
-        }
+        });
+        
+    } catch (error) {
+        debugLog('ERROR: Premium audio playback failed', error);
+        return this.playEnhancedBrowserTTS(responseText, 'neutral');
     }
-
-    // 🔇 RENAMED: Rachel audio with echo prevention
-    async playRachelAudio(audioBase64, responseText) {
-        try {
-            // 🔇 CRITICAL: Mark Rachel as speaking BEFORE audio starts
-            this.rachelIsSpeaking = true;
-            debugLog('🔊 Rachel starting to speak - microphone will be blocked');
-            
-            const audioData = atob(audioBase64);
-            const arrayBuffer = new ArrayBuffer(audioData.length);
-            const uint8Array = new Uint8Array(arrayBuffer);
-            
-            for (let i = 0; i < audioData.length; i++) {
-                uint8Array[i] = audioData.charCodeAt(i);
-            }
-
-            const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            this.currentAudio = new Audio(audioUrl);
-            this.currentAudio.preload = 'auto';
-            
-            return new Promise((resolve) => {
-                this.currentAudio.onloadstart = () => {
-                    this.updateStatus('🔊 Loading Rachel...');
-                };
-                
-                this.currentAudio.onplay = () => {
-                    debugLog('🔊 Rachel premium audio playing - speech recognition BLOCKED');
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    this.updateStatus('🔊 Rachel is speaking...');
-                };
-                
-                this.currentAudio.onended = () => {
-                    debugLog('🔊 Rachel finished speaking - starting cooldown');
-                    this.audioFinished();
-                    URL.revokeObjectURL(audioUrl);
-                    
-                    // 🔇 CRITICAL: Start cooldown period after Rachel finishes
-                    this.lastResponseTime = Date.now();
-                    this.rachelIsSpeaking = false;
-                    
-                    // Wait a moment before allowing new input
-                    setTimeout(() => {
-                        if (!this.isListening && !this.isProcessing) {
-                            this.updateStatus('🎙️ Tap microphone to continue');
-                        }
-                    }, 500);
-                    
-                    resolve();
-                };
-                
-                this.currentAudio.onerror = (error) => {
-                    debugLog('ERROR: Rachel audio playback error', error);
-                    this.audioFinished();
-                    URL.revokeObjectURL(audioUrl);
-                    this.rachelIsSpeaking = false;
-                    this.playRachelBrowserTTS(responseText, 'neutral').then(resolve);
-                };
-
-                this.currentAudio.play().catch(error => {
-                    this.currentAudio.onerror(error);
-                });
-            });
-            
-        } catch (error) {
-            debugLog('ERROR: Rachel premium audio failed', error);
-            this.rachelIsSpeaking = false;
-            return this.playRachelBrowserTTS(responseText, 'neutral');
-        }
-    }
+}
 
     // 🔇 RENAMED: Rachel browser TTS with echo prevention
     async playRachelBrowserTTS(text, context) {
