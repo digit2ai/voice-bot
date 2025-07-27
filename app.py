@@ -53,13 +53,13 @@ FAQ_BRAIN = {
     "does ringlypro offer appointment scheduling?": "Yes, clients can schedule appointments through phone, text, or online booking. All appointments sync with your existing calendar system for easy management.",
 
     # Pricing & Plans
-    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Starter ($97 permonth), Office Manager ($297 permonth), and Business Growth ($497per month). Each plan includes different amounts of minutes, text messages, and online replies.",
+    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: scheduling assistant ($97 permonth), Office Manager ($297 permonth), and marketing director ($497per month). Each plan includes different amounts of minutes, text messages, and online replies.",
 
-    "what is included in the starter plan?": "The Starter plan ($49 per month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
+    "what is included in the starter plan?": "The scheduling assistant plan ($49 per month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
 
     "what is included in the office manager plan?": "The Office Manager plan ($297 per month) includes 3,000 minutes, 3,000 texts, 3,000 online replies, all Starter features plus assisted onboarding, phone/email/text support, custom voice choices, live call queuing, Zapier integrations, CRM setup, invoice automation, payment gateway setup, and mobile app.",
 
-    "what is included in the business growth plan?": "The Business Growth plan ($497 per month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
+    "what is included in the business growth plan?": "The Marketing Director plan ($497 per month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
 
     "are there setup fees?": "Setup fees are not explicitly mentioned in the pricing. The Starter plan includes self-guided setup, while higher tiers include assisted onboarding and professional setup services.",
 
