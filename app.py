@@ -1695,9 +1695,13 @@ def process_text_enhanced():
                     "xi-api-key": elevenlabs_key
                 }
                 
-                mobile_text = response_text[:180]
-                mobile_text = mobile_text.replace("RinglyPro", "Ringly Pro")
+                # ✅ SIMPLIFIED: All FAQ answers are now under 180 characters
+                mobile_text = response_text.replace("RinglyPro", "Ringly Pro")
                 mobile_text = mobile_text.replace("AI", "A.I.")
+                mobile_text = mobile_text.replace("$", " dollars")
+                mobile_text = mobile_text.replace("&", "and")
+                
+                logging.info(f"📱 Audio text length: {len(mobile_text)} characters")
                 
                 tts_data = {
                     "text": mobile_text,
@@ -1714,7 +1718,7 @@ def process_text_enhanced():
                     tts_data["optimize_streaming_latency"] = 4
                     tts_data["output_format"] = "mp3_44100_128"
                 
-                timeout = 6 if is_mobile else 10
+                timeout = 8 if is_mobile else 10
                 tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                 
                 if tts_response.status_code == 200:
@@ -1727,12 +1731,14 @@ def process_text_enhanced():
                     else:
                         logging.warning("📱 ElevenLabs audio too small, using fallback")
                 else:
-                    logging.warning(f"📱 ElevenLabs failed: {tts_response.status_code}")
+                    logging.warning(f"📱 ElevenLabs failed: {tts_response.status_code} - {tts_response.text}")
                     
             except requests.exceptions.Timeout:
-                logging.warning("📱 ElevenLabs timeout - mobile network issue")
+                logging.warning("📱 ElevenLabs timeout - network issue")
             except Exception as tts_error:
-                logging.error(f"📱 ElevenLabs mobile error: {tts_error}")
+                logging.error(f"📱 ElevenLabs error: {tts_error}")
+        else:
+            logging.info("📱 No ElevenLabs API key found, using browser TTS")
         
         # Step 3: Return mobile-optimized response
         response_payload = {
