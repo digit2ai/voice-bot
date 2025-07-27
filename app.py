@@ -36,11 +36,90 @@ logging.basicConfig(
 
 # Your existing FAQ_BRAIN (keep this unchanged)
 FAQ_BRAIN = {
-    # ... (your existing FAQ dictionary stays the same)
-    "what is ringlypro?": (
-        "RinglyPro.com is an AI-powered business assistant built for solo professionals and service-based businesses. It acts as your 24/7 receptionist, scheduler, and communication hub, helping you handle calls, book appointments, follow up with leads, and automate your entire sales and communication process."
-    ),
-    # ... (rest of your FAQ entries)
+    # Basic Platform Information
+    "what is ringlypro?": "RinglyPro.com is a 24/7 AI-powered call answering and client booking service designed for small businesses and professionals. It ensures you never miss a call by providing automated phone answering, appointment scheduling, and customer communication through AI technology.",
+
+    "what does ringlypro do?": "RinglyPro provides 24/7 answering service, bilingual virtual receptionists (English/Spanish), AI-powered chat and text messaging, missed-call text-back, appointment scheduling, and integrations with existing business apps like CRMs and calendars.",
+
+    "who owns ringlypro?": "RinglyPro.com is owned and operated by DIGIT2AI LLC, a company focused on building technology solutions that create better business opportunities.",
+
+    # Core Features
+    "what are ringlypro main features?": "Key features include: 24/7 AI call answering, bilingual virtual receptionists, AI-powered chat & text, missed-call text-back, appointment scheduling, CRM integrations, call recording, automated booking tools, and mobile app access.",
+
+    "does ringlypro support multiple languages?": "Yes, RinglyPro offers bilingual virtual receptionists that provide professional support in both English and Spanish to help businesses serve a wider audience.",
+
+    "can ringlypro integrate with my existing tools?": "Yes, RinglyPro integrates seamlessly with existing CRMs, schedulers, calendars, and other business apps. Integration is available through online links or using Zapier for broader connectivity.",
+
+    "does ringlypro offer appointment scheduling?": "Yes, clients can schedule appointments through phone, text, or online booking. All appointments sync with your existing calendar system for easy management.",
+
+    # Pricing & Plans
+    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Starter ($49/month), Office Manager ($297/month), and Business Growth ($497/month). Each plan includes different amounts of minutes, text messages, and online replies.",
+
+    "what is included in the starter plan?": "The Starter plan ($49/month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
+
+    "what is included in the office manager plan?": "The Office Manager plan ($297/month) includes 3,000 minutes, 3,000 texts, 3,000 online replies, all Starter features plus assisted onboarding, phone/email/text support, custom voice choices, live call queuing, Zapier integrations, CRM setup, invoice automation, payment gateway setup, and mobile app.",
+
+    "what is included in the business growth plan?": "The Business Growth plan ($497/month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
+
+    "are there setup fees?": "Setup fees are not explicitly mentioned in the pricing. The Starter plan includes self-guided setup, while higher tiers include assisted onboarding and professional setup services.",
+
+    "can i choose annual vs monthly billing?": "Yes, RinglyPro allows you to decide on billing frequency, offering both annual and monthly billing options.",
+
+    # Technical Capabilities
+    "what is missed-call text-back?": "Missed-call text-back is a feature that instantly re-engages callers you couldn't answer by automatically sending them a text message, keeping conversations and opportunities alive.",
+
+    "does ringlypro record calls?": "Yes, call recording is available as a feature across all plans, allowing you to review conversations and maintain records of customer interactions.",
+
+    "can i get a toll-free number?": "Yes, RinglyPro offers toll-free numbers and vanity numbers as part of their service options.",
+
+    "does ringlypro have a mobile app?": "Yes, a mobile app is included with the Office Manager and Business Growth plans, allowing you to manage your service on the go.",
+
+    # Setup & Onboarding
+    "how do i get started with ringlypro?": "Getting started involves 4 steps: 1) Choose your plan based on call/text volume and support needs, 2) Decide on billing frequency, 3) Set up your account and choose your number through onboarding, 4) Launch your service with automated calls, texts, and appointment tools.",
+
+    "what kind of support does ringlypro offer?": "Support varies by plan: Starter includes email support, Office Manager includes phone/email/text support, and Business Growth includes a dedicated account manager plus professional onboarding services.",
+
+    "how long does setup take?": "The timeline isn't specified, but setup options range from self-guided (Starter) to assisted onboarding (Office Manager) to professional onboarding services (Business Growth).",
+
+    # Business Benefits
+    "how does ringlypro help my business?": "RinglyPro helps by ensuring you never miss calls, providing 24/7 availability, automating appointment scheduling, offering bilingual support to reach more customers, integrating with existing tools, and providing analytics to track performance.",
+
+    "what types of businesses use ringlypro?": "RinglyPro is designed for small businesses, solo professionals, service-based businesses, and any business that needs reliable call answering and appointment scheduling services.",
+
+    "can ringlypro help with lead generation?": "Yes, especially with higher-tier plans that include lead capture automation, Google Ads campaigns, email marketing, and lead conversion reporting.",
+
+    # Customer Service & Contact
+    "how can i contact ringlypro support?": "You can contact RinglyPro customer service at (315) 909-7788 or via email. The level of support (email, phone, text) depends on your plan level.",
+
+    "what are ringlypro business hours?": "RinglyPro provides 24/7 service availability. Their experts are available around the clock to support and grow your business.",
+
+    "where can i find ringlypro terms of service?": "Terms of service and privacy policy information can be found on their website. The service is provided by DIGIT2AI LLC.",
+
+    # Competitive Advantages
+    "what makes ringlypro different?": "RinglyPro stands out with its combination of AI-powered automation, bilingual support, comprehensive integrations, multiple communication channels (phone, text, chat), and scalable plans with dedicated support options.",
+
+    "does ringlypro offer custom solutions?": "Yes, the Business Growth plan includes custom integrations for advanced workflows, and they offer custom solutions tailored to specific business needs.",
+
+    # Technical Support
+    "what happens if i exceed my plan limits?": "The plans include specific amounts of minutes, text messages, and online replies. Contact their support team to discuss options if you regularly exceed your plan limits.",
+
+    "can i upgrade or downgrade my plan?": "While not explicitly stated, most subscription services allow plan changes. Contact RinglyPro support to discuss plan modifications based on your changing needs.",
+
+    "does ringlypro offer analytics?": "Yes, monthly analytics reporting is included with the Business Growth plan, and conversion reporting helps track lead performance.",
+
+    # Integration & Compatibility
+    "what crms does ringlypro work with?": "RinglyPro mentions working with CRMs and offers CRM setup for small businesses. They integrate through online links and Zapier, which supports hundreds of popular CRM systems.",
+
+    "can ringlypro integrate with zapier?": "Yes, Zapier integration is available with the Office Manager and Business Growth plans, allowing connection to thousands of business applications.",
+
+    "does ringlypro work with stripe?": "Yes, Stripe/Payment Gateway Setup is included in the Office Manager and Business Growth plans.",
+
+    # AI Capabilities
+    "how smart is ringlypro ai?": "RinglyPro uses AI-powered chat and text to streamline and tailor customer conversations with intelligent automation. The AI handles call answering, appointment scheduling, and customer communications.",
+
+    "can the ai handle complex questions?": "While specific AI capabilities aren't detailed, the service includes escalation to human support and various plan tiers offer different levels of human assistance for complex situations.",
+
+    "does ringlypro ai learn from interactions?": "The system uses AI-powered automation, though specific machine learning capabilities aren't detailed in available information. Contact their support for technical details about AI improvement over time."
 }
 
 def get_faq_response(user_text: str) -> tuple[str, bool]:
