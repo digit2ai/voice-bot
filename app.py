@@ -154,20 +154,27 @@ Q: "{user_text}"
 A:
 """
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are a helpful AI support assistant for RinglyPro.com."},
-                {"role": "user", "content": fallback_prompt}
-            ],
-            max_tokens=300,
-            temperature=0.5
-        )
-        answer = response['choices'][0]['message']['content'].strip()
-        return answer, False
-    except Exception as e:
-        return f"Sorry, I couldn't find an answer right now. Please contact support. [Error: {str(e)}]", False
+  try:
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are a helpful AI support assistant for RinglyPro.com."},
+            {"role": "user", "content": fallback_prompt}
+        ],
+        max_tokens=300,
+        temperature=0.5
+    )
+    answer = response['choices'][0]['message']['content'].strip()
+    return answer, False
+
+except openai.error.OpenAIError as e:
+    print(f"[OpenAIError] {e}")
+    return "I'm sorry, I couldn’t find a matching answer. Please visit https://ringlypro.com or contact support.", False
+
+except Exception as e:
+    print(f"[Unexpected Error] {e}")
+    return "Oops! Something went wrong. Please try again later or contact support.", False
+
 
 
 HTML_TEMPLATE = '''
