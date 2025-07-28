@@ -124,21 +124,51 @@ FAQ_BRAIN = {
 
 def get_faq_response(user_text: str) -> tuple[str, bool]:
     """
-    Check for FAQ matches with fuzzy matching
+    Check for FAQ matches with fuzzy matching.
+    If no match is found, respond using the RinglyPro context.
     Returns: (response_text, is_faq_match)
     """
+    from difflib import get_close_matches
+    import openai  # Requires OpenAI API key set in environment
+
     user_text_lower = user_text.lower().strip()
     
-    # Try exact match first
+    # Try exact match
     if user_text_lower in FAQ_BRAIN:
         return FAQ_BRAIN[user_text_lower], True
-    
-    # Try fuzzy matching
+
+    # Try fuzzy match
     matched = get_close_matches(user_text_lower, FAQ_BRAIN.keys(), n=1, cutoff=0.6)
     if matched:
         return FAQ_BRAIN[matched[0]], True
-    
-    return "", False
+
+    # Fallback: Ask GPT using RINGLYPRO_CONTEXT
+    fallback_prompt = f"""
+You are an AI assistant for RinglyPro.com.
+
+Here is background context about the company:
+{RINGLYPRO_CONTEXT}
+
+Answer the following customer question as helpfully and accurately as possible using this context:
+Q: "{user_text}"
+A:
+"""
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful AI support assistant for RinglyPro.com."},
+                {"role": "user", "content": fallback_prompt}
+            ],
+            max_tokens=300,
+            temperature=0.5
+        )
+        answer = response['choices'][0]['message']['content'].strip()
+        return answer, False
+    except Exception as e:
+        return f"Sorry, I couldn't find an answer right now. Please contact support. [Error: {str(e)}]", False
+
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
