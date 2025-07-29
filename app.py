@@ -204,9 +204,13 @@ def get_faq_response(user_text: str) -> tuple[str, bool, bool]:
             soup = BeautifulSoup(response.content, 'html.parser')
             text = soup.get_text()
             if len(text) > 100:
-                return "Based on information from our website: I found some relevant content that might help. For more specific assistance, please contact our support team.", True, False
+                # Return with phone collection since this is a generic response
+                return "I found some information on our website that might be related, but I'd like to connect you with our customer service team for personalized assistance with your specific question. Could you please provide your phone number so they can reach out to help you?", False, True
     except:
         pass
+    
+    # Fallback to customer service with phone collection
+    return "I don't have a specific answer to that question. I'd like to connect you with our customer service team. Could you please provide your phone number so they can reach out to help you?", False, True
     
     # Fallback to customer service with phone collection
     return "I don't have a specific answer to that question. I'd like to connect you with our customer service team. Could you please provide your phone number so they can reach out to help you?", False, True
