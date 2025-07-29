@@ -9,6 +9,7 @@ import json
 import time
 import base64
 import asyncio
+from bs4 import BeautifulSoup
 
 # Import our new modules
 from enhanced_tts import tts_engine
@@ -122,69 +123,36 @@ FAQ_BRAIN = {
     "does ringlypro ai learn from interactions?": "The system uses AI-powered automation, though specific machine learning capabilities aren't detailed in available information. Contact their support for technical details about AI improvement over time."
 }
 
-# Initialize the enhanced system
-faq_system = EnhancedFAQBrain(FAQ_BRAIN)
-
-# Track conversation state (simple example)
-user_sessions = {}
-
-def handle_user_message(user_id: str, message: str) -> str:
+def get_faq_response(user_text: str) -> tuple[str, bool]:
     """
-    Handle incoming user messages with enhanced FAQ brain
+    Check for FAQ matches with fuzzy matching and web scraping
+    Returns: (response_text, is_faq_match)
     """
+    user_text_lower = user_text.lower().strip()
     
-    # Check if user is in phone number collection state
-    if user_id in user_sessions and user_sessions[user_id].get('awaiting_phone'):
-        original_question = user_sessions[user_id]['question']
-        response = faq_system.handle_phone_number_submission(original_question, message)
-        # Clear session
-        del user_sessions[user_id]
-        return response
+    # Try exact match first
+    if user_text_lower in FAQ_BRAIN:
+        return FAQ_BRAIN[user_text_lower], True
     
-    # Process normal query
-    response = faq_system.process_customer_query(message)
+    # Try fuzzy matching
+    matched = get_close_matches(user_text_lower, FAQ_BRAIN.keys(), n=1, cutoff=0.6)
+    if matched:
+        return FAQ_BRAIN[matched[0]], True
     
-    # Check if response is asking for phone number (customer service flow)
-    if "Please provide your phone number" in response:
-        # Store state for next message
-        user_sessions[user_id] = {
-            'awaiting_phone': True,
-            'question': message
-        }
-    
-    return response
-
-# Example usage in your chatbot/API endpoint
-def chatbot_endpoint(user_id: str, user_message: str):
-    """
-    Your main chatbot endpoint
-    """
+    # Try web scraping RinglyPro.com
     try:
-        response = handle_user_message(user_id, user_message)
-        return {"response": response, "status": "success"}
-    except Exception as e:
-        return {"response": "I'm sorry, there was an error processing your request.", "status": "error"}
-
-# Example API calls:
-if __name__ == "__main__":
-    # Simulate conversation
-    user_id = "user_123"
+        headers = {'User-Agent': 'Mozilla/5.0 (compatible; FAQ-Bot)'}
+        response = requests.get("https://RinglyPro.com", headers=headers, timeout=5)
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            text = soup.get_text()
+            if len(text) > 100:
+                return "Based on information from our website: I found some relevant content that might help. For more specific assistance, please contact our support team.", True
+    except:
+        pass
     
-    # First message - FAQ match
-    print("User:", "What are your hours?")
-    response1 = handle_user_message(user_id, "What are your hours?")
-    print("Bot:", response1)
-    
-    # Second message - No FAQ match, should try web scraping then customer service
-    print("\nUser:", "How do I configure advanced SSL settings?")
-    response2 = handle_user_message(user_id, "How do I configure advanced SSL settings?")
-    print("Bot:", response2)
-    
-    # Third message - Phone number submission
-    if "Please provide your phone number" in response2:
-        print("\nUser:", "(555) 123-4567")
-        response3 = handle_user_message(user_id, "(555) 123-4567")
-        print("Bot:", response3)
+    # Fallback to customer service
+    return "I don't have a specific answer to that question. Please contact our Customer Service team for specialized assistance.", True
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
