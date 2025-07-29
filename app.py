@@ -122,14 +122,20 @@ FAQ_BRAIN = {
     "does ringlypro ai learn from interactions?": "The system uses AI-powered automation, though specific machine learning capabilities aren't detailed in available information. Contact their support for technical details about AI improvement over time."
 }
 
+from difflib import get_close_matches
+import os
+import anthropic
+
+# Load Claude key
+anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+client = anthropic.Anthropic(api_key=anthropic_api_key)
+
 def get_faq_response(user_text: str) -> tuple[str, bool]:
     """
     Check for FAQ matches with fuzzy matching.
-    If no match is found, respond using the RinglyPro context.
+    If no match is found, respond using the RinglyPro context via Claude AI.
     Returns: (response_text, is_faq_match)
     """
-    from difflib import get_close_matches
-    import openai  # Requires OpenAI API key set in environment
 
     user_text_lower = user_text.lower().strip()
 
@@ -142,37 +148,38 @@ def get_faq_response(user_text: str) -> tuple[str, bool]:
     if matched:
         return FAQ_BRAIN[matched[0]], True
 
-    # Fallback: Ask GPT using RINGLYPRO_CONTEXT
+    # Fallback: Ask Claude using RINGLYPRO_CONTEXT
     fallback_prompt = f"""
-You are an AI assistant for RinglyPro.com.
+You are a helpful AI support assistant for RinglyPro.com.
 
 Here is background context about the company:
 {RINGLYPRO_CONTEXT}
 
 Answer the following customer question as helpfully and accurately as possible using this context:
 Q: "{user_text}"
-A:
 """
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        print("🧠 Triggering Claude fallback...")
+        response = client.messages.create(
+            model="claude-3-sonnet-20240229",
+            max_tokens=400,
+            temperature=0.5,
+            system="You are RinglyPro's AI support agent.",
             messages=[
-                {"role": "system", "content": "You are a helpful AI support assistant for RinglyPro.com."},
                 {"role": "user", "content": fallback_prompt}
-            ],
-            max_tokens=300,
-            temperature=0.5
+            ]
         )
-        answer = response['choices'][0]['message']['content'].strip()
+        answer = response.content[0].text.strip()
+        print("✅ Claude responded successfully")
         return answer, False
 
-    except openai.error.OpenAIError as e:
-        print(f"[OpenAIError] {e}")
-        return "I'm sorry, I couldn’t find a matching answer. Please visit https://ringlypro.com or contact support.", False
+    except anthropic.APIError as e:
+        print(f"[Claude APIError] {e}")
+        return "Sorry, I couldn’t find a matching answer. Please visit https://ringlypro.com or contact support.", False
 
     except Exception as e:
-        print(f"[Unexpected Error] {e}")
+        print(f"[Unhandled Error] {e}")
         return "Oops! Something went wrong. Please try again later or contact support.", False
 
 HTML_TEMPLATE = '''
