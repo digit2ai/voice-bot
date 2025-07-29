@@ -2898,4 +2898,7 @@ WIDGET_HTML_TEMPLATE = '''
         document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('messageInput').focus();
         });
-    app.run(debug=True, host='0.0.0.0', port=5000)
+            </script>
+</body>
+</html>
+'''    app.run(debug=True, host='0.0.0.0', port=5000)
