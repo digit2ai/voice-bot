@@ -174,6 +174,7 @@ A:
     except Exception as e:
         print(f"[Unexpected Error] {e}")
         return "Oops! Something went wrong. Please try again later or contact support.", False
+
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="es">
