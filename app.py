@@ -2491,7 +2491,7 @@ def widget_script():
             });
         }
     });
-})();'''
+})();  # ✅ CORRECT - No triple quotes
     
     response = app.response_class(
         response=script_content,
