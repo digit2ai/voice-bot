@@ -1,5 +1,10 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify, render_template, render_template_string, session
 from flask_cors import CORS
+import requests
+from bs4 import BeautifulSoup
+import phonenumbers
+from phonenumbers import NumberParseException
+from twilio.rest import Client
 import anthropic
 import os
 import logging
@@ -9,7 +14,7 @@ import json
 import time
 import base64
 import asyncio
-from bs4 import BeautifulSoup
+from datetime import datetime
 
 # Import our new modules
 from enhanced_tts import tts_engine
@@ -17,6 +22,57 @@ from speech_optimized_claude import get_enhanced_claude_response
 
 # Load environment variables
 load_dotenv()
+
+def validate_phone_number(phone_str):
+    """Validate and format phone number"""
+    try:
+        # Parse the number (assuming US if no country code)
+        number = phonenumbers.parse(phone_str, "US")
+        
+        # Check if valid
+        if phonenumbers.is_valid_number(number):
+            # Return formatted number
+            return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
+        else:
+            return None
+    except NumberParseException:
+        return None
+
+def send_sms_notification(customer_phone, customer_question):
+    """Send SMS notification to customer service"""
+    try:
+        client = Client(
+            os.getenv('TWILIO_ACCOUNT_SID'),
+            os.getenv('TWILIO_AUTH_TOKEN')
+        )
+        
+        message_body = f"""
+New customer inquiry:
+Phone: {customer_phone}
+Question: {customer_question}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        """.strip()
+        
+        message = client.messages.create(
+            body=message_body,
+            from_=os.getenv('TWILIO_PHONE_NUMBER'),
+            to='+16566001400'
+        )
+        
+        return True, message.sid
+    except Exception as e:
+        return False, str(e)
+
+def is_no_answer_response(response):
+    """Check if the FAQ response indicates no answer was found"""
+    no_answer_indicators = [
+        "I don't have information",
+        "couldn't find a direct answer",
+        "please contact our customer service",
+        "I don't have a specific answer",
+        "contact our support team"
+    ]
+    return any(indicator in response.lower() for indicator in no_answer_indicators)
 
 # API Keys validation
 anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -27,6 +83,7 @@ if not anthropic_api_key:
 
 # Setup Flask
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-default-secret-key-change-this')
 CORS(app)
 
 # Setup Logging
@@ -123,21 +180,21 @@ FAQ_BRAIN = {
     "does ringlypro ai learn from interactions?": "The system uses AI-powered automation, though specific machine learning capabilities aren't detailed in available information. Contact their support for technical details about AI improvement over time."
 }
 
-def get_faq_response(user_text: str) -> tuple[str, bool]:
+def get_faq_response(user_text: str) -> tuple[str, bool, bool]:
     """
     Check for FAQ matches with fuzzy matching and web scraping
-    Returns: (response_text, is_faq_match)
+    Returns: (response_text, is_faq_match, needs_phone_collection)
     """
     user_text_lower = user_text.lower().strip()
     
     # Try exact match first
     if user_text_lower in FAQ_BRAIN:
-        return FAQ_BRAIN[user_text_lower], True
+        return FAQ_BRAIN[user_text_lower], True, False
     
     # Try fuzzy matching
     matched = get_close_matches(user_text_lower, FAQ_BRAIN.keys(), n=1, cutoff=0.6)
     if matched:
-        return FAQ_BRAIN[matched[0]], True
+        return FAQ_BRAIN[matched[0]], True, False
     
     # Try web scraping RinglyPro.com
     try:
@@ -147,13 +204,321 @@ def get_faq_response(user_text: str) -> tuple[str, bool]:
             soup = BeautifulSoup(response.content, 'html.parser')
             text = soup.get_text()
             if len(text) > 100:
-                return "Based on information from our website: I found some relevant content that might help. For more specific assistance, please contact our support team.", True
+                return "Based on information from our website: I found some relevant content that might help. For more specific assistance, please contact our support team.", True, False
     except:
         pass
     
-    # Fallback to customer service
-    return "I don't have a specific answer to that question. Please contact our Customer Service team for specialized assistance.", True
+    # Fallback to customer service with phone collection
+    return "I don't have a specific answer to that question. I'd like to connect you with our customer service team. Could you please provide your phone number so they can reach out to help you?", False, True
 
+HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RinglyPro FAQ Assistant</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .message {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            text-align: right;
+        }
+        .bot-message {
+            background-color: #f1f8e9;
+        }
+        .input-container {
+            display: flex;
+            margin-top: 20px;
+        }
+        .input-container input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+        .input-container button {
+            padding: 10px 20px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .phone-form {
+            background-color: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        .success-message {
+            background-color: #e8f5e8;
+            border: 2px solid #4caf50;
+            color: #2e7d32;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .error-message {
+            background-color: #ffebee;
+            border: 2px solid #f44336;
+            color: #c62828;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <h1>RinglyPro FAQ Assistant</h1>
+        <div id="chatMessages">
+            <div class="message bot-message">
+                Hello! I'm your RinglyPro assistant. Ask me anything about our services, pricing, features, or how to get started!
+            </div>
+        </div>
+        
+        <div class="input-container">
+            <input type="text" id="userInput" placeholder="Ask a question about RinglyPro..." onkeypress="handleKeyPress(event)">
+            <button onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('userInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Send to server
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                addMessage(data.response, 'bot');
+                
+                // Check if phone collection is needed
+                if (data.needs_phone_collection) {
+                    showPhoneForm();
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error processing your request.', 'bot');
+            });
+        }
+
+        function addMessage(message, sender) {
+            const chatMessages = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = message;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showPhoneForm() {
+            const chatMessages = document.getElementById('chatMessages');
+            const phoneFormDiv = document.createElement('div');
+            phoneFormDiv.className = 'phone-form';
+            phoneFormDiv.innerHTML = `
+                <p><strong>📞 Let's get you connected!</strong></p>
+                <p>Please enter your phone number so our customer service team can help you:</p>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <input type="tel" id="phoneInput" placeholder="(555) 123-4567" style="flex: 1; padding: 8px;">
+                    <button onclick="submitPhone()" style="padding: 8px 15px; background-color: #4caf50; color: white; border: none; border-radius: 3px;">Submit</button>
+                </div>
+            `;
+            chatMessages.appendChild(phoneFormDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            // Focus on phone input
+            setTimeout(() => {
+                document.getElementById('phoneInput').focus();
+            }, 100);
+        }
+
+        function submitPhone() {
+            const phoneInput = document.getElementById('phoneInput');
+            const phoneNumber = phoneInput.value.trim();
+            
+            if (!phoneNumber) {
+                alert('Please enter a phone number.');
+                return;
+            }
+            
+            // Send phone number to server
+            fetch('/submit_phone', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    phone: phoneNumber,
+                    last_question: sessionStorage.getItem('lastQuestion') || 'General inquiry'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const chatMessages = document.getElementById('chatMessages');
+                
+                if (data.success) {
+                    const successDiv = document.createElement('div');
+                    successDiv.className = 'success-message';
+                    successDiv.innerHTML = `
+                        <strong>✅ Thank you!</strong><br>
+                        ${data.message}
+                    `;
+                    chatMessages.appendChild(successDiv);
+                } else {
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message';
+                    errorDiv.innerHTML = `
+                        <strong>❌ Error:</strong><br>
+                        ${data.message}
+                    `;
+                    chatMessages.appendChild(errorDiv);
+                }
+                
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('There was an error submitting your phone number. Please try again.');
+            });
+        }
+
+        // Store last question for context
+        document.getElementById('userInput').addEventListener('input', function() {
+            sessionStorage.setItem('lastQuestion', this.value);
+        });
+    </script>
+</body>
+</html>
+'''
+
+@app.route('/')
+def home():
+    """Serve the main chat interface"""
+    return render_template_string(HTML_TEMPLATE)
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Handle chat messages"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        
+        if not user_message:
+            return jsonify({'response': 'Please enter a question.', 'needs_phone_collection': False})
+        
+        # Store the question in session for potential phone collection
+        session['last_question'] = user_message
+        
+        # Get FAQ response
+        response, is_faq_match, needs_phone_collection = get_faq_response(user_message)
+        
+        return jsonify({
+            'response': response,
+            'needs_phone_collection': needs_phone_collection,
+            'is_faq_match': is_faq_match
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in chat endpoint: {str(e)}")
+        return jsonify({
+            'response': 'Sorry, there was an error processing your request. Please try again.',
+            'needs_phone_collection': False
+        }), 500
+
+@app.route('/submit_phone', methods=['POST'])
+def submit_phone():
+    """Handle phone number submission and send SMS notification"""
+    try:
+        data = request.get_json()
+        phone_number = data.get('phone', '').strip()
+        last_question = data.get('last_question', session.get('last_question', 'General inquiry'))
+        
+        if not phone_number:
+            return jsonify({
+                'success': False,
+                'message': 'Please provide a phone number.'
+            })
+        
+        # Validate phone number
+        validated_phone = validate_phone_number(phone_number)
+        if not validated_phone:
+            return jsonify({
+                'success': False,
+                'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
+            })
+        
+        # Send SMS notification
+        sms_success, sms_result = send_sms_notification(validated_phone, last_question)
+        
+        if sms_success:
+            logging.info(f"SMS sent successfully to customer service. Customer: {validated_phone}, Question: {last_question}")
+            return jsonify({
+                'success': True,
+                'message': f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
+            })
+        else:
+            logging.error(f"Failed to send SMS: {sms_result}")
+            return jsonify({
+                'success': True,  # Still success for user experience
+                'message': f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
+            })
+            
+    except Exception as e:
+        logging.error(f"Error in submit_phone endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
+        })
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
+    
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="es">
