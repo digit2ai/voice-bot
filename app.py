@@ -2307,10 +2307,12 @@ def chat_widget():
 
 # SUPER CLEAN WIDGET FIX - Replace the widget routes with this:
 
+# BULLETPROOF WIDGET FIX - Replace your widget routes with this:
+
 @app.route('/widget')
 def chat_widget():
-    """Clean widget with no quote issues"""
-    html = """<!DOCTYPE html>
+    """Clean widget - no triple quotes"""
+    return """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -2434,69 +2436,67 @@ def chat_widget():
     </script>
 </body>
 </html>"""
-    return html
 
 @app.route('/widget/embed.js')
 def widget_script():
-    """Embed script - completely clean"""
-    script_content = '''(function() {
-    if (window.RinglyProWidget) return;
+    """Embed script using string concatenation - no triple quotes"""
+    js_part1 = "(function() {"
+    js_part2 = "if (window.RinglyProWidget) return;"
+    js_part3 = "window.RinglyProWidget = {"
+    js_part4 = "init: function(options) {"
+    js_part5 = "options = options || {};"
+    js_part6 = "var widgetUrl = options.url || 'http://localhost:5000/widget';"
+    js_part7 = "var position = options.position || 'bottom-right';"
+    js_part8 = "var color = options.color || '#2196F3';"
     
-    window.RinglyProWidget = {
-        init: function(options) {
-            options = options || {};
-            var widgetUrl = options.url || 'http://localhost:5000/widget';
-            var position = options.position || 'bottom-right';
-            var color = options.color || '#2196F3';
-            
-            // Create button
-            var button = document.createElement('div');
-            button.innerHTML = '💬';
-            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            // Create container
-            var container = document.createElement('div');
-            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.3);' + (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            // Create iframe
-            var iframe = document.createElement('iframe');
-            iframe.src = widgetUrl;
-            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:10px;';
-            container.appendChild(iframe);
-            
-            // Toggle functionality
-            var isOpen = false;
-            button.onclick = function() {
-                isOpen = !isOpen;
-                container.style.display = isOpen ? 'block' : 'none';
-                button.innerHTML = isOpen ? '✕' : '💬';
-            };
-            
-            // Add to page
-            document.body.appendChild(button);
-            document.body.appendChild(container);
-            
-            console.log('RinglyPro Widget loaded');
-        }
-    };
+    js_button = "var button = document.createElement('div');"
+    js_button += "button.innerHTML = '💬';"
+    js_button += "button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');"
     
-    // Auto-init if data attributes present
-    document.addEventListener('DOMContentLoaded', function() {
-        var script = document.querySelector('script[data-ringlypro-widget]');
-        if (script) {
-            window.RinglyProWidget.init({
-                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
-                position: script.getAttribute('data-position') || 'bottom-right',
-                color: script.getAttribute('data-color') || '#2196F3'
-            });
-        }
-    });
-})();  # ✅ CORRECT - No triple quotes
+    js_container = "var container = document.createElement('div');"
+    js_container += "container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.3);' + (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');"
+    
+    js_iframe = "var iframe = document.createElement('iframe');"
+    js_iframe += "iframe.src = widgetUrl;"
+    js_iframe += "iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:10px;';"
+    js_iframe += "container.appendChild(iframe);"
+    
+    js_toggle = "var isOpen = false;"
+    js_toggle += "button.onclick = function() {"
+    js_toggle += "isOpen = !isOpen;"
+    js_toggle += "container.style.display = isOpen ? 'block' : 'none';"
+    js_toggle += "button.innerHTML = isOpen ? '✕' : '💬';"
+    js_toggle += "};"
+    
+    js_append = "document.body.appendChild(button);"
+    js_append += "document.body.appendChild(container);"
+    js_append += "console.log('RinglyPro Widget loaded');"
+    
+    js_close = "}"
+    js_close += "};"
+    
+    js_autoinit = "document.addEventListener('DOMContentLoaded', function() {"
+    js_autoinit += "var script = document.querySelector('script[data-ringlypro-widget]');"
+    js_autoinit += "if (script) {"
+    js_autoinit += "window.RinglyProWidget.init({"
+    js_autoinit += "url: script.getAttribute('data-url') || 'http://localhost:5000/widget',"
+    js_autoinit += "position: script.getAttribute('data-position') || 'bottom-right',"
+    js_autoinit += "color: script.getAttribute('data-color') || '#2196F3'"
+    js_autoinit += "});"
+    js_autoinit += "}"
+    js_autoinit += "});"
+    js_autoinit += "})();"
+    
+    # Combine all parts
+    full_script = (js_part1 + js_part2 + js_part3 + js_part4 + js_part5 + js_part6 + 
+                   js_part7 + js_part8 + js_button + js_container + js_iframe + 
+                   js_toggle + js_append + js_close + js_autoinit)
     
     response = app.response_class(
-        response=script_content,
+        response=full_script,
         status=200,
         mimetype='application/javascript'
     )
     response.headers['Access-Control-Allow-Origin'] = '*'
-    return responseapp.run(debug=True, host='0.0.0.0', port=5000)
+    return response
+    app.run(debug=True, host='0.0.0.0', port=5000)
