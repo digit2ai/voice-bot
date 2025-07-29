@@ -2297,5 +2297,605 @@ if __name__ == "__main__":
     print("   💬 Text: FAQ + SMS phone collection for complex questions")
     print("   📱 Mobile: Premium audio compatibility + state management")
     print("   📞 SMS: Customer service notifications with phone collection")
+@app.route('/widget')
+def chat_widget():
+    """Standalone embeddable chat widget"""
+    return render_template_string(WIDGET_HTML_TEMPLATE)
 
+@app.route('/widget/embed.js')
+def widget_embed_script():
+    """JavaScript embed script for websites"""
+    embed_script = '''
+(function() {
+    // Prevent multiple widget loads
+    if (window.RinglyProChatWidget) return;
+    
+    window.RinglyProChatWidget = {
+        init: function(options) {
+            options = options || {};
+            const widgetUrl = options.widgetUrl || 'http://localhost:5000/widget';
+            const position = options.position || 'bottom-right';
+            const primaryColor = options.primaryColor || '#2196F3';
+            
+            // Create floating button
+            const button = document.createElement('div');
+            button.id = 'ringlypro-chat-button';
+            button.innerHTML = `
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                    <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+                </svg>
+            `;
+            
+            // Button styles
+            button.style.cssText = `
+                position: fixed;
+                ${position.includes('bottom') ? 'bottom: 20px;' : 'top: 20px;'}
+                ${position.includes('right') ? 'right: 20px;' : 'left: 20px;'}
+                width: 60px;
+                height: 60px;
+                background: ${primaryColor};
+                border-radius: 50%;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                z-index: 1000;
+                transition: all 0.3s ease;
+                border: none;
+            `;
+            
+            // Hover effect
+            button.addEventListener('mouseenter', () => {
+                button.style.transform = 'scale(1.1)';
+                button.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25)';
+            });
+            
+            button.addEventListener('mouseleave', () => {
+                button.style.transform = 'scale(1)';
+                button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+            });
+            
+            // Create iframe container
+            const container = document.createElement('div');
+            container.id = 'ringlypro-chat-container';
+            container.style.cssText = `
+                position: fixed;
+                ${position.includes('bottom') ? 'bottom: 90px;' : 'top: 90px;'}
+                ${position.includes('right') ? 'right: 20px;' : 'left: 20px;'}
+                width: 350px;
+                height: 500px;
+                display: none;
+                z-index: 1001;
+                border-radius: 10px;
+                overflow: hidden;
+                box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            `;
+            
+            // Create iframe
+            const iframe = document.createElement('iframe');
+            iframe.src = widgetUrl;
+            iframe.style.cssText = `
+                width: 100%;
+                height: 100%;
+                border: none;
+                border-radius: 10px;
+            `;
+            
+            container.appendChild(iframe);
+            
+            // Toggle chat
+            let isOpen = false;
+            button.addEventListener('click', () => {
+                isOpen = !isOpen;
+                container.style.display = isOpen ? 'block' : 'none';
+                button.innerHTML = isOpen ? 
+                    '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>' :
+                    '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>';
+            });
+            
+            // Close on escape key
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && isOpen) {
+                    isOpen = false;
+                    container.style.display = 'none';
+                    button.innerHTML = '<svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg>';
+                }
+            });
+            
+            // Add to page
+            document.body.appendChild(button);
+            document.body.appendChild(container);
+            
+            console.log('RinglyPro Chat Widget initialized');
+        }
+    };
+    
+    // Auto-initialize if data attributes are present
+    document.addEventListener('DOMContentLoaded', () => {
+        const script = document.querySelector('script[data-ringlypro-widget]');
+        if (script) {
+            const options = {
+                widgetUrl: script.getAttribute('data-widget-url') || 'http://localhost:5000/widget',
+                position: script.getAttribute('data-position') || 'bottom-right',
+                primaryColor: script.getAttribute('data-color') || '#2196F3'
+            };
+            window.RinglyProChatWidget.init(options);
+        }
+    });
+})();
+'''
+    response = app.response_class(
+        response=embed_script,
+        status=200,
+        mimetype='application/javascript'
+    )
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+# WIDGET HTML TEMPLATE
+WIDGET_HTML_TEMPLATE = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RinglyPro Chat Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f8f9fa;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .widget-header {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            padding: 15px 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .widget-header h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        
+        .widget-header p {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        
+        .chat-area {
+            flex: 1;
+            padding: 15px;
+            overflow-y: auto;
+            background: white;
+        }
+        
+        .message {
+            margin-bottom: 12px;
+            padding: 12px 15px;
+            border-radius: 18px;
+            max-width: 85%;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .bot-message {
+            background: #f1f3f4;
+            color: #333;
+            margin-right: auto;
+            border-bottom-left-radius: 6px;
+        }
+        
+        .user-message {
+            background: #2196F3;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+            border-bottom-right-radius: 6px;
+        }
+        
+        .input-area {
+            padding: 15px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .input-container {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+        
+        .input-container input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s ease;
+            resize: none;
+            max-height: 100px;
+        }
+        
+        .input-container input:focus {
+            border-color: #2196F3;
+        }
+        
+        .send-button {
+            width: 40px;
+            height: 40px;
+            background: #2196F3;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+            flex-shrink: 0;
+        }
+        
+        .send-button:hover:not(:disabled) {
+            background: #1976D2;
+        }
+        
+        .send-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .phone-form {
+            background: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 12px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .phone-form h4 {
+            color: #e65100;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .phone-form p {
+            color: #f57c00;
+            margin-bottom: 12px;
+            font-size: 13px;
+        }
+        
+        .phone-input-container {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .phone-input-container input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 1px solid #ff9800;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        .phone-submit-btn {
+            padding: 10px 16px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .phone-submit-btn:hover {
+            background: #45a049;
+        }
+        
+        .success-message {
+            background: #e8f5e8;
+            border: 2px solid #4caf50;
+            color: #2e7d32;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        
+        .error-message {
+            background: #ffebee;
+            border: 2px solid #f44336;
+            color: #c62828;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        
+        .typing-indicator {
+            display: none;
+            padding: 12px 15px;
+            margin-bottom: 12px;
+            max-width: 85%;
+            margin-right: auto;
+        }
+        
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+        
+        .typing-dots span {
+            width: 8px;
+            height: 8px;
+            background: #999;
+            border-radius: 50%;
+            animation: typing 1.4s infinite ease-in-out;
+        }
+        
+        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+        
+        @keyframes typing {
+            0%, 80%, 100% { 
+                transform: scale(0.8);
+                opacity: 0.5;
+            }
+            40% { 
+                transform: scale(1);
+                opacity: 1;
+            }
+        }
+        
+        .powered-by {
+            padding: 8px 15px;
+            text-align: center;
+            font-size: 11px;
+            color: #666;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .powered-by a {
+            color: #2196F3;
+            text-decoration: none;
+        }
+        
+        /* Scrollbar styling */
+        .chat-area::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .chat-area::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .chat-area::-webkit-scrollbar-thumb {
+            background: #c1c1c1;
+            border-radius: 2px;
+        }
+        
+        .chat-area::-webkit-scrollbar-thumb:hover {
+            background: #a1a1a1;
+        }
+    </style>
+</head>
+<body>
+    <div class="widget-header">
+        <h3>💬 RinglyPro Assistant</h3>
+        <p>Ask us anything about our services!</p>
+    </div>
+    
+    <div class="chat-area" id="chatArea">
+        <div class="message bot-message">
+            👋 Hi! I'm your RinglyPro assistant. How can I help you today?
+        </div>
+        
+        <div class="typing-indicator" id="typingIndicator">
+            <div class="typing-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="input-area">
+        <div class="input-container">
+            <input 
+                type="text" 
+                id="messageInput" 
+                placeholder="Type your question..."
+                onkeypress="handleKeyPress(event)"
+                autocomplete="off"
+            >
+            <button class="send-button" onclick="sendMessage()" id="sendButton">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+    
+    <div class="powered-by">
+        Powered by <a href="https://ringlypro.com" target="_parent">RinglyPro.com</a>
+    </div>
+
+    <script>
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Disable input while processing
+            input.disabled = true;
+            document.getElementById('sendButton').disabled = true;
+            
+            // Add user message
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Show typing indicator
+            showTyping(true);
+            
+            // Send to server
+            fetch('/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ message: message })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showTyping(false);
+                addMessage(data.response, 'bot');
+                
+                // Check if phone collection is needed
+                if (data.needs_phone_collection) {
+                    setTimeout(() => showPhoneForm(), 500);
+                }
+            })
+            .catch(error => {
+                showTyping(false);
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error. Please try again.', 'bot');
+            })
+            .finally(() => {
+                // Re-enable input
+                input.disabled = false;
+                document.getElementById('sendButton').disabled = false;
+                input.focus();
+            });
+        }
+
+        function addMessage(message, sender) {
+            const chatArea = document.getElementById('chatArea');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            messageDiv.textContent = message;
+            
+            // Insert before typing indicator
+            const typingIndicator = document.getElementById('typingIndicator');
+            chatArea.insertBefore(messageDiv, typingIndicator);
+            
+            // Scroll to bottom
+            setTimeout(() => {
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }, 100);
+        }
+
+        function showTyping(show) {
+            const typingIndicator = document.getElementById('typingIndicator');
+            typingIndicator.style.display = show ? 'block' : 'none';
+            
+            if (show) {
+                const chatArea = document.getElementById('chatArea');
+                chatArea.scrollTop = chatArea.scrollHeight;
+            }
+        }
+
+        function showPhoneForm() {
+            const chatArea = document.getElementById('chatArea');
+            const phoneFormDiv = document.createElement('div');
+            phoneFormDiv.className = 'phone-form';
+            phoneFormDiv.innerHTML = `
+                <h4>📞 Let's Connect You!</h4>
+                <p>Enter your phone number and our team will reach out to help:</p>
+                <div class="phone-input-container">
+                    <input type="tel" id="phoneInput" placeholder="(555) 123-4567" maxlength="20">
+                    <button class="phone-submit-btn" onclick="submitPhone()">Submit</button>
+                </div>
+            `;
+            
+            const typingIndicator = document.getElementById('typingIndicator');
+            chatArea.insertBefore(phoneFormDiv, typingIndicator);
+            chatArea.scrollTop = chatArea.scrollHeight;
+            
+            // Focus on phone input
+            setTimeout(() => {
+                document.getElementById('phoneInput').focus();
+            }, 200);
+        }
+
+        function submitPhone() {
+            const phoneInput = document.getElementById('phoneInput');
+            const phoneNumber = phoneInput.value.trim();
+            
+            if (!phoneNumber) {
+                showNotification('Please enter a phone number.', 'error');
+                return;
+            }
+            
+            // Disable phone form
+            phoneInput.disabled = true;
+            phoneInput.nextElementSibling.disabled = true;
+            
+            // Send phone number to server
+            fetch('/submit_phone', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ 
+                    phone: phoneNumber,
+                    last_question: sessionStorage.getItem('lastQuestion') || 'General inquiry'
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                } else {
+                    showNotification(data.message, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showNotification('There was an error. Please try again.', 'error');
+            });
+        }
+
+        function showNotification(message, type) {
+            const chatArea = document.getElementById('chatArea');
+            const notificationDiv = document.createElement('div');
+            notificationDiv.className = `${type}-message`;
+            notificationDiv.innerHTML = `<strong>${type === 'success' ? '✅' : '❌'}</strong><br>${message}`;
+            
+            const typingIndicator = document.getElementById('typingIndicator');
+            chatArea.insertBefore(notificationDiv, typingIndicator);
+            chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        // Store last question for context
+        document.getElementById('messageInput').addEventListener('input', function() {
+            sessionStorage.setItem('lastQuestion', this.value);
+        });
+
+        // Auto-focus on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('messageInput').focus();
+        });
     app.run(debug=True, host='0.0.0.0', port=5000)
