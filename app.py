@@ -1625,9 +1625,11 @@ def process_text_enhanced():
         logger.error(f"❌ Processing error: {e}")
         return jsonify({"error": "I had a technical issue. Please try again."}), 500
 
+# Add this route to your app.py to replace the existing /widget route
+
 @app.route('/widget')
 def chat_widget():
-    """Embeddable chat widget"""
+    """Embeddable chat widget with black/transparent background"""
     widget_html = """<!DOCTYPE html>
 <html>
 <head>
@@ -1636,35 +1638,190 @@ def chat_widget():
     <title>RinglyPro Chat Widget</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; height: 100vh; display: flex; flex-direction: column; }
-        .header { background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 15px; text-align: center; }
-        .chat { flex: 1; padding: 15px; overflow-y: auto; background: white; }
-        .message { margin-bottom: 12px; padding: 12px 15px; border-radius: 18px; max-width: 85%; font-size: 14px; }
-        .bot-message { background: #f1f3f4; color: #333; margin-right: auto; }
-        .user-message { background: #2196F3; color: white; margin-left: auto; text-align: right; }
-        .input-area { padding: 15px; background: white; border-top: 1px solid #e0e0e0; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            background: rgba(0, 0, 0, 0.9); /* Black transparent background */
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column;
+            color: white; /* White text for visibility */
+        }
+        
+        .header { 
+            background: linear-gradient(135deg, rgba(33, 150, 243, 0.9), rgba(25, 118, 210, 0.9)); 
+            color: white; 
+            padding: 15px; 
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .chat { 
+            flex: 1; 
+            padding: 15px; 
+            overflow-y: auto; 
+            background: rgba(0, 0, 0, 0.7); /* Semi-transparent black */
+            backdrop-filter: blur(5px);
+        }
+        
+        .message { 
+            margin-bottom: 12px; 
+            padding: 12px 15px; 
+            border-radius: 18px; 
+            max-width: 85%; 
+            font-size: 14px; 
+        }
+        
+        .bot-message { 
+            background: rgba(40, 40, 40, 0.9); /* Dark gray for bot messages */
+            color: #e0e0e0; 
+            margin-right: auto;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .user-message { 
+            background: rgba(33, 150, 243, 0.8); 
+            color: white; 
+            margin-left: auto; 
+            text-align: right;
+            backdrop-filter: blur(10px);
+        }
+        
+        .input-area { 
+            padding: 15px; 
+            background: rgba(20, 20, 20, 0.95); 
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+        }
+        
         .input-container { display: flex; gap: 8px; }
-        .input-container input { flex: 1; padding: 12px 15px; border: 2px solid #e0e0e0; border-radius: 25px; outline: none; }
-        .send-btn { width: 40px; height: 40px; background: #2196F3; border: none; border-radius: 50%; color: white; cursor: pointer; }
-        .phone-form { background: #fff3e0; border: 2px solid #ff9800; border-radius: 12px; padding: 15px; margin: 10px 0; }
+        
+        .input-container input { 
+            flex: 1; 
+            padding: 12px 15px; 
+            border: 2px solid rgba(255, 255, 255, 0.2); 
+            border-radius: 25px; 
+            outline: none;
+            background: rgba(30, 30, 30, 0.8);
+            color: white;
+            backdrop-filter: blur(5px);
+        }
+        
+        .input-container input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .input-container input:focus {
+            border-color: #2196F3;
+            background: rgba(40, 40, 40, 0.9);
+        }
+        
+        .send-btn { 
+            width: 40px; 
+            height: 40px; 
+            background: rgba(33, 150, 243, 0.9); 
+            border: none; 
+            border-radius: 50%; 
+            color: white; 
+            cursor: pointer;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .send-btn:hover {
+            background: rgba(25, 118, 210, 1);
+            transform: scale(1.05);
+        }
+        
+        .phone-form { 
+            background: rgba(255, 152, 0, 0.15); 
+            border: 2px solid rgba(255, 152, 0, 0.6); 
+            border-radius: 12px; 
+            padding: 15px; 
+            margin: 10px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .phone-form h4 { color: #ffb74d; margin-bottom: 8px; font-size: 14px; }
+        .phone-form p { color: #fff3e0; margin-bottom: 12px; font-size: 13px; }
+        
         .phone-inputs { display: flex; gap: 8px; margin-top: 10px; }
-        .phone-inputs input { flex: 1; padding: 10px; border: 1px solid #ff9800; border-radius: 8px; }
-        .phone-btn { padding: 10px 16px; background: #4caf50; color: white; border: none; border-radius: 8px; cursor: pointer; }
-        .success { background: #e8f5e8; border: 2px solid #4caf50; color: #2e7d32; padding: 12px; border-radius: 8px; margin: 10px 0; }
-        .error { background: #ffebee; border: 2px solid #f44336; color: #c62828; padding: 12px; border-radius: 8px; margin: 10px 0; }
+        
+        .phone-inputs input { 
+            flex: 1; 
+            padding: 10px; 
+            border: 1px solid rgba(255, 152, 0, 0.6); 
+            border-radius: 8px; 
+            background: rgba(30, 30, 30, 0.8);
+            color: white;
+            outline: none;
+        }
+        
+        .phone-inputs input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        .phone-btn { 
+            padding: 10px 16px; 
+            background: rgba(76, 175, 80, 0.9); 
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer;
+            backdrop-filter: blur(5px);
+        }
+        
+        .success { 
+            background: rgba(76, 175, 80, 0.2); 
+            border: 2px solid rgba(76, 175, 80, 0.6); 
+            color: #c8e6c9; 
+            padding: 12px; 
+            border-radius: 8px; 
+            margin: 10px 0;
+            backdrop-filter: blur(10px);
+        }
+        
+        .error { 
+            background: rgba(244, 67, 54, 0.2); 
+            border: 2px solid rgba(244, 67, 54, 0.6); 
+            color: #ffcdd2; 
+            padding: 12px; 
+            border-radius: 8px; 
+            margin: 10px 0;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Scrollbar styling for dark theme */
+        .chat::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .chat::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .chat::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .chat::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
     </style>
 </head>
 <body>
     <div class="header">
         <h3>💬 RinglyPro Assistant</h3>
-        <p>Ask us anything about our services!</p>
+        <p>Ask about our services!</p>
     </div>
     <div class="chat" id="chat">
         <div class="message bot-message">👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?</div>
     </div>
     <div class="input-area">
         <div class="input-container">
-            <input type="text" id="input" placeholder="Type your question..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <input type="text" id="input" placeholder="Ask about RinglyPro services..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button class="send-btn" onclick="sendMessage()">→</button>
         </div>
     </div>
@@ -1731,6 +1888,7 @@ def chat_widget():
     </script>
 </body>
 </html>"""
+    return widget_html
     return widget_html
 
 @app.route('/widget/embed.js')
