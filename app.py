@@ -1625,11 +1625,9 @@ def process_text_enhanced():
         logger.error(f"❌ Processing error: {e}")
         return jsonify({"error": "I had a technical issue. Please try again."}), 500
 
-# Add this route to your app.py to replace the existing /widget route
-
 @app.route('/widget')
 def chat_widget():
-    """Embeddable chat widget - WHITE interior (as you requested)"""
+    """Embeddable chat widget - WHITE interior with clean design"""
     widget_html = """<!DOCTYPE html>
 <html>
 <head>
@@ -1640,7 +1638,7 @@ def chat_widget():
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-            background: #f8f9fa; /* WHITE background */
+            background: #f8f9fa; 
             height: 100vh; 
             display: flex; 
             flex-direction: column;
@@ -1657,7 +1655,7 @@ def chat_widget():
             flex: 1; 
             padding: 15px; 
             overflow-y: auto; 
-            background: white; /* WHITE chat area */
+            background: white;
         }
         
         .message { 
@@ -1669,7 +1667,7 @@ def chat_widget():
         }
         
         .bot-message { 
-            background: #f1f3f4; /* Light gray for bot messages */
+            background: #f1f3f4; 
             color: #333; 
             margin-right: auto;
         }
@@ -1777,7 +1775,6 @@ def chat_widget():
             margin: 10px 0;
         }
 
-        /* Clean scrollbar styling */
         .chat::-webkit-scrollbar {
             width: 4px;
         }
@@ -1875,7 +1872,6 @@ def chat_widget():
 </html>"""
     return widget_html
 
-# AND make sure your embed script creates the BLACK BACKDROP:
 @app.route('/widget/embed.js')
 def widget_embed_script():
     """Widget embed JavaScript with BLACK BACKDROP"""
@@ -1965,70 +1961,6 @@ def widget_embed_script():
     };
     
     // Auto-initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        var script = document.querySelector('script[data-ringlypro-widget]');
-        if (script) {
-            window.RinglyProWidget.init({
-                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
-                position: script.getAttribute('data-position') || 'bottom-right',
-                color: script.getAttribute('data-color') || '#2196F3'
-            });
-        }
-    });
-})();
-"""
-    
-    response = app.response_class(
-        response=js_code,
-        status=200,
-        mimetype='application/javascript'
-    )
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Cache-Control'] = 'no-cache'
-    return response
-
-@app.route('/widget/embed.js')
-def widget_embed_script():
-    """Widget embed JavaScript"""
-    js_code = """
-(function() {
-    if (window.RinglyProWidget) return;
-    
-    window.RinglyProWidget = {
-        init: function(options) {
-            options = options || {};
-            var widgetUrl = options.url || 'http://localhost:5000/widget';
-            var position = options.position || 'bottom-right';
-            var color = options.color || '#2196F3';
-            
-            var button = document.createElement('div');
-            button.innerHTML = '💬';
-            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + 
-                (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + 
-                (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            var container = document.createElement('div');
-            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.3);' + 
-                (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + 
-                (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            var iframe = document.createElement('iframe');
-            iframe.src = widgetUrl;
-            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:10px;';
-            container.appendChild(iframe);
-            
-            var isOpen = false;
-            button.onclick = function() {
-                isOpen = !isOpen;
-                container.style.display = isOpen ? 'block' : 'none';
-                button.innerHTML = isOpen ? '✕' : '💬';
-            };
-            
-            document.body.appendChild(button);
-            document.body.appendChild(container);
-        }
-    };
-    
     document.addEventListener('DOMContentLoaded', function() {
         var script = document.querySelector('script[data-ringlypro-widget]');
         if (script) {
