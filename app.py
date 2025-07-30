@@ -1629,7 +1629,7 @@ def process_text_enhanced():
 
 @app.route('/widget')
 def chat_widget():
-    """Embeddable chat widget with black/transparent background"""
+    """Embeddable chat widget - WHITE interior (as you requested)"""
     widget_html = """<!DOCTYPE html>
 <html>
 <head>
@@ -1640,28 +1640,24 @@ def chat_widget():
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-            background: rgba(0, 0, 0, 0.9); /* Black transparent background */
+            background: #f8f9fa; /* WHITE background */
             height: 100vh; 
             display: flex; 
             flex-direction: column;
-            color: white; /* White text for visibility */
         }
         
         .header { 
-            background: linear-gradient(135deg, rgba(33, 150, 243, 0.9), rgba(25, 118, 210, 0.9)); 
+            background: linear-gradient(135deg, #2196F3, #1976D2); 
             color: white; 
             padding: 15px; 
             text-align: center;
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
         
         .chat { 
             flex: 1; 
             padding: 15px; 
             overflow-y: auto; 
-            background: rgba(0, 0, 0, 0.7); /* Semi-transparent black */
-            backdrop-filter: blur(5px);
+            background: white; /* WHITE chat area */
         }
         
         .message { 
@@ -1673,26 +1669,22 @@ def chat_widget():
         }
         
         .bot-message { 
-            background: rgba(40, 40, 40, 0.9); /* Dark gray for bot messages */
-            color: #e0e0e0; 
+            background: #f1f3f4; /* Light gray for bot messages */
+            color: #333; 
             margin-right: auto;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
         
         .user-message { 
-            background: rgba(33, 150, 243, 0.8); 
+            background: #2196F3; 
             color: white; 
             margin-left: auto; 
             text-align: right;
-            backdrop-filter: blur(10px);
         }
         
         .input-area { 
             padding: 15px; 
-            background: rgba(20, 20, 20, 0.95); 
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
+            background: white; 
+            border-top: 1px solid #e0e0e0;
         }
         
         .input-container { display: flex; gap: 8px; }
@@ -1700,114 +1692,107 @@ def chat_widget():
         .input-container input { 
             flex: 1; 
             padding: 12px 15px; 
-            border: 2px solid rgba(255, 255, 255, 0.2); 
+            border: 2px solid #e0e0e0; 
             border-radius: 25px; 
             outline: none;
-            background: rgba(30, 30, 30, 0.8);
-            color: white;
-            backdrop-filter: blur(5px);
+            background: white;
+            color: #333;
         }
         
         .input-container input::placeholder {
-            color: rgba(255, 255, 255, 0.6);
+            color: #999;
         }
         
         .input-container input:focus {
             border-color: #2196F3;
-            background: rgba(40, 40, 40, 0.9);
         }
         
         .send-btn { 
             width: 40px; 
             height: 40px; 
-            background: rgba(33, 150, 243, 0.9); 
+            background: #2196F3; 
             border: none; 
             border-radius: 50%; 
             color: white; 
             cursor: pointer;
-            backdrop-filter: blur(10px);
             transition: all 0.3s ease;
         }
         
         .send-btn:hover {
-            background: rgba(25, 118, 210, 1);
+            background: #1976D2;
             transform: scale(1.05);
         }
         
         .phone-form { 
-            background: rgba(255, 152, 0, 0.15); 
-            border: 2px solid rgba(255, 152, 0, 0.6); 
+            background: #fff3e0; 
+            border: 2px solid #ff9800; 
             border-radius: 12px; 
             padding: 15px; 
             margin: 10px 0;
-            backdrop-filter: blur(10px);
         }
         
-        .phone-form h4 { color: #ffb74d; margin-bottom: 8px; font-size: 14px; }
-        .phone-form p { color: #fff3e0; margin-bottom: 12px; font-size: 13px; }
+        .phone-form h4 { color: #e65100; margin-bottom: 8px; font-size: 14px; }
+        .phone-form p { color: #bf360c; margin-bottom: 12px; font-size: 13px; }
         
         .phone-inputs { display: flex; gap: 8px; margin-top: 10px; }
         
         .phone-inputs input { 
             flex: 1; 
             padding: 10px; 
-            border: 1px solid rgba(255, 152, 0, 0.6); 
+            border: 1px solid #ff9800; 
             border-radius: 8px; 
-            background: rgba(30, 30, 30, 0.8);
-            color: white;
+            background: white;
+            color: #333;
             outline: none;
         }
         
         .phone-inputs input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
+            color: #999;
         }
         
         .phone-btn { 
             padding: 10px 16px; 
-            background: rgba(76, 175, 80, 0.9); 
+            background: #4caf50; 
             color: white; 
             border: none; 
             border-radius: 8px; 
             cursor: pointer;
-            backdrop-filter: blur(5px);
         }
         
         .success { 
-            background: rgba(76, 175, 80, 0.2); 
-            border: 2px solid rgba(76, 175, 80, 0.6); 
-            color: #c8e6c9; 
+            background: #e8f5e8; 
+            border: 2px solid #4caf50; 
+            color: #2e7d32; 
             padding: 12px; 
             border-radius: 8px; 
             margin: 10px 0;
-            backdrop-filter: blur(10px);
         }
         
         .error { 
-            background: rgba(244, 67, 54, 0.2); 
-            border: 2px solid rgba(244, 67, 54, 0.6); 
-            color: #ffcdd2; 
+            background: #ffebee; 
+            border: 2px solid #f44336; 
+            color: #c62828; 
             padding: 12px; 
             border-radius: 8px; 
             margin: 10px 0;
-            backdrop-filter: blur(10px);
         }
 
-        /* Scrollbar styling for dark theme */
+        /* Clean scrollbar styling */
         .chat::-webkit-scrollbar {
-            width: 6px;
+            width: 4px;
         }
         
         .chat::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
+            background: #f1f1f1;
         }
         
         .chat::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
+            background: #c1c1c1;
+            border-radius: 2px;
         }
         
         .chat::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.5);
+            background: #a1a1a1;
         }
     </style>
 </head>
@@ -1889,7 +1874,118 @@ def chat_widget():
 </body>
 </html>"""
     return widget_html
-    return widget_html
+
+# AND make sure your embed script creates the BLACK BACKDROP:
+@app.route('/widget/embed.js')
+def widget_embed_script():
+    """Widget embed JavaScript with BLACK BACKDROP"""
+    js_code = """
+(function() {
+    if (window.RinglyProWidget) return;
+    
+    window.RinglyProWidget = {
+        init: function(options) {
+            options = options || {};
+            var widgetUrl = options.url || 'http://localhost:5000/widget';
+            var position = options.position || 'bottom-right';
+            var color = options.color || '#2196F3';
+            
+            // Create BLACK backdrop overlay
+            var backdrop = document.createElement('div');
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999;display:none;backdrop-filter:blur(5px);';
+            backdrop.onclick = function() {
+                toggleWidget();
+            };
+            
+            // Create floating button
+            var button = document.createElement('div');
+            button.innerHTML = '💬';
+            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + 
+                (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            // Create container (WHITE interior)
+            var container = document.createElement('div');
+            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;' +
+                (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            // Create iframe
+            var iframe = document.createElement('iframe');
+            iframe.src = widgetUrl;
+            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:15px;background:white;';
+            container.appendChild(iframe);
+            
+            // Toggle functionality
+            var isOpen = false;
+            
+            function toggleWidget() {
+                isOpen = !isOpen;
+                container.style.display = isOpen ? 'block' : 'none';
+                backdrop.style.display = isOpen ? 'block' : 'none';
+                button.innerHTML = isOpen ? '✕' : '💬';
+                
+                if (isOpen) {
+                    button.style.background = '#f44336';
+                    button.style.zIndex = '1002';
+                } else {
+                    button.style.background = color;
+                    button.style.zIndex = '1000';
+                }
+            }
+            
+            button.onclick = toggleWidget;
+            
+            // Add hover effects
+            button.onmouseenter = function() {
+                if (!isOpen) {
+                    button.style.transform = 'scale(1.1)';
+                    button.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25)';
+                }
+            };
+            
+            button.onmouseleave = function() {
+                if (!isOpen) {
+                    button.style.transform = 'scale(1)';
+                    button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }
+            };
+            
+            // Mobile responsiveness
+            if (window.innerWidth <= 480) {
+                container.style.cssText = 'position:fixed;width:calc(100vw - 20px);height:calc(100vh - 40px);display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;top:10px;left:10px;right:10px;bottom:10px;';
+            }
+            
+            document.body.appendChild(backdrop);
+            document.body.appendChild(button);
+            document.body.appendChild(container);
+            
+            console.log('✨ RinglyPro Widget with Black Backdrop loaded!');
+        }
+    };
+    
+    // Auto-initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        var script = document.querySelector('script[data-ringlypro-widget]');
+        if (script) {
+            window.RinglyProWidget.init({
+                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
+                position: script.getAttribute('data-position') || 'bottom-right',
+                color: script.getAttribute('data-color') || '#2196F3'
+            });
+        }
+    });
+})();
+"""
+    
+    response = app.response_class(
+        response=js_code,
+        status=200,
+        mimetype='application/javascript'
+    )
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
 
 @app.route('/widget/embed.js')
 def widget_embed_script():
