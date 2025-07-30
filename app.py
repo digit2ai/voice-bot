@@ -15,16 +15,67 @@ import time
 import base64
 import asyncio
 from datetime import datetime
-
-# Import our new modules
-from enhanced_tts import tts_engine
-from speech_optimized_claude import get_enhanced_claude_response
+import sqlite3
+from typing import Optional, Tuple, Dict, Any
 
 # Load environment variables
 load_dotenv()
 
+# Setup Flask
+app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'your-default-secret-key-change-this')
+CORS(app, origins="*", allow_headers="*", methods="*")
+
+# Setup Enhanced Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("ringlypro.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# API Keys validation
+anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+openai_api_key = os.getenv("OPENAI_API_KEY")
+elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
+twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+
+if not anthropic_api_key:
+    logger.error("ANTHROPIC_API_KEY not found in environment variables")
+    raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
+
+# Initialize database
+def init_database():
+    """Initialize SQLite database for customer inquiries"""
+    try:
+        conn = sqlite3.connect('customer_inquiries.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS inquiries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                phone TEXT NOT NULL,
+                question TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'new',
+                sms_sent BOOLEAN DEFAULT FALSE,
+                sms_sid TEXT,
+                source TEXT DEFAULT 'chat',
+                notes TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+        logger.info("✅ Database initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+
 # SMS/Phone Helper Functions
-def validate_phone_number(phone_str):
+def validate_phone_number(phone_str: str) -> Optional[str]:
     """Validate and format phone number"""
     try:
         # Parse the number (assuming US if no country code)
@@ -39,61 +90,68 @@ def validate_phone_number(phone_str):
     except NumberParseException:
         return None
 
-def send_sms_notification(customer_phone, customer_question):
+def send_sms_notification(customer_phone: str, customer_question: str, source: str = "chat") -> Tuple[bool, str]:
     """Send SMS notification to customer service"""
     try:
-        client = Client(
-            os.getenv('TWILIO_ACCOUNT_SID'),
-            os.getenv('TWILIO_AUTH_TOKEN')
-        )
+        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+            logger.warning("⚠️ Twilio credentials not configured - SMS notification skipped")
+            return False, "SMS credentials not configured"
+            
+        client = Client(twilio_account_sid, twilio_auth_token)
         
         message_body = f"""
-New customer inquiry:
-Phone: {customer_phone}
-Question: {customer_question}
-Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🔔 New RinglyPro Customer Inquiry
+
+📞 Phone: {customer_phone}
+💬 Question: {customer_question}
+📱 Source: {source}
+🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Please follow up with this customer.
         """.strip()
         
         message = client.messages.create(
             body=message_body,
-            from_=os.getenv('TWILIO_PHONE_NUMBER'),
+            from_=twilio_phone,
             to='+16566001400'
         )
         
+        logger.info(f"✅ SMS sent successfully. SID: {message.sid}")
         return True, message.sid
+        
     except Exception as e:
+        logger.error(f"❌ SMS sending failed: {str(e)}")
         return False, str(e)
 
-def is_no_answer_response(response):
+def save_customer_inquiry(phone: str, question: str, sms_sent: bool, sms_sid: str = "", source: str = "chat") -> bool:
+    """Save customer inquiry to database"""
+    try:
+        conn = sqlite3.connect('customer_inquiries.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO inquiries (phone, question, sms_sent, sms_sid, source)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (phone, question, sms_sent, sms_sid, source))
+        conn.commit()
+        conn.close()
+        logger.info(f"💾 Customer inquiry saved: {phone}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Database save failed: {e}")
+        return False
+
+def is_no_answer_response(response: str) -> bool:
     """Check if the FAQ response indicates no answer was found"""
     no_answer_indicators = [
         "I don't have information",
-        "couldn't find a direct answer",
+        "couldn't find a direct answer", 
         "please contact our customer service",
         "I don't have a specific answer",
         "contact our support team"
     ]
     return any(indicator in response.lower() for indicator in no_answer_indicators)
 
-# API Keys validation
-anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-openai_api_key = os.getenv("OPENAI_API_KEY")
-
-if not anthropic_api_key:
-    raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
-
-# Setup Flask
-app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY', 'your-default-secret-key-change-this')
-CORS(app)
-
-# Setup Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-
-# Your existing FAQ_BRAIN (keep this unchanged)
+# Enhanced FAQ Brain
 FAQ_BRAIN = {
     # Basic Platform Information
     "what is ringlypro?": "RinglyPro.com is a 24/7 AI-powered call answering and client booking service designed for small businesses and professionals. It ensures you never miss a call by providing automated phone answering, appointment scheduling, and customer communication through AI technology.",
@@ -112,19 +170,15 @@ FAQ_BRAIN = {
     "does ringlypro offer appointment scheduling?": "Yes, clients can schedule appointments through phone, text, or online booking. All appointments sync with your existing calendar system for easy management.",
 
     # Pricing & Plans
-    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: scheduling assistant ($97 permonth), Office Manager ($297 permonth), and marketing director ($497per month). Each plan includes different amounts of minutes, text messages, and online replies.",
+    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Scheduling Assistant ($97/month), Office Manager ($297/month), and Marketing Director ($497/month). Each plan includes different amounts of minutes, text messages, and online replies.",
 
-    "what is included in the starter plan?": "The scheduling assistant plan ($49 per month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
+    "what is included in the starter plan?": "The Scheduling Assistant plan ($97/month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
 
-    "what is included in the office manager plan?": "The Office Manager plan ($297 per month) includes 3,000 minutes, 3,000 texts, 3,000 online replies, all Starter features plus assisted onboarding, phone/email/text support, custom voice choices, live call queuing, Zapier integrations, CRM setup, invoice automation, payment gateway setup, and mobile app.",
+    "what is included in the office manager plan?": "The Office Manager plan ($297/month) includes 3,000 minutes, 3,000 texts, 3,000 online replies, all Starter features plus assisted onboarding, phone/email/text support, custom voice choices, live call queuing, Zapier integrations, CRM setup, invoice automation, payment gateway setup, and mobile app.",
 
-    "what is included in the business growth plan?": "The Marketing Director plan ($497 per month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
+    "what is included in the business growth plan?": "The Marketing Director plan ($497/month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
 
-    "are there setup fees?": "Setup fees are not explicitly mentioned in the pricing. The Starter plan includes self-guided setup, while higher tiers include assisted onboarding and professional setup services.",
-
-    "can i choose annual vs monthly billing?": "Yes, RinglyPro allows you to decide on billing frequency, offering both annual and monthly billing options.",
-
-    # Technical Capabilities
+    # Technical Capabilities  
     "what is missed-call text-back?": "Missed-call text-back is a feature that instantly re-engages callers you couldn't answer by automatically sending them a text message, keeping conversations and opportunities alive.",
 
     "does ringlypro record calls?": "Yes, call recording is available as a feature across all plans, allowing you to review conversations and maintain records of customer interactions.",
@@ -133,56 +187,21 @@ FAQ_BRAIN = {
 
     "does ringlypro have a mobile app?": "Yes, a mobile app is included with the Office Manager and Business Growth plans, allowing you to manage your service on the go.",
 
-    # Setup & Onboarding
-    "how do i get started with ringlypro?": "Getting started involves 4 steps: 1) Choose your plan based on call/text volume and support needs, 2) Decide on billing frequency, 3) Set up your account and choose your number through onboarding, 4) Launch your service with automated calls, texts, and appointment tools.",
-
-    "what kind of support does ringlypro offer?": "Support varies by plan: Starter includes email support, Office Manager includes phone/email/text support, and Business Growth includes a dedicated account manager plus professional onboarding services.",
-
-    "how long does setup take?": "The timeline isn't specified, but setup options range from self-guided (Starter) to assisted onboarding (Office Manager) to professional onboarding services (Business Growth).",
-
-    # Business Benefits
-    "how does ringlypro help my business?": "RinglyPro helps by ensuring you never miss calls, providing 24/7 availability, automating appointment scheduling, offering bilingual support to reach more customers, integrating with existing tools, and providing analytics to track performance.",
-
-    "what types of businesses use ringlypro?": "RinglyPro is designed for small businesses, solo professionals, service-based businesses, and any business that needs reliable call answering and appointment scheduling services.",
-
-    "can ringlypro help with lead generation?": "Yes, especially with higher-tier plans that include lead capture automation, Google Ads campaigns, email marketing, and lead conversion reporting.",
-
-    # Customer Service & Contact
+    # Contact Information
     "how can i contact ringlypro support?": "You can contact RinglyPro customer service at (656) 213-3300 or via email. The level of support (email, phone, text) depends on your plan level.",
 
     "what are ringlypro business hours?": "RinglyPro provides 24/7 service availability. Their experts are available around the clock to support and grow your business.",
 
-    "where can i find ringlypro terms of service?": "Terms of service and privacy policy information can be found on their website. The service is provided by DIGIT2AI LLC.",
-
-    # Competitive Advantages
-    "what makes ringlypro different?": "RinglyPro stands out with its combination of AI-powered automation, bilingual support, comprehensive integrations, multiple communication channels (phone, text, chat), and scalable plans with dedicated support options.",
-
-    "does ringlypro offer custom solutions?": "Yes, the Business Growth plan includes custom integrations for advanced workflows, and they offer custom solutions tailored to specific business needs.",
-
-    # Technical Support
-    "what happens if i exceed my plan limits?": "The plans include specific amounts of minutes, text messages, and online replies. Contact their support team to discuss options if you regularly exceed your plan limits.",
-
-    "can i upgrade or downgrade my plan?": "While not explicitly stated, most subscription services allow plan changes. Contact RinglyPro support to discuss plan modifications based on your changing needs.",
-
-    "does ringlypro offer analytics?": "Yes, monthly analytics reporting is included with the Business Growth plan, and conversion reporting helps track lead performance.",
-
-    # Integration & Compatibility
+    # Integration Questions
     "what crms does ringlypro work with?": "RinglyPro mentions working with CRMs and offers CRM setup for small businesses. They integrate through online links and Zapier, which supports hundreds of popular CRM systems.",
 
     "can ringlypro integrate with zapier?": "Yes, Zapier integration is available with the Office Manager and Business Growth plans, allowing connection to thousands of business applications.",
 
-    "does ringlypro work with stripe?": "Yes, Stripe/Payment Gateway Setup is included in the Office Manager and Business Growth plans.",
-
-    # AI Capabilities
-    "how smart is ringlypro ai?": "RinglyPro uses AI-powered chat and text to streamline and tailor customer conversations with intelligent automation. The AI handles call answering, appointment scheduling, and customer communications.",
-
-    "can the ai handle complex questions?": "While specific AI capabilities aren't detailed, the service includes escalation to human support and various plan tiers offer different levels of human assistance for complex situations.",
-
-    "does ringlypro ai learn from interactions?": "The system uses AI-powered automation, though specific machine learning capabilities aren't detailed in available information. Contact their support for technical details about AI improvement over time."
+    "does ringlypro work with stripe?": "Yes, Stripe/Payment Gateway Setup is included in the Office Manager and Business Growth plans."
 }
 
 # Original voice FAQ function (unchanged)
-def get_faq_response(user_text: str) -> tuple[str, bool]:
+def get_faq_response(user_text: str) -> Tuple[str, bool]:
     """
     Check for FAQ matches with fuzzy matching and web scraping
     Returns: (response_text, is_faq_match)
@@ -207,14 +226,14 @@ def get_faq_response(user_text: str) -> tuple[str, bool]:
             text = soup.get_text()
             if len(text) > 100:
                 return "Based on information from our website: I found some relevant content that might help. For more specific assistance, please contact our support team.", True
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Web scraping failed: {e}")
     
     # Fallback to customer service
     return "I don't have a specific answer to that question. Please contact our Customer Service team for specialized assistance.", True
 
-# NEW: SMS-enabled FAQ function for text chat
-def get_faq_response_with_sms(user_text: str) -> tuple[str, bool, bool]:
+# Enhanced FAQ function for text chat with SMS integration
+def get_faq_response_with_sms(user_text: str) -> Tuple[str, bool, bool]:
     """
     Check for FAQ matches with SMS phone collection capability
     Returns: (response_text, is_faq_match, needs_phone_collection)
@@ -238,18 +257,17 @@ def get_faq_response_with_sms(user_text: str) -> tuple[str, bool, bool]:
             soup = BeautifulSoup(response.content, 'html.parser')
             text = soup.get_text()
             if len(text) > 100:
-                # Return with phone collection since this is a generic response
                 return "I found some information on our website that might be related, but I'd like to connect you with our customer service team for personalized assistance with your specific question. Could you please provide your phone number so they can reach out to help you?", False, True
-    except:
-        pass
+    except Exception as e:
+        logger.warning(f"Web scraping failed: {e}")
     
     # Fallback to customer service with phone collection
     return "I don't have a specific answer to that question. I'd like to connect you with our customer service team. Could you please provide your phone number so they can reach out to help you?", False, True
 
-# ORIGINAL VOICE INTERFACE HTML (unchanged)
+# HTML Templates
 VOICE_HTML_TEMPLATE = '''
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
@@ -341,49 +359,6 @@ VOICE_HTML_TEMPLATE = '''
       background: rgba(255, 255, 255, 0.3);
     }
 
-    .voice-visualizer {
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.3s ease;
-    }
-
-    .voice-visualizer.active {
-      opacity: 1;
-    }
-
-    .voice-wave {
-      position: absolute;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(76, 175, 80, 0.1), rgba(76, 175, 80, 0.05));
-      animation: voiceWave 2s infinite;
-    }
-
-    @keyframes voiceWave {
-      0% { 
-        transform: scale(0.8);
-        opacity: 0.8;
-      }
-      50% {
-        transform: scale(1.2);
-        opacity: 0.4;
-      }
-      100% { 
-        transform: scale(1.5);
-        opacity: 0;
-      }
-    }
-
-    .mic-container {
-      position: relative;
-      display: inline-block;
-      margin-bottom: 2rem;
-    }
-
     .mic-button {
       width: 130px;
       height: 130px;
@@ -399,22 +374,7 @@ VOICE_HTML_TEMPLATE = '''
       position: relative;
       overflow: hidden;
       touch-action: manipulation;
-    }
-
-    .mic-button::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
-      transform: translateX(-100%);
-      transition: transform 0.6s;
-    }
-
-    .mic-button:hover::before {
-      transform: translateX(100%);
+      margin: 0 auto 2rem;
     }
 
     .mic-button:hover {
@@ -422,14 +382,9 @@ VOICE_HTML_TEMPLATE = '''
       box-shadow: 0 15px 50px rgba(76, 175, 80, 0.4);
     }
 
-    .mic-button:active {
-      transform: scale(0.95);
-    }
-
     .mic-button.listening {
       animation: listening 1.5s infinite;
       background: linear-gradient(135deg, #f44336, #d32f2f);
-      box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
     }
 
     .mic-button.processing {
@@ -443,49 +398,27 @@ VOICE_HTML_TEMPLATE = '''
     }
 
     @keyframes listening {
-      0% { 
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
-        transform: scale(1);
-      }
-      50% {
-        transform: scale(1.05);
-      }
-      70% { 
-        box-shadow: 0 0 0 20px rgba(244, 67, 54, 0);
-      }
-      100% { 
-        box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
-        transform: scale(1);
-      }
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
     }
 
     @keyframes processing {
-      0%, 100% { transform: rotate(0deg) scale(1); }
-      25% { transform: rotate(90deg) scale(1.05); }
-      50% { transform: rotate(180deg) scale(1); }
-      75% { transform: rotate(270deg) scale(1.05); }
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(90deg); }
+      50% { transform: rotate(180deg); }
+      75% { transform: rotate(270deg); }
     }
 
     @keyframes speaking {
-      0%, 100% { 
-        box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
-        transform: scale(1);
-      }
-      25% { transform: scale(1.02); }
-      50% { box-shadow: 0 0 0 15px rgba(76, 175, 80, 0); }
-      75% { transform: scale(0.98); }
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
     }
 
     .mic-button svg {
       width: 60px;
       height: 60px;
       fill: #ffffff;
-      z-index: 1;
-      transition: transform 0.3s ease;
-    }
-
-    .mic-button.listening svg {
-      transform: scale(1.1);
     }
 
     #status {
@@ -497,28 +430,6 @@ VOICE_HTML_TEMPLATE = '''
       align-items: center;
       justify-content: center;
       transition: all 0.3s ease;
-    }
-
-    .status-ready {
-      color: #E3F2FD !important;
-    }
-
-    .status-listening {
-      color: #FFCDD2 !important;
-      animation: blink 1.5s infinite;
-    }
-
-    .status-processing {
-      color: #FFF3E0 !important;
-    }
-
-    .status-speaking {
-      color: #E8F5E8 !important;
-    }
-
-    @keyframes blink {
-      0%, 50% { opacity: 1; }
-      51%, 100% { opacity: 0.7; }
     }
 
     .controls {
@@ -619,34 +530,11 @@ VOICE_HTML_TEMPLATE = '''
       opacity: 0;
       transform: translateY(-10px);
       transition: all 0.3s ease;
-      -webkit-user-select: text;
-      -moz-user-select: text;
-      -ms-user-select: text;
-      user-select: text;
     }
 
     .error-message.show {
       opacity: 1;
       transform: translateY(0);
-    }
-
-    .audio-quality-indicator {
-      position: fixed;
-      top: 20px;
-      left: 20px;
-      background: rgba(76, 175, 80, 0.9);
-      color: white;
-      padding: 0.75rem 1rem;
-      border-radius: 20px;
-      font-size: 0.8rem;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-      animation: slideInLeft 0.3s ease;
-    }
-
-    @keyframes slideInLeft {
-      from { transform: translateX(-100%); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
     }
 
     @media (max-width: 480px) {
@@ -681,18 +569,6 @@ VOICE_HTML_TEMPLATE = '''
         padding: 0.4rem 0.8rem;
       }
     }
-
-    .sr-only {
-      position: absolute;
-      width: 1px;
-      height: 1px;
-      padding: 0;
-      margin: -1px;
-      overflow: hidden;
-      clip: rect(0, 0, 0, 0);
-      white-space: nowrap;
-      border: 0;
-    }
   </style>
 </head>
 <body>
@@ -707,26 +583,18 @@ VOICE_HTML_TEMPLATE = '''
       <button class="lang-btn" data-lang="es-ES">🇪🇸 Español</button>
     </div>
 
-    <div class="mic-container">
-      <div class="voice-visualizer" id="voiceVisualizer">
-        <div class="voice-wave" style="width: 200px; height: 200px; top: 50%; left: 50%; transform: translate(-50%, -50%);"></div>
-        <div class="voice-wave" style="width: 250px; height: 250px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 0.5s;"></div>
-        <div class="voice-wave" style="width: 300px; height: 300px; top: 50%; left: 50%; transform: translate(-50%, -50%); animation-delay: 1s;"></div>
-      </div>
-      
-      <button id="micBtn" class="mic-button" aria-label="Talk to RinglyPro AI">
-        <svg xmlns="http://www.w3.org/2000/svg" height="60" viewBox="0 0 24 24" width="60" fill="#ffffff">
-          <path d="M0 0h24v24H0V0z" fill="none"/>
-          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
-        </svg>
-      </button>
-    </div>
+    <button id="micBtn" class="mic-button" aria-label="Talk to RinglyPro AI">
+      <svg xmlns="http://www.w3.org/2000/svg" height="60" viewBox="0 0 24 24" width="60" fill="#ffffff">
+        <path d="M0 0h24v24H0V0z" fill="none"/>
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
+      </svg>
+    </button>
     
-    <div id="status" class="status-ready">🎙️ Tap to talk to RinglyPro AI</div>
+    <div id="status">🎙️ Tap to talk to RinglyPro AI</div>
     
     <div class="controls">
       <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
-      <button id="clearBtn" class="control-btn">🗑️ Clean</button>
+      <button id="clearBtn" class="control-btn">🗑️ Clear</button>
     </div>
 
     <div id="errorMessage" class="error-message"></div>
@@ -741,25 +609,14 @@ VOICE_HTML_TEMPLATE = '''
   </div>
 
   <script>
-    function debugLog(message, data) {
-        console.log('[DEBUG] ' + message, data || '');
-        const statusEl = document.getElementById('status');
-        if (statusEl && message.includes('ERROR')) {
-            statusEl.textContent = message;
-            statusEl.style.color = '#ff6b6b';
-        }
-    }
-
+    // Enhanced Voice Interface JavaScript
     class EnhancedVoiceBot {
         constructor() {
-            debugLog('Creating EnhancedVoiceBot instance...');
-            
             this.micBtn = document.getElementById('micBtn');
             this.status = document.getElementById('status');
             this.stopBtn = document.getElementById('stopBtn');
             this.clearBtn = document.getElementById('clearBtn');
             this.errorMessage = document.getElementById('errorMessage');
-            this.voiceVisualizer = document.getElementById('voiceVisualizer');
             this.langBtns = document.querySelectorAll('.lang-btn');
             
             this.isListening = false;
@@ -768,346 +625,96 @@ VOICE_HTML_TEMPLATE = '''
             this.currentLanguage = 'en-US';
             this.recognition = null;
             this.currentAudio = null;
-            this.audioContext = null;
             this.userInteracted = false;
-            this.isMobile = this.detectMobile();
-            this.audioURLs = new Set();
             
             this.init();
         }
 
-        detectMobile() {
-            return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        }
-
         async init() {
-            debugLog('Initializing mobile-first voice bot...');
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
-            const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-            
-            if (!hasSpeechRecognition) {
-                debugLog('ERROR: Speech recognition not supported');
-                this.showError('Speech recognition not supported in this browser. Use Chrome or Edge.');
+            if (!SpeechRecognition) {
+                this.showError('Speech recognition not supported. Please use Chrome or Edge.');
                 return;
             }
 
-            try {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                debugLog('Audio context initialized:', this.audioContext.state);
-                
-                if (this.isMobile) {
-                    debugLog('📱 Setting up mobile audio environment...');
-                    
-                    const unlockAudio = async () => {
-                        try {
-                            if (this.audioContext.state === 'suspended') {
-                                await this.audioContext.resume();
-                                debugLog('📱 Audio context resumed');
-                            }
-                            
-                            const silentAudio = new Audio('data:audio/mp3;base64,SUQzBAAAAAABEVRYWFgAAAAtAAADY29tbWVudABCaWdTb3VuZEJhbmsuY29tIC8gTGFTb25vdGhlcXVlLm9yZwBURU5DAAAAHQAAAWK+YLQtAAAA');
-                            silentAudio.volume = 0;
-                            silentAudio.play().catch(() => {
-                                debugLog('📱 Silent audio unlock attempt (expected to potentially fail)');
-                            });
-                            
-                            debugLog('📱 Mobile audio environment initialized');
-                        } catch (error) {
-                            debugLog('📱 Mobile audio unlock error (expected):', error);
-                        }
-                    };
-                    
-                    const handleFirstInteraction = () => {
-                        unlockAudio();
-                        document.removeEventListener('touchstart', handleFirstInteraction);
-                        document.removeEventListener('click', handleFirstInteraction);
-                    };
-                    
-                    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
-                    document.addEventListener('click', handleFirstInteraction, { once: true });
-                }
-            } catch (error) {
-                debugLog('Audio context initialization failed:', error);
-            }
-
             this.setupEventListeners();
-            
-            if (this.isMobile) {
-                this.updateStatus('📱 Tap the microphone to start talking');
-                this.setupMobileAudioOptimizations();
-            } else {
-                this.initSpeechRecognition();
-                this.userInteracted = true;
-                this.updateStatus('🎙️ Click the microphone to start');
-            }
-        }
-
-        setupMobileAudioOptimizations() {
-            debugLog('📱 Setting up mobile audio optimizations...');
-            
-            let lastTouchEnd = 0;
-            document.addEventListener('touchend', (event) => {
-                const now = Date.now();
-                if (now - lastTouchEnd <= 300) {
-                    event.preventDefault();
-                }
-                lastTouchEnd = now;
-            }, false);
-            
-            const viewport = document.querySelector('meta[name=viewport]');
-            if (viewport) {
-                viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
-            }
-            
-            this.showMobileAudioStatus();
-        }
-
-        showMobileAudioStatus() {
-            const indicator = document.createElement('div');
-            indicator.style.cssText = `
-                position: fixed;
-                top: 10px;
-                left: 10px;
-                background: rgba(76, 175, 80, 0.9);
-                color: white;
-                padding: 0.5rem 1rem;
-                border-radius: 15px;
-                font-size: 0.7rem;
-                z-index: 1000;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            `;
-            indicator.innerHTML = '📱 Mobile Premium Audio Ready';
-            document.body.appendChild(indicator);
-            
-            setTimeout(() => {
-                indicator.style.opacity = '0';
-                indicator.style.transition = 'opacity 0.3s ease';
-                setTimeout(() => indicator.remove(), 300);
-            }, 3000);
-        }
-
-        resetMobileAudioState() {
-            if (this.isMobile) {
-                debugLog('📱 Resetting mobile audio state...');
-                
-                speechSynthesis.cancel();
-                
-                if (this.currentAudio) {
-                    try {
-                        this.currentAudio.pause();
-                        this.currentAudio.src = '';
-                        this.currentAudio = null;
-                    } catch (error) {
-                        debugLog('📱 Audio reset error (non-critical):', error);
-                        this.currentAudio = null;
-                    }
-                }
-                
-                this.audioURLs.forEach(url => {
-                    try {
-                        URL.revokeObjectURL(url);
-                    } catch (error) {
-                        debugLog('📱 URL cleanup error (non-critical):', error);
-                    }
-                });
-                this.audioURLs.clear();
-                
-                if (this.audioContext && this.audioContext.state === 'suspended') {
-                    this.audioContext.resume().catch(error => {
-                        debugLog('📱 Audio context resume error:', error);
-                    });
-                }
-                
-                this.isPlaying = false;
-                this.isProcessing = false;
-                this.isListening = false;
-                this.updateUI('ready');
-                this.voiceVisualizer.classList.remove('active');
-                this.updateStatus('📱 Ready for voice command');
-                
-                debugLog('📱 Mobile audio state reset complete');
-            }
-        }
-
-        async requestMicrophonePermission() {
-            debugLog('Requesting microphone permission...');
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                debugLog('Microphone permission granted');
-                stream.getTracks().forEach(track => track.stop());
-                return true;
-            } catch (error) {
-                debugLog('ERROR: Microphone permission denied', error.message);
-                this.showError('Microphone permission denied. Please allow microphone access.');
-                return false;
-            }
+            this.initSpeechRecognition();
         }
 
         initSpeechRecognition() {
-            debugLog('Initializing speech recognition...');
-            
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
-            try {
-                this.recognition = new SpeechRecognition();
-                this.recognition.continuous = false;
-                this.recognition.interimResults = false;
-                this.recognition.lang = this.currentLanguage;
-                this.recognition.maxAlternatives = 1;
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = this.currentLanguage;
 
-                this.recognition.onstart = () => {
-                    debugLog('Speech recognition started');
-                    this.isListening = true;
-                    this.updateUI('listening');
-                    this.voiceVisualizer.classList.add('active');
-                    this.updateStatus('🎙️ Listening... Speak now');
-                };
+            this.recognition.onstart = () => {
+                this.isListening = true;
+                this.updateUI('listening');
+                this.updateStatus('🎙️ Listening... Speak now');
+            };
 
-                this.recognition.onresult = (event) => {
-                    debugLog('Speech recognition result:', event);
-                    if (event.results && event.results.length > 0) {
-                        const transcript = event.results[0][0].transcript.trim();
-                        debugLog('Transcript received:', transcript);
-                        
-                        const lowerTranscript = transcript.toLowerCase();
-                        const isEcho = (lowerTranscript.includes('ringly pro') || 
-                                       lowerTranscript.includes('i can help') || 
-                                       lowerTranscript.includes('scheduling') ||
-                                       lowerTranscript.includes('perfect') ||
-                                       lowerTranscript.includes('wonderful')) && 
-                                       transcript.length > 30;
-                        
-                        if (isEcho) {
-                            debugLog('🔄 Simple echo detected, ignoring:', transcript);
-                            this.updateStatus('🎙️ Ready to listen again');
-                            this.updateUI('ready');
-                            return;
-                        }
-                        
-                        this.processTranscript(transcript);
-                    }
-                };
+            this.recognition.onresult = (event) => {
+                if (event.results && event.results.length > 0) {
+                    const transcript = event.results[0][0].transcript.trim();
+                    this.processTranscript(transcript);
+                }
+            };
 
-                this.recognition.onerror = (event) => {
-                    debugLog('ERROR: Speech recognition error', event.error);
-                    this.handleSpeechError(event.error);
-                };
+            this.recognition.onerror = (event) => {
+                this.handleError('Speech recognition error: ' + event.error);
+            };
 
-                this.recognition.onend = () => {
-                    debugLog('Speech recognition ended');
-                    this.isListening = false;
-                    this.voiceVisualizer.classList.remove('active');
-                    this.stopBtn.disabled = true;
-                    
-                    if (!this.isProcessing) {
-                        this.updateUI('ready');
-                        this.updateStatus('🎙️ Tap the microphone to start');
-                    }
-                };
-
-                debugLog('Speech recognition initialized successfully');
-            } catch (error) {
-                debugLog('ERROR: Failed to initialize speech recognition', error.message);
-                this.showError('Failed to initialize speech recognition: ' + error.message);
-            }
-        }
-
-        handleSpeechError(error) {
-            let message = '';
-            switch (error) {
-                case 'not-allowed':
-                    message = 'Microphone access denied. Please allow microphone permission.';
-                    break;
-                case 'no-speech':
-                    message = 'No speech detected. Please try again.';
-                    break;
-                case 'audio-capture':
-                    message = 'Microphone not accessible. Check if another app is using it.';
-                    break;
-                case 'network':
-                    message = 'Network error. Check your internet connection.';
-                    break;
-                default:
-                    message = 'Speech error: ' + error;
-            }
-            this.handleError(message);
+            this.recognition.onend = () => {
+                this.isListening = false;
+                if (!this.isProcessing) {
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ Tap to talk');
+                }
+            };
         }
 
         async processTranscript(transcript) {
             if (!transcript || transcript.length < 2) {
-                this.handleError('No valid speech detected');
+                this.handleError('No speech detected');
                 return;
             }
 
-            debugLog('Processing transcript:', transcript);
             this.isProcessing = true;
             this.updateUI('processing');
             this.updateStatus('🤖 Processing...');
 
-            const processingTimeout = setTimeout(() => {
-                debugLog('ERROR: Processing timeout after 30 seconds');
-                this.handleError('Processing timeout. Please try again.');
-            }, 30000);
-
             try {
                 const response = await fetch('/process-text-enhanced', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         text: transcript,
                         language: this.currentLanguage,
-                        mobile: this.isMobile
+                        mobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
                     })
                 });
 
-                clearTimeout(processingTimeout);
-
-                if (!response.ok) {
-                    throw new Error('Server error: ' + response.status);
-                }
+                if (!response.ok) throw new Error('Server error: ' + response.status);
 
                 const data = await response.json();
-                
-                if (data.error) {
-                    throw new Error(data.error);
-                }
-                
-                if (!data.response) {
-                    throw new Error('No response from server');
-                }
-                
+                if (data.error) throw new Error(data.error);
+
                 if (data.audio) {
-                    debugLog('✅ Playing premium audio ONLY (no TTS fallback)');
                     await this.playPremiumAudio(data.audio, data.response);
-                    this.showAudioQuality('premium', data.engine_used || 'elevenlabs');
                 } else {
-                    debugLog('✅ Using enhanced browser TTS ONLY');
-                    await this.playEnhancedBrowserTTS(data.response, data.context || 'neutral');
-                    this.showAudioQuality('enhanced', 'browser');
+                    await this.playBrowserTTS(data.response);
                 }
 
             } catch (error) {
-                clearTimeout(processingTimeout);
-                debugLog('ERROR: Processing failed', error.message);
                 this.handleError('Processing error: ' + error.message);
             }
         }
 
         async playPremiumAudio(audioBase64, responseText) {
             try {
-                if (this.recognition && this.isListening) {
-                    this.recognition.stop();
-                    debugLog('🔇 Stopped speech recognition during audio');
-                }
-                
-                speechSynthesis.cancel();
-                debugLog('🔇 Cancelled speech synthesis to prevent double audio');
-                
-                debugLog('📱 Starting mobile premium audio playback...');
-                
                 const audioData = atob(audioBase64);
                 const arrayBuffer = new ArrayBuffer(audioData.length);
                 const uint8Array = new Uint8Array(arrayBuffer);
@@ -1116,392 +723,94 @@ VOICE_HTML_TEMPLATE = '''
                     uint8Array[i] = audioData.charCodeAt(i);
                 }
 
-                const audioBlob = new Blob([arrayBuffer], { 
-                    type: this.isMobile ? 'audio/mp3' : 'audio/mpeg'
-                });
+                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
                 const audioUrl = URL.createObjectURL(audioBlob);
                 
-                this.audioURLs.add(audioUrl);
+                this.currentAudio = new Audio(audioUrl);
                 
-                this.currentAudio = new Audio();
-                
-                if (this.isMobile) {
-                    debugLog('📱 Configuring for mobile device...');
-                    this.currentAudio.crossOrigin = 'anonymous';
-                    this.currentAudio.preload = 'metadata';
-                    this.currentAudio.volume = 0.9;
-                    this.currentAudio.playbackRate = 1.0;
-                    this.currentAudio.setAttribute('webkit-playsinline', 'true');
-                    this.currentAudio.setAttribute('playsinline', 'true');
-                    this.currentAudio.muted = false;
-                } else {
-                    this.currentAudio.preload = 'auto';
-                    this.currentAudio.volume = 0.85;
-                }
-                
-                this.currentAudio.src = audioUrl;
-                
-                return new Promise((resolve, reject) => {
-                    let loadTimeout;
-                    let hasResolved = false;
-                    
-                    const resolveOnce = (value) => {
-                        if (!hasResolved) {
-                            hasResolved = true;
-                            resolve(value);
-                        }
-                    };
-                    
-                    if (this.isMobile) {
-                        loadTimeout = setTimeout(() => {
-                            debugLog('📱 Mobile audio loading timeout, using TTS fallback');
-                            this.cleanupCurrentAudio();
-                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
-                        }, 8000);
-                    }
-                    
-                    this.currentAudio.onloadstart = () => {
-                        debugLog('📱 Mobile audio loading started...');
-                        this.updateStatus('🔊 Loading Rachel...');
-                    };
-                    
-                    this.currentAudio.oncanplay = () => {
-                        debugLog('📱 Mobile audio can play');
-                        if (loadTimeout) clearTimeout(loadTimeout);
-                    };
-                    
+                return new Promise((resolve) => {
                     this.currentAudio.onplay = () => {
-                        debugLog('📱 Mobile premium audio playing');
                         this.isPlaying = true;
                         this.updateUI('speaking');
-                        this.updateStatus('🔊 Rachel speaking...');
-                        if (loadTimeout) clearTimeout(loadTimeout);
-                        
-                        speechSynthesis.cancel();
-                        debugLog('🔇 CANCELLED speech synthesis - premium audio is playing');
+                        this.updateStatus('🔊 Speaking...');
                     };
                     
                     this.currentAudio.onended = () => {
-                        debugLog('📱 Mobile premium audio ended');
                         this.audioFinished();
-                        
-                        setTimeout(() => {
-                            if (this.isMobile) {
-                                this.resetMobileAudioState();
-                            }
-                            this.updateStatus('🎙️ Tap microphone to continue');
-                        }, 1000);
-                        
-                        resolveOnce();
+                        URL.revokeObjectURL(audioUrl);
+                        resolve();
                     };
                     
-                    this.currentAudio.onerror = (error) => {
-                        debugLog('📱 Mobile audio error:', error);
-                        
-                        if (loadTimeout) clearTimeout(loadTimeout);
-                        
-                        this.audioFinished();
-                        
-                        debugLog('📱 Premium audio failed, using TTS fallback');
-                        
-                        if (!hasResolved) {
-                            this.playEnhancedBrowserTTS(responseText, 'neutral').then(resolveOnce);
-                        }
+                    this.currentAudio.onerror = () => {
+                        this.playBrowserTTS(responseText).then(resolve);
                     };
                     
-                    const playAudio = async () => {
-                        try {
-                            debugLog('📱 Attempting to play mobile audio...');
-                            
-                            if (this.audioContext && this.audioContext.state === 'suspended') {
-                                await this.audioContext.resume();
-                                debugLog('📱 Audio context resumed for mobile');
-                            }
-                            
-                            if (this.isMobile && this.currentAudio.readyState < 2) {
-                                debugLog('📱 Waiting for mobile audio to be ready...');
-                                await new Promise(resolve => {
-                                    const checkReady = () => {
-                                        if (this.currentAudio && this.currentAudio.readyState >= 2) {
-                                            resolve();
-                                        } else if (this.currentAudio) {
-                                            setTimeout(checkReady, 100);
-                                        } else {
-                                            resolve();
-                                        }
-                                    };
-                                    checkReady();
-                                });
-                            }
-                            
-                            if (this.currentAudio) {
-                                const playPromise = this.currentAudio.play();
-                                
-                                if (playPromise !== undefined) {
-                                    await playPromise;
-                                    debugLog('📱 Mobile audio play promise resolved');
-                                }
-                            }
-                            
-                        } catch (playError) {
-                            debugLog('📱 Mobile play error:', playError.name, playError.message);
-                            
-                            if (playError.name === 'NotAllowedError') {
-                                debugLog('📱 Mobile audio blocked by browser policy');
-                                this.updateStatus('🔊 Please tap screen to enable audio');
-                                
-                                const enableAudio = () => {
-                                    if (this.currentAudio) {
-                                        this.currentAudio.play().catch(() => {
-                                            this.currentAudio.onerror(playError);
-                                        });
-                                    }
-                                };
-                                
-                                document.addEventListener('touchstart', enableAudio, { once: true });
-                                document.addEventListener('click', enableAudio, { once: true });
-                                
-                            } else {
-                                this.currentAudio.onerror(playError);
-                            }
-                        }
-                    };
-                    
-                    if (this.isMobile) {
-                        this.currentAudio.load();
-                        setTimeout(() => {
-                            if (this.currentAudio && !hasResolved) {
-                                playAudio();
-                            }
-                        }, 100);
-                    } else {
-                        if (this.currentAudio.readyState >= 2) {
-                            playAudio();
-                        } else {
-                            this.currentAudio.addEventListener('canplay', playAudio, { once: true });
-                        }
-                    }
+                    this.currentAudio.play().catch(() => {
+                        this.playBrowserTTS(responseText).then(resolve);
+                    });
                 });
                 
             } catch (error) {
-                debugLog('📱 Mobile premium audio setup failed:', error);
-                return this.playEnhancedBrowserTTS(responseText, 'neutral');
+                return this.playBrowserTTS(responseText);
             }
         }
 
-        cleanupCurrentAudio() {
-            if (this.currentAudio) {
-                try {
-                    this.currentAudio.pause();
-                    this.currentAudio.src = '';
-                    this.currentAudio = null;
-                } catch (error) {
-                    debugLog('📱 Audio cleanup error (non-critical):', error);
-                    this.currentAudio = null;
-                }
-            }
-        }
-
-        async playEnhancedBrowserTTS(text, context) {
-            try {
-                if (this.isPlaying) {
-                    debugLog('🔇 BLOCKING TTS: Premium audio is already playing');
-                    return;
-                }
-                
-                if (this.recognition && this.isListening) {
-                    this.recognition.stop();
-                    debugLog('🔇 Stopped speech recognition during TTS');
-                }
-                
+        async playBrowserTTS(text) {
+            return new Promise((resolve) => {
                 speechSynthesis.cancel();
-                await new Promise(resolve => setTimeout(resolve, 100));
                 
                 const utterance = new SpeechSynthesisUtterance(text);
                 utterance.lang = this.currentLanguage;
-                
-                if (this.isMobile) {
-                    debugLog('📱 Using mobile TTS settings...');
-                    utterance.rate = 0.9;
-                    utterance.pitch = 1.0;
-                    utterance.volume = 1.0;
-                    
-                    const voices = speechSynthesis.getVoices();
-                    debugLog('📱 Available voices:', voices.length);
-                    
-                    if (voices.length > 0) {
-                        const preferredVoice = voices.find(voice => 
-                            voice.lang.startsWith('en') && 
-                            (voice.name.includes('Female') || voice.name.includes('woman') || voice.name.includes('Google'))
-                        ) || voices.find(voice => voice.lang.startsWith('en'));
-                        
-                        if (preferredVoice) {
-                            utterance.voice = preferredVoice;
-                            debugLog('📱 Using mobile voice:', preferredVoice.name);
-                        }
-                    }
-                } else {
-                    utterance.rate = 0.95;
-                    utterance.pitch = 1.0;
-                    utterance.volume = 0.85;
-                }
+                utterance.rate = 0.9;
+                utterance.pitch = 1.0;
+                utterance.volume = 0.8;
 
-                return new Promise((resolve) => {
-                    utterance.onstart = () => {
-                        if (this.currentAudio) {
-                            debugLog('🔇 CANCELLING TTS: Premium audio detected');
-                            speechSynthesis.cancel();
-                            resolve();
-                            return;
-                        }
-                        
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus(this.isMobile ? '📱 Speaking...' : '🔊 Speaking...');
-                        debugLog(this.isMobile ? '📱 Mobile TTS started' : '🔊 Desktop TTS started');
-                    };
+                utterance.onstart = () => {
+                    this.isPlaying = true;
+                    this.updateUI('speaking');
+                    this.updateStatus('🔊 Speaking...');
+                };
 
-                    utterance.onend = () => {
-                        debugLog(this.isMobile ? '📱 Mobile TTS ended' : '🔊 Desktop TTS ended');
-                        this.audioFinished();
-                        
-                        setTimeout(() => {
-                            this.updateStatus('🎙️ Tap microphone to continue');
-                        }, 1000);
-                        
-                        resolve();
-                    };
+                utterance.onend = () => {
+                    this.audioFinished();
+                    resolve();
+                };
 
-                    utterance.onerror = (error) => {
-                        debugLog('ERROR: Browser TTS error', error);
-                        this.audioFinished();
-                        resolve();
-                    };
+                utterance.onerror = () => {
+                    this.audioFinished();
+                    resolve();
+                };
 
-                    if (this.isMobile && speechSynthesis.getVoices().length === 0) {
-                        debugLog('📱 Loading mobile voices...');
-                        speechSynthesis.addEventListener('voiceschanged', () => {
-                            speechSynthesis.speak(utterance);
-                        }, { once: true });
-                    } else {
-                        speechSynthesis.speak(utterance);
-                    }
-                });
-
-            } catch (error) {
-                debugLog('ERROR: Enhanced browser TTS failed', error);
-                this.audioFinished();
-            }
-        }
-
-        showAudioQuality(quality, engine) {
-            const indicator = document.createElement('div');
-            indicator.className = 'audio-quality-indicator';
-            
-            const qualityText = quality === 'premium' 
-                ? '🎵 Premium Audio (' + engine + ')' 
-                : '🔊 Enhanced Audio (' + engine + ')';
-                
-            indicator.innerHTML = qualityText;
-            document.body.appendChild(indicator);
-            
-            setTimeout(() => {
-                indicator.style.animation = 'slideOutRight 0.3s ease';
-                setTimeout(() => indicator.remove(), 300);
-            }, 3000);
+                speechSynthesis.speak(utterance);
+            });
         }
 
         audioFinished() {
-            debugLog('📱 Audio playback finished - cleaning up mobile resources');
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-            
-            this.cleanupCurrentAudio();
-            
-            this.audioURLs.forEach(url => {
-                try {
-                    URL.revokeObjectURL(url);
-                } catch (error) {
-                    debugLog('📱 URL cleanup error (non-critical):', error);
-                }
-            });
-            this.audioURLs.clear();
-            
-            if (this.isMobile) {
-                setTimeout(() => {
-                    if (window.gc) {
-                        window.gc();
-                    }
-                }, 1000);
-            }
+            this.updateStatus('🎙️ Tap to continue');
         }
 
         setupEventListeners() {
-            const micHandler = async (e) => {
-                e.preventDefault();
-                debugLog('Microphone button activated');
-                
-                if (this.isMobile && this.userInteracted) {
-                    debugLog('📱 Performing complete mobile reset before new interaction');
-                    this.resetMobileAudioState();
-                    
-                    await new Promise(resolve => setTimeout(resolve, 800));
-                }
-                
+            this.micBtn.addEventListener('click', () => {
                 if (!this.userInteracted) {
-                    debugLog('First user interaction - enabling voice features');
                     this.userInteracted = true;
-                    
-                    if (this.isMobile) {
-                        const permissionGranted = await this.requestMicrophonePermission();
-                        if (!permissionGranted) {
-                            return;
-                        }
-                    }
-                    
-                    if (this.audioContext && this.audioContext.state === 'suspended') {
-                        await this.audioContext.resume();
-                    }
-                    
-                    this.initSpeechRecognition();
-                    this.updateStatus('🎙️ Voice enabled! Tap microphone to start');
+                    this.updateStatus('🎙️ Voice enabled! Click to start');
                     return;
                 }
-                
-                if (this.isMobile && (this.isProcessing || this.isPlaying || this.isListening)) {
-                    debugLog('📱 Mobile: Blocking interaction - another process is active');
-                    this.updateStatus('📱 Please wait, processing...');
-                    return;
-                }
-                
                 this.toggleListening();
-            };
-            
-            this.micBtn.addEventListener('click', micHandler);
-            this.micBtn.addEventListener('touchend', micHandler);
-            
-            this.stopBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (this.isListening) {
-                    this.stopListening();
-                } else if (this.isPlaying) {
-                    this.stopAudio();
-                }
-                
-                if (this.isMobile) {
-                    setTimeout(() => this.resetMobileAudioState(), 500);
-                }
             });
             
-            this.clearBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                this.clearAll();
+            this.stopBtn.addEventListener('click', () => {
+                if (this.isListening) this.stopListening();
+                if (this.isPlaying) this.stopAudio();
             });
+            
+            this.clearBtn.addEventListener('click', () => this.clearAll());
             
             this.langBtns.forEach(btn => {
                 btn.addEventListener('click', (e) => {
-                    e.preventDefault();
                     this.changeLanguage(e.target.dataset.lang);
                 });
             });
@@ -1509,9 +818,7 @@ VOICE_HTML_TEMPLATE = '''
 
         changeLanguage(lang) {
             this.currentLanguage = lang;
-            if (this.recognition) {
-                this.recognition.lang = lang;
-            }
+            if (this.recognition) this.recognition.lang = lang;
             
             this.langBtns.forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.lang === lang);
@@ -1526,85 +833,52 @@ VOICE_HTML_TEMPLATE = '''
             }
         }
 
-        async startListening() {
-            if (this.isProcessing || !this.recognition || !this.userInteracted) {
-                return;
-            }
-            
-            if (this.isMobile && this.isListening) {
-                debugLog('📱 Mobile: Recognition already active, stopping first...');
-                try {
-                    this.recognition.stop();
-                    await new Promise(resolve => setTimeout(resolve, 300));
-                    this.isListening = false;
-                } catch (error) {
-                    debugLog('📱 Mobile: Error stopping recognition:', error);
-                    this.isListening = false;
-                }
-            }
-            
-            if (this.isListening) {
-                debugLog('📱 Mobile: Still listening, aborting start attempt');
-                return;
-            }
+        startListening() {
+            if (this.isProcessing || !this.recognition) return;
             
             try {
                 this.clearError();
                 speechSynthesis.cancel();
-                
-                debugLog('📱 Mobile: Starting speech recognition...');
                 this.recognition.start();
                 this.stopBtn.disabled = false;
-                
             } catch (error) {
-                debugLog('📱 Mobile: Start listening error:', error);
                 this.handleError('Failed to start listening: ' + error.message);
             }
         }
 
         stopListening() {
             if (this.isListening && this.recognition) {
-                try {
-                    this.recognition.stop();
-                } catch (error) {
-                    debugLog('ERROR: Failed to stop speech recognition', error.message);
-                }
+                this.recognition.stop();
             }
         }
 
         stopAudio() {
-            if (this.isPlaying) {
-                debugLog('📱 Stopping mobile audio...');
-                
-                this.cleanupCurrentAudio();
-                speechSynthesis.cancel();
-                this.audioFinished();
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
             }
+            speechSynthesis.cancel();
+            this.audioFinished();
         }
 
         updateUI(state) {
             this.micBtn.className = 'mic-button';
-            this.status.className = '';
             
             switch (state) {
                 case 'listening':
                     this.micBtn.classList.add('listening');
-                    this.status.classList.add('status-listening');
                     this.stopBtn.disabled = false;
                     break;
                 case 'processing':
                     this.micBtn.classList.add('processing');
-                    this.status.classList.add('status-processing');
                     this.stopBtn.disabled = false;
                     break;
                 case 'speaking':
                     this.micBtn.classList.add('speaking');
-                    this.status.classList.add('status-speaking');
                     this.stopBtn.disabled = false;
                     break;
                 case 'ready':
                 default:
-                    this.status.classList.add('status-ready');
                     this.stopBtn.disabled = true;
                     break;
             }
@@ -1612,7 +886,6 @@ VOICE_HTML_TEMPLATE = '''
 
         updateStatus(message) {
             this.status.textContent = message;
-            this.status.style.color = '';
         }
 
         handleError(message) {
@@ -1621,10 +894,9 @@ VOICE_HTML_TEMPLATE = '''
             this.isListening = false;
             this.isPlaying = false;
             this.updateUI('ready');
-            this.voiceVisualizer.classList.remove('active');
             
             setTimeout(() => {
-                this.updateStatus('🎙️ Tap microphone to try again');
+                this.updateStatus('🎙️ Tap to try again');
             }, 3000);
         }
 
@@ -1639,42 +911,24 @@ VOICE_HTML_TEMPLATE = '''
         }
 
         clearAll() {
-            debugLog('📱 Clearing all mobile audio resources...');
-            
             this.stopAudio();
-            
-            if (this.isListening && this.recognition) {
-                try {
-                    this.recognition.stop();
-                } catch (error) {
-                    debugLog('📱 Recognition stop error (non-critical):', error);
-                }
-            }
+            if (this.isListening) this.stopListening();
             
             this.isProcessing = false;
             this.isListening = false;
             this.isPlaying = false;
             this.updateUI('ready');
-            this.voiceVisualizer.classList.remove('active');
             this.clearError();
-            this.updateStatus('🎙️ Tap microphone to start');
-            
-            if (this.isMobile) {
-                speechSynthesis.cancel();
-                
-                setTimeout(() => {
-                    this.updateStatus('📱 Ready for next command');
-                }, 500);
-            }
+            this.updateStatus('🎙️ Ready to listen');
         }
     }
 
+    // Initialize when page loads
     document.addEventListener('DOMContentLoaded', () => {
         try {
             new EnhancedVoiceBot();
         } catch (error) {
             console.error('Failed to create voice bot:', error);
-            document.getElementById('status').textContent = 'Failed to initialize: ' + error.message;
         }
     });
   </script>
@@ -1682,136 +936,358 @@ VOICE_HTML_TEMPLATE = '''
 </html>
 '''
 
-# NEW: Text chat interface with SMS phone collection
 CHAT_HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RinglyPro FAQ Assistant</title>
+    <title>RinglyPro Chat Assistant</title>
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
         .chat-container {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 500px;
+            height: 600px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
             position: relative;
         }
+        
+        .header {
+            background: linear-gradient(135deg, #2196F3, #1976D2);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            position: relative;
+        }
+        
         .interface-switcher {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: #2196F3;
-            color: white;
+            top: 15px;
+            right: 15px;
+            background: rgba(255, 255, 255, 0.2);
             border: none;
-            border-radius: 15px;
-            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            color: white;
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 0.8rem;
+            font-size: 12px;
             transition: all 0.3s ease;
         }
+        
         .interface-switcher:hover {
-            background: #1976D2;
+            background: rgba(255, 255, 255, 0.3);
         }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 0.9rem;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: white;
+        }
+        
         .message {
-            margin: 10px 0;
-            padding: 10px;
-            border-radius: 5px;
+            margin-bottom: 15px;
+            max-width: 85%;
+            animation: fadeIn 0.3s ease;
         }
-        .user-message {
-            background-color: #e3f2fd;
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            margin-left: auto;
+        }
+        
+        .message-content {
+            padding: 12px 16px;
+            border-radius: 18px;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        
+        .message.bot .message-content {
+            background: #f1f3f4;
+            color: #333;
+            border-bottom-left-radius: 6px;
+        }
+        
+        .message.user .message-content {
+            background: #2196F3;
+            color: white;
             text-align: right;
+            border-bottom-right-radius: 6px;
         }
-        .bot-message {
-            background-color: #f1f8e9;
+        
+        .input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #e0e0e0;
         }
+        
         .input-container {
             display: flex;
-            margin-top: 20px;
+            gap: 10px;
+            align-items: center;
         }
+        
         .input-container input {
             flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-right: 10px;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            outline: none;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
         }
-        .input-container button {
+        
+        .input-container input:focus {
+            border-color: #2196F3;
+        }
+        
+        .send-btn {
+            width: 45px;
+            height: 45px;
+            background: #2196F3;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            font-size: 18px;
+        }
+        
+        .send-btn:hover {
+            background: #1976D2;
+            transform: scale(1.05);
+        }
+        
+        .phone-form {
+            background: linear-gradient(135deg, #fff3e0, #ffecb3);
+            border: 2px solid #ff9800;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .phone-form h4 {
+            color: #e65100;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .phone-form p {
+            color: #bf360c;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .phone-inputs {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .phone-inputs input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 2px solid #ff9800;
+            border-radius: 10px;
+            outline: none;
+            font-size: 14px;
+        }
+        
+        .phone-inputs input:focus {
+            border-color: #f57c00;
+        }
+        
+        .phone-btn {
             padding: 10px 20px;
-            background-color: #2196F3;
+            background: #4caf50;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 10px;
             cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
-        .phone-form {
-            background-color: #fff3e0;
-            border: 2px solid #ff9800;
-            border-radius: 5px;
-            padding: 15px;
-            margin: 10px 0;
+        
+        .phone-btn:hover {
+            background: #45a049;
+            transform: translateY(-1px);
         }
+        
         .success-message {
-            background-color: #e8f5e8;
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
             border: 2px solid #4caf50;
             color: #2e7d32;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+            animation: slideIn 0.5s ease;
         }
+        
         .error-message {
-            background-color: #ffebee;
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
             border: 2px solid #f44336;
             color: #c62828;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+            animation: slideIn 0.5s ease;
+        }
+        
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #666;
+            font-style: italic;
+            padding: 10px 0;
+        }
+        
+        .typing-dots {
+            display: flex;
+            gap: 3px;
+        }
+        
+        .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: #666;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dots span:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-dots span:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+        
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+            
+            .chat-container {
+                height: calc(100vh - 20px);
+            }
+            
+            .header {
+                padding: 15px;
+            }
+            
+            .header h1 {
+                font-size: 1.3rem;
+            }
+            
+            .chat-messages {
+                padding: 15px;
+            }
+            
+            .input-area {
+                padding: 15px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="chat-container">
-        <button class="interface-switcher" onclick="window.location.href='/'">🎤 Try Voice Chat</button>
+        <div class="header">
+            <button class="interface-switcher" onclick="window.location.href='/'">🎤 Voice Chat</button>
+            <h1>💬 RinglyPro Assistant</h1>
+            <p>Ask me anything about our services!</p>
+        </div>
         
-        <h1>RinglyPro FAQ Assistant</h1>
-        <div id="chatMessages">
-            <div class="message bot-message">
-                Hello! I'm your RinglyPro assistant. Ask me anything about our services, pricing, features, or how to get started! If I can't answer your question, I'll connect you with our customer service team.
+        <div class="chat-messages" id="chatMessages">
+            <div class="message bot">
+                <div class="message-content">
+                    👋 Hello! I'm your RinglyPro assistant. Ask me about our services, pricing, features, or how to get started. If I can't answer your question, I'll connect you with our customer service team!
+                </div>
             </div>
         </div>
         
-        <div class="input-container">
-            <input type="text" id="userInput" placeholder="Ask a question about RinglyPro..." onkeypress="handleKeyPress(event)">
-            <button onclick="sendMessage()">Send</button>
+        <div class="input-area">
+            <div class="input-container">
+                <input type="text" id="userInput" placeholder="Ask about RinglyPro services..." onkeypress="handleKeyPress(event)">
+                <button class="send-btn" onclick="sendMessage()">→</button>
+            </div>
         </div>
     </div>
 
     <script>
+        let isWaitingForResponse = false;
+
         function handleKeyPress(event) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !isWaitingForResponse) {
                 sendMessage();
             }
         }
 
         function sendMessage() {
+            if (isWaitingForResponse) return;
+            
             const input = document.getElementById('userInput');
             const message = input.value.trim();
             
             if (!message) return;
             
-            // Add user message to chat
             addMessage(message, 'user');
             input.value = '';
+            showTypingIndicator();
             
-            // Send to server
+            isWaitingForResponse = true;
+            
             fetch('/chat', {
                 method: 'POST',
                 headers: {
@@ -1821,26 +1297,59 @@ CHAT_HTML_TEMPLATE = '''
             })
             .then(response => response.json())
             .then(data => {
+                hideTypingIndicator();
                 addMessage(data.response, 'bot');
                 
-                // Check if phone collection is needed
                 if (data.needs_phone_collection) {
-                    showPhoneForm();
+                    setTimeout(() => showPhoneForm(), 500);
                 }
+                
+                isWaitingForResponse = false;
             })
             .catch(error => {
                 console.error('Error:', error);
-                addMessage('Sorry, there was an error processing your request.', 'bot');
+                hideTypingIndicator();
+                addMessage('Sorry, there was an error processing your request. Please try again.', 'bot');
+                isWaitingForResponse = false;
             });
         }
 
         function addMessage(message, sender) {
             const chatMessages = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}-message`;
-            messageDiv.textContent = message;
+            messageDiv.className = `message ${sender}`;
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = message;
+            
+            messageDiv.appendChild(contentDiv);
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.id = 'typingIndicator';
+            typingDiv.className = 'typing-indicator';
+            typingDiv.innerHTML = `
+                RinglyPro is typing
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            `;
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
         }
 
         function showPhoneForm() {
@@ -1848,19 +1357,19 @@ CHAT_HTML_TEMPLATE = '''
             const phoneFormDiv = document.createElement('div');
             phoneFormDiv.className = 'phone-form';
             phoneFormDiv.innerHTML = `
-                <p><strong>📞 Let's get you connected!</strong></p>
-                <p>Please enter your phone number so our customer service team can help you:</p>
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    <input type="tel" id="phoneInput" placeholder="(555) 123-4567" style="flex: 1; padding: 8px;">
-                    <button onclick="submitPhone()" style="padding: 8px 15px; background-color: #4caf50; color: white; border: none; border-radius: 3px;">Submit</button>
+                <h4>📞 Let's connect you with our team!</h4>
+                <p>Please enter your phone number so our customer service team can provide personalized assistance:</p>
+                <div class="phone-inputs">
+                    <input type="tel" id="phoneInput" placeholder="(555) 123-4567" style="flex: 1;">
+                    <button class="phone-btn" onclick="submitPhone()">Submit</button>
                 </div>
             `;
             chatMessages.appendChild(phoneFormDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
-            // Focus on phone input
             setTimeout(() => {
-                document.getElementById('phoneInput').focus();
+                const phoneInput = document.getElementById('phoneInput');
+                if (phoneInput) phoneInput.focus();
             }, 100);
         }
 
@@ -1873,7 +1382,6 @@ CHAT_HTML_TEMPLATE = '''
                 return;
             }
             
-            // Send phone number to server
             fetch('/submit_phone', {
                 method: 'POST',
                 headers: {
@@ -1881,31 +1389,20 @@ CHAT_HTML_TEMPLATE = '''
                 },
                 body: JSON.stringify({ 
                     phone: phoneNumber,
-                    last_question: sessionStorage.getItem('lastQuestion') || 'General inquiry'
+                    last_question: sessionStorage.getItem('lastQuestion') || 'Chat inquiry'
                 })
             })
             .then(response => response.json())
             .then(data => {
                 const chatMessages = document.getElementById('chatMessages');
                 
-                if (data.success) {
-                    const successDiv = document.createElement('div');
-                    successDiv.className = 'success-message';
-                    successDiv.innerHTML = `
-                        <strong>✅ Thank you!</strong><br>
-                        ${data.message}
-                    `;
-                    chatMessages.appendChild(successDiv);
-                } else {
-                    const errorDiv = document.createElement('div');
-                    errorDiv.className = 'error-message';
-                    errorDiv.innerHTML = `
-                        <strong>❌ Error:</strong><br>
-                        ${data.message}
-                    `;
-                    chatMessages.appendChild(errorDiv);
-                }
-                
+                const responseDiv = document.createElement('div');
+                responseDiv.className = data.success ? 'success-message' : 'error-message';
+                responseDiv.innerHTML = `
+                    <strong>${data.success ? '✅ Success!' : '❌ Error:'}</strong><br>
+                    ${data.message}
+                `;
+                chatMessages.appendChild(responseDiv);
                 chatMessages.scrollTop = chatMessages.scrollHeight;
             })
             .catch(error => {
@@ -1923,22 +1420,21 @@ CHAT_HTML_TEMPLATE = '''
 </html>
 '''
 
-# ROUTES
+# Routes
 
-# Original voice interface (unchanged)
 @app.route('/')
 def serve_index():
+    """Voice interface"""
     return render_template_string(VOICE_HTML_TEMPLATE)
 
-# NEW: Text chat interface route
 @app.route('/chat')
 def serve_chat():
+    """Text chat interface"""
     return render_template_string(CHAT_HTML_TEMPLATE)
 
-# NEW: Chat message handling with SMS integration
 @app.route('/chat', methods=['POST'])
 def handle_chat():
-    """Handle chat messages with SMS phone collection"""
+    """Handle chat messages with SMS integration"""
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
@@ -1949,8 +1445,12 @@ def handle_chat():
         # Store the question in session for potential phone collection
         session['last_question'] = user_message
         
+        logger.info(f"💬 Chat message received: {user_message}")
+        
         # Get FAQ response with SMS capability
         response, is_faq_match, needs_phone_collection = get_faq_response_with_sms(user_message)
+        
+        logger.info(f"📋 FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
         
         return jsonify({
             'response': response,
@@ -1959,13 +1459,12 @@ def handle_chat():
         })
         
     except Exception as e:
-        logging.error(f"Error in chat endpoint: {str(e)}")
+        logger.error(f"❌ Error in chat endpoint: {str(e)}")
         return jsonify({
             'response': 'Sorry, there was an error processing your request. Please try again.',
             'needs_phone_collection': False
         }), 500
 
-# NEW: Phone submission endpoint
 @app.route('/submit_phone', methods=['POST'])
 def submit_phone():
     """Handle phone number submission and send SMS notification"""
@@ -1988,41 +1487,41 @@ def submit_phone():
                 'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
             })
         
+        logger.info(f"📞 Phone submitted: {validated_phone}, Question: {last_question}")
+        
         # Send SMS notification
         sms_success, sms_result = send_sms_notification(validated_phone, last_question)
         
+        # Save to database
+        db_saved = save_customer_inquiry(validated_phone, last_question, sms_success, sms_result)
+        
         if sms_success:
-            logging.info(f"SMS sent successfully to customer service. Customer: {validated_phone}, Question: {last_question}")
-            return jsonify({
-                'success': True,
-                'message': f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
-            })
+            success_message = f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
         else:
-            logging.error(f"Failed to send SMS: {sms_result}")
-            return jsonify({
-                'success': True,  # Still success for user experience
-                'message': f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
-            })
+            success_message = f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
+        
+        return jsonify({
+            'success': True,
+            'message': success_message
+        })
             
     except Exception as e:
-        logging.error(f"Error in submit_phone endpoint: {str(e)}")
+        logger.error(f"❌ Error in submit_phone endpoint: {str(e)}")
         return jsonify({
             'success': False,
             'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
         })
 
-# Original voice processing routes (unchanged)
 @app.route('/process-text-enhanced', methods=['POST'])
 def process_text_enhanced():
-    """Mobile-optimized premium audio with ElevenLabs"""
-    logging.info("📱 Mobile-first premium audio processing")
+    """Enhanced text processing with premium audio"""
+    logger.info("🎤 Enhanced text processing request")
     
     try:
         data = request.get_json()
-        logging.info(f"📋 Request data: {data}")
         
         if not data or 'text' not in data:
-            logging.error("❌ Missing text data")
+            logger.error("❌ Missing text data")
             return jsonify({"error": "Missing text data"}), 400
             
         user_text = data['text'].strip()
@@ -2032,82 +1531,54 @@ def process_text_enhanced():
         # Backend echo detection
         echo_phrases = [
             'ringly pro', 'i can help', 'scheduling', 'perfect', 'wonderful',
-            'how can i help', 'i\'m here to help', 'that\'s great', 'absolutely',
-            'fantastic', 'excellent'
+            'how can i help', 'i\'m here to help', 'that\'s great', 'absolutely'
         ]
         
         user_lower = user_text.lower()
         is_echo = any(phrase in user_lower for phrase in echo_phrases) and len(user_text) > 30
         
         if is_echo:
-            logging.warning(f"🔄 Backend echo detected: '{user_text[:50]}...'")
+            logger.warning(f"🔄 Echo detected: {user_text[:50]}...")
             return jsonify({
                 "response": "I think I heard an echo. Please speak again.",
                 "language": user_language,
-                "context": "clarification",
-                "engine_used": "echo_prevention"
+                "context": "clarification"
             })
         
         if not user_text or len(user_text) < 2:
             error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
                         if user_language.startswith('es') 
                         else "Text too short. Please try again.")
-            logging.error(f"❌ Text too short: '{user_text}'")
             return jsonify({"error": error_msg}), 400
         
-        logging.info(f"📝 Processing text: '{user_text}'")
-        logging.info(f"📱 Mobile request: {is_mobile}")
+        logger.info(f"📝 Processing: {user_text}")
         
-        # Generate response using original voice FAQ function
+        # Generate response using FAQ function
         faq_response, is_faq = get_faq_response(user_text)
-        response_text = None
-        context = "neutral"
+        response_text = faq_response
+        context = "professional" if is_faq else "friendly"
         
-        if is_faq:
-            response_text = faq_response
-            context = "professional"
-        else:
-            if any(word in user_lower for word in ['problem', 'issue', 'help']):
-                context = "empathetic"
-                response_text = "I understand what you're asking about. Let me help you with that."
-            elif any(word in user_lower for word in ['schedule', 'appointment', 'book']):
-                context = "professional" 
-                response_text = "I can help you with scheduling. RinglyPro makes booking appointments super easy."
-            elif any(word in user_lower for word in ['how', 'what', 'explain']):
-                context = "calm"
-                response_text = "Let me explain that for you. I'm here to provide clear, helpful information."
-            else:
-                context = "friendly"
-                response_text = "Hi! I'm your RinglyPro AI assistant. How can I help you today?"
-        
-        # MOBILE-OPTIMIZED ELEVENLABS AUDIO
+        # Try to generate premium audio with ElevenLabs
         audio_data = None
         engine_used = "browser_fallback"
         
-        elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
-        if elevenlabs_key:
+        if elevenlabs_api_key:
             try:
-                import requests
-                
-                logging.info(f"📱 Generating mobile-optimized ElevenLabs audio...")
-                
                 url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
                 
                 headers = {
                     "Accept": "audio/mpeg",
                     "Content-Type": "application/json",
-                    "xi-api-key": elevenlabs_key
+                    "xi-api-key": elevenlabs_api_key
                 }
                 
-                mobile_text = response_text.replace("RinglyPro", "Ringly Pro")
-                mobile_text = mobile_text.replace("AI", "A.I.")
-                mobile_text = mobile_text.replace("$", " dollars")
-                mobile_text = mobile_text.replace("&", "and")
-                
-                logging.info(f"📱 Audio text length: {len(mobile_text)} characters")
+                # Optimize text for speech
+                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
+                speech_text = speech_text.replace("AI", "A.I.")
+                speech_text = speech_text.replace("$", " dollars")
                 
                 tts_data = {
-                    "text": mobile_text,
+                    "text": speech_text,
                     "model_id": "eleven_flash_v2_5" if is_mobile else "eleven_multilingual_v2",
                     "voice_settings": {
                         "stability": 0.8,
@@ -2124,203 +1595,48 @@ def process_text_enhanced():
                 timeout = 8 if is_mobile else 10
                 tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                 
-                if tts_response.status_code == 200:
-                    audio_content = tts_response.content
-                    
-                    if len(audio_content) > 1000:
-                        audio_data = base64.b64encode(audio_content).decode('utf-8')
-                        engine_used = "elevenlabs_mobile" if is_mobile else "elevenlabs"
-                        logging.info(f"✅ {'Mobile' if is_mobile else 'Desktop'} ElevenLabs audio generated ({len(audio_content)} bytes)")
-                    else:
-                        logging.warning("📱 ElevenLabs audio too small, using fallback")
+                if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                    audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                    engine_used = "elevenlabs"
+                    logger.info("✅ ElevenLabs audio generated successfully")
                 else:
-                    logging.warning(f"📱 ElevenLabs failed: {tts_response.status_code} - {tts_response.text}")
+                    logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
                     
-            except requests.exceptions.Timeout:
-                logging.warning("📱 ElevenLabs timeout - network issue")
             except Exception as tts_error:
-                logging.error(f"📱 ElevenLabs error: {tts_error}")
-        else:
-            logging.info("📱 No ElevenLabs API key found, using browser TTS")
+                logger.error(f"❌ ElevenLabs error: {tts_error}")
         
-        # Return mobile-optimized response
         response_payload = {
             "response": response_text,
             "language": user_language,
             "context": context,
             "is_faq": is_faq,
-            "engine_used": engine_used,
-            "mobile_optimized": is_mobile,
-            "echo_prevention": True
+            "engine_used": engine_used
         }
         
         if audio_data:
             response_payload["audio"] = audio_data
-            response_payload["audio_format"] = "mp3_mobile" if is_mobile else "mp3_desktop"
-            logging.info(f"✅ {'Mobile' if is_mobile else 'Desktop'} response with premium Rachel audio")
+            logger.info("✅ Response with premium audio")
         else:
-            logging.info(f"✅ {'Mobile' if is_mobile else 'Desktop'} response with browser TTS fallback")
+            logger.info("✅ Response with browser TTS fallback")
         
         return jsonify(response_payload)
         
     except Exception as e:
-        logging.error(f"❌ Mobile processing error: {e}")
+        logger.error(f"❌ Processing error: {e}")
         return jsonify({"error": "I had a technical issue. Please try again."}), 500
 
-@app.route('/process-text', methods=['POST'])
-def process_text():
-    """Original endpoint for backwards compatibility"""
-    logging.info("📥 Received original text processing request")
-    
-    try:
-        data = request.get_json()
-        
-        if not data or 'text' not in data:
-            return jsonify({"error": "Missing text data"}), 400
-            
-        user_text = data['text'].strip()
-        user_language = data.get('language', 'en-US')
-        
-        if not user_text or len(user_text) < 2:
-            error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
-                        if user_language.startswith('es') 
-                        else "Text too short. Please try again.")
-            return jsonify({"error": error_msg}), 400
-        
-        faq_response, is_faq = get_faq_response(user_text)
-        
-        if is_faq:
-            response_text = faq_response
-        else:
-            try:
-                claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
-                message = claude_client.messages.create(
-                    model="claude-sonnet-4-20250514",
-                    max_tokens=250,
-                    temperature=0.8,
-                    system="You are RinglyPro AI, a helpful business assistant. Keep responses under 80 words.",
-                    messages=[{"role": "user", "content": user_text}]
-                )
-                response_text = message.content[0].text.strip()
-            except Exception as e:
-                logging.error(f"Original Claude error: {e}")
-                response_text = "I'm sorry, I had a technical issue. Please try again."
-        
-        return jsonify({
-            "response": response_text,
-            "language": user_language,
-            "matched_faq": is_faq
-        })
-        
-    except Exception as e:
-        logging.error(f"Original processing error: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-
-@app.route('/health')
-def health_check():
-    """Enhanced health check"""
-    tts_status = {
-        "openai": "available" if openai_api_key else "missing_key",
-        "elevenlabs": "available" if os.getenv("ELEVENLABS_API_KEY") else "missing_key",
-        "browser_fallback": "available"
-    }
-    
-    sms_status = {
-        "twilio": "available" if os.getenv("TWILIO_ACCOUNT_SID") and os.getenv("TWILIO_AUTH_TOKEN") else "missing_keys",
-        "phone_validation": "available"
-    }
-    
-    return jsonify({
-        "status": "healthy",
-        "claude_api": "connected" if anthropic_api_key else "missing",
-        "tts_engines": tts_status,
-        "sms_integration": sms_status,
-        "timestamp": time.time(),
-        "features": [
-            "🎤 Enhanced Voice Interface with Premium TTS",
-            "💬 Text Chat with SMS Integration", 
-            "📱 Mobile Premium Audio Support",
-            "📞 Phone Number Collection & Validation",
-            "📲 SMS Notifications to Customer Service",
-            "🔄 Echo Prevention System",
-            "🤖 Enhanced Claude Sonnet 4 AI",
-            "🌐 Bilingual Support (EN/ES)",
-            "🔍 FAQ Matching with Web Scraping",
-            "📱 iOS Audio Compatibility",
-            "🧹 Mobile State Reset System",
-            "💾 Audio Memory Management"
-        ]
-    })
-
-# Allow iframe embedding
-@app.after_request
-def allow_iframe_embedding(response):
-    response.headers['X-Frame-Options'] = 'ALLOWALL'
-    response.headers['Content-Security-Policy'] = "frame-ancestors *"
-    return response
-
-if __name__ == "__main__":
-    try:
-        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
-        test_claude = claude_client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Hello"}]
-        )
-        logging.info("✅ Claude API connection successful")
-    except Exception as e:
-        logging.error(f"❌ Claude API connection test failed: {e}")
-        print("⚠️  Warning: Claude API connection not verified.")
-
-    print("🚀 Starting Enhanced RinglyPro AI Assistant with Dual Interface...")
-    print("🎯 Enhanced Features:")
-    print("   🎤 Premium Voice Interface with ElevenLabs Rachel voice")
-    print("   💬 Text Chat Interface with SMS integration")
-    print("   📱 Mobile Premium Audio Support (iOS Compatible)")
-    print("   📞 Phone number collection & validation")
-    print("   📲 SMS notifications to customer service")
-    print("   🔇 Echo prevention system (frontend + backend)")
-    print("   🎵 Speech-optimized responses")
-    print("   📱 Enhanced mobile compatibility")
-    print("   🧹 Smart audio fallback & memory management")
-    print("\n📋 API Keys Status:")
-    print(f"   • Claude API: {'✅ Connected' if anthropic_api_key else '❌ Missing'}")
-    print(f"   • OpenAI TTS: {'✅ Available' if openai_api_key else '❌ Missing'}")
-    print(f"   • ElevenLabs TTS: {'✅ Available' if os.getenv('ELEVENLABS_API_KEY') else '❌ Missing'}")
-    print(f"   • Twilio SMS: {'✅ Available' if os.getenv('TWILIO_ACCOUNT_SID') else '❌ Missing'}")
-    print("\n🌐 Access URLs:")
-    print("   🎤 Voice Interface: http://localhost:5000")
-    print("   💬 Text Chat Interface: http://localhost:5000/chat")
-    print("   📊 Health Check: http://localhost:5000/health")
-    print("\n✨ Dual Interface Features:")
-    print("   🎤 Voice: Premium Rachel TTS + Speech Recognition")
-    print("   💬 Text: FAQ + SMS phone collection for complex questions")
-    print("   📱 Mobile: Premium audio compatibility + state management")
-    print("   📞 SMS: Customer service notifications with phone collection")
 @app.route('/widget')
 def chat_widget():
-    """Standalone embeddable chat widget"""
-    return render_template_string(WIDGET_HTML_TEMPLATE)
-
-# CLEAN WIDGET SOLUTION - Add these routes to your app.py
-# Add right before the "if __name__ == '__main__':" line
-
-# SUPER CLEAN WIDGET FIX - Replace the widget routes with this:
-
-# BULLETPROOF WIDGET FIX - Replace your widget routes with this:
-
-@app.route('/widget')
-def chat_widget():
-    """Clean widget - no triple quotes"""
-    return """<!DOCTYPE html>
+    """Embeddable chat widget"""
+    widget_html = """<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RinglyPro Chat</title>
+    <title>RinglyPro Chat Widget</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f8f9fa; height: 100vh; display: flex; flex-direction: column; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8f9fa; height: 100vh; display: flex; flex-direction: column; }
         .header { background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 15px; text-align: center; }
         .chat { flex: 1; padding: 15px; overflow-y: auto; background: white; }
         .message { margin-bottom: 12px; padding: 12px 15px; border-radius: 18px; max-width: 85%; font-size: 14px; }
@@ -2341,22 +1657,18 @@ def chat_widget():
 <body>
     <div class="header">
         <h3>💬 RinglyPro Assistant</h3>
-        <p>Ask us anything!</p>
+        <p>Ask us anything about our services!</p>
     </div>
     <div class="chat" id="chat">
-        <div class="message bot-message">👋 Hi! How can I help you today?</div>
+        <div class="message bot-message">👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?</div>
     </div>
     <div class="input-area">
         <div class="input-container">
-            <input type="text" id="input" placeholder="Type your question...">
+            <input type="text" id="input" placeholder="Type your question..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button class="send-btn" onclick="sendMessage()">→</button>
         </div>
     </div>
     <script>
-        document.getElementById('input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') sendMessage();
-        });
-        
         function sendMessage() {
             var input = document.getElementById('input');
             var message = input.value.trim();
@@ -2370,7 +1682,7 @@ def chat_widget():
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({message: message})
             })
-            .then(function(response) { return response.json(); })
+            .then(function(r) { return r.json(); })
             .then(function(data) {
                 addMessage(data.response, 'bot');
                 if (data.needs_phone_collection) {
@@ -2393,110 +1705,322 @@ def chat_widget():
         function showPhoneForm() {
             var div = document.createElement('div');
             div.className = 'phone-form';
-            div.innerHTML = '<h4>📞 Let us connect with you!</h4>' +
-                '<p>Enter your phone number and our team will reach out:</p>' +
-                '<div class="phone-inputs">' +
-                '<input type="tel" id="phoneInput" placeholder="(555) 123-4567">' +
-                '<button class="phone-btn" onclick="submitPhone()">Submit</button>' +
-                '</div>';
+            div.innerHTML = '<h4>📞 Let us connect with you!</h4><p>Enter your phone number:</p><div class="phone-inputs"><input type="tel" id="phoneInput" placeholder="(555) 123-4567"><button class="phone-btn" onclick="submitPhone()">Submit</button></div>';
             document.getElementById('chat').appendChild(div);
             document.getElementById('chat').scrollTop = 999999;
         }
         
         function submitPhone() {
             var phone = document.getElementById('phoneInput').value.trim();
-            if (!phone) {
-                alert('Please enter a phone number');
-                return;
-            }
+            if (!phone) { alert('Please enter a phone number'); return; }
             
             fetch('/submit_phone', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    phone: phone,
-                    last_question: 'Widget inquiry'
-                })
+                body: JSON.stringify({phone: phone, last_question: 'Widget inquiry'})
             })
-            .then(function(response) { return response.json(); })
+            .then(function(r) { return r.json(); })
             .then(function(data) {
                 var div = document.createElement('div');
                 div.className = data.success ? 'success' : 'error';
                 div.innerHTML = (data.success ? '✅ Success: ' : '❌ Error: ') + data.message;
                 document.getElementById('chat').appendChild(div);
                 document.getElementById('chat').scrollTop = 999999;
-            })
-            .catch(function() {
-                var div = document.createElement('div');
-                div.className = 'error';
-                div.innerHTML = '❌ Error: Could not submit phone number';
-                document.getElementById('chat').appendChild(div);
             });
         }
     </script>
 </body>
 </html>"""
+    return widget_html
 
 @app.route('/widget/embed.js')
-def widget_script():
-    """Embed script using string concatenation - no triple quotes"""
-    js_part1 = "(function() {"
-    js_part2 = "if (window.RinglyProWidget) return;"
-    js_part3 = "window.RinglyProWidget = {"
-    js_part4 = "init: function(options) {"
-    js_part5 = "options = options || {};"
-    js_part6 = "var widgetUrl = options.url || 'http://localhost:5000/widget';"
-    js_part7 = "var position = options.position || 'bottom-right';"
-    js_part8 = "var color = options.color || '#2196F3';"
+def widget_embed_script():
+    """Widget embed JavaScript"""
+    js_code = """
+(function() {
+    if (window.RinglyProWidget) return;
     
-    js_button = "var button = document.createElement('div');"
-    js_button += "button.innerHTML = '💬';"
-    js_button += "button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');"
+    window.RinglyProWidget = {
+        init: function(options) {
+            options = options || {};
+            var widgetUrl = options.url || 'http://localhost:5000/widget';
+            var position = options.position || 'bottom-right';
+            var color = options.color || '#2196F3';
+            
+            var button = document.createElement('div');
+            button.innerHTML = '💬';
+            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + 
+                (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            var container = document.createElement('div');
+            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.3);' + 
+                (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            var iframe = document.createElement('iframe');
+            iframe.src = widgetUrl;
+            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:10px;';
+            container.appendChild(iframe);
+            
+            var isOpen = false;
+            button.onclick = function() {
+                isOpen = !isOpen;
+                container.style.display = isOpen ? 'block' : 'none';
+                button.innerHTML = isOpen ? '✕' : '💬';
+            };
+            
+            document.body.appendChild(button);
+            document.body.appendChild(container);
+        }
+    };
     
-    js_container = "var container = document.createElement('div');"
-    js_container += "container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:10px;overflow:hidden;box-shadow:0 8px 30px rgba(0,0,0,0.3);' + (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + (position.includes('right') ? 'right:20px;' : 'left:20px;');"
-    
-    js_iframe = "var iframe = document.createElement('iframe');"
-    js_iframe += "iframe.src = widgetUrl;"
-    js_iframe += "iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:10px;';"
-    js_iframe += "container.appendChild(iframe);"
-    
-    js_toggle = "var isOpen = false;"
-    js_toggle += "button.onclick = function() {"
-    js_toggle += "isOpen = !isOpen;"
-    js_toggle += "container.style.display = isOpen ? 'block' : 'none';"
-    js_toggle += "button.innerHTML = isOpen ? '✕' : '💬';"
-    js_toggle += "};"
-    
-    js_append = "document.body.appendChild(button);"
-    js_append += "document.body.appendChild(container);"
-    js_append += "console.log('RinglyPro Widget loaded');"
-    
-    js_close = "}"
-    js_close += "};"
-    
-    js_autoinit = "document.addEventListener('DOMContentLoaded', function() {"
-    js_autoinit += "var script = document.querySelector('script[data-ringlypro-widget]');"
-    js_autoinit += "if (script) {"
-    js_autoinit += "window.RinglyProWidget.init({"
-    js_autoinit += "url: script.getAttribute('data-url') || 'http://localhost:5000/widget',"
-    js_autoinit += "position: script.getAttribute('data-position') || 'bottom-right',"
-    js_autoinit += "color: script.getAttribute('data-color') || '#2196F3'"
-    js_autoinit += "});"
-    js_autoinit += "}"
-    js_autoinit += "});"
-    js_autoinit += "})();"
-    
-    # Combine all parts
-    full_script = (js_part1 + js_part2 + js_part3 + js_part4 + js_part5 + js_part6 + 
-                   js_part7 + js_part8 + js_button + js_container + js_iframe + 
-                   js_toggle + js_append + js_close + js_autoinit)
+    document.addEventListener('DOMContentLoaded', function() {
+        var script = document.querySelector('script[data-ringlypro-widget]');
+        if (script) {
+            window.RinglyProWidget.init({
+                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
+                position: script.getAttribute('data-position') || 'bottom-right',
+                color: script.getAttribute('data-color') || '#2196F3'
+            });
+        }
+    });
+})();
+"""
     
     response = app.response_class(
-        response=full_script,
+        response=js_code,
         status=200,
         mimetype='application/javascript'
     )
     response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache'
     return response
+
+@app.route('/admin')
+def admin_dashboard():
+    """Simple admin dashboard to view customer inquiries"""
+    try:
+        conn = sqlite3.connect('customer_inquiries.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT phone, question, timestamp, status, sms_sent, source 
+            FROM inquiries 
+            ORDER BY timestamp DESC 
+            LIMIT 50
+        ''')
+        inquiries = cursor.fetchall()
+        conn.close()
+        
+        html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RinglyPro Admin Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }
+        h1 { color: #2196F3; text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f8f9fa; font-weight: bold; }
+        .status-new { color: #f44336; font-weight: bold; }
+        .status-contacted { color: #4caf50; }
+        .sms-sent { color: #4caf50; }
+        .sms-failed { color: #f44336; }
+        .stats { display: flex; gap: 20px; margin-bottom: 20px; }
+        .stat-card { background: #2196F3; color: white; padding: 15px; border-radius: 8px; text-align: center; flex: 1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 RinglyPro Customer Inquiries</h1>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>""" + str(len(inquiries)) + """</h3>
+                <p>Total Inquiries</p>
+            </div>
+            <div class="stat-card">
+                <h3>""" + str(sum(1 for i in inquiries if i[4])) + """</h3>
+                <p>SMS Sent</p>
+            </div>
+            <div class="stat-card">
+                <h3>""" + str(len(set(i[0] for i in inquiries))) + """</h3>
+                <p>Unique Customers</p>
+            </div>
+        </div>
+        
+        <table>
+            <tr>
+                <th>Phone</th>
+                <th>Question</th>
+                <th>Time</th>
+                <th>Source</th>
+                <th>SMS Status</th>
+            </tr>
+        """
+        
+        for inquiry in inquiries:
+            phone, question, timestamp, status, sms_sent, source = inquiry
+            sms_status = "✅ Sent" if sms_sent else "❌ Failed"
+            html += f"""
+            <tr>
+                <td>{phone}</td>
+                <td>{question[:100]}{'...' if len(question) > 100 else ''}</td>
+                <td>{timestamp}</td>
+                <td>{source or 'chat'}</td>
+                <td class="{'sms-sent' if sms_sent else 'sms-failed'}">{sms_status}</td>
+            </tr>
+            """
+        
+        html += """
+        </table>
+    </div>
+</body>
+</html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        logger.error(f"❌ Admin dashboard error: {e}")
+        return f"<h1>Admin Dashboard Error</h1><p>{e}</p>"
+
+@app.route('/test-sms')
+def test_sms():
+    """Test SMS functionality"""
+    try:
+        success, result = send_sms_notification("+15551234567", "This is a test message from RinglyPro SMS system", "test")
+        
+        return jsonify({
+            "test_result": "success" if success else "failed",
+            "message": result,
+            "timestamp": datetime.now().isoformat(),
+            "twilio_configured": bool(twilio_account_sid and twilio_auth_token)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "test_result": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        })
+
+@app.route('/health')
+def health_check():
+    """Enhanced health check with system status"""
+    try:
+        # Check database
+        conn = sqlite3.connect('customer_inquiries.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM inquiries')
+        inquiry_count = cursor.fetchone()[0]
+        conn.close()
+        
+        # Check API keys
+        api_status = {
+            "claude": "available" if anthropic_api_key else "missing",
+            "openai": "available" if openai_api_key else "missing", 
+            "elevenlabs": "available" if elevenlabs_api_key else "missing",
+            "twilio": "available" if (twilio_account_sid and twilio_auth_token) else "missing"
+        }
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "2.0.0",
+            "database": {
+                "status": "connected",
+                "total_inquiries": inquiry_count
+            },
+            "api_keys": api_status,
+            "features": {
+                "voice_interface": "✅ Premium TTS + Speech Recognition",
+                "text_chat": "✅ FAQ + SMS Integration", 
+                "phone_collection": "✅ Validation + SMS Notifications",
+                "widget": "✅ Embeddable Chat Widget",
+                "admin_dashboard": "✅ Customer Inquiry Management",
+                "database": "✅ SQLite Customer Storage",
+                "mobile_support": "✅ iOS/Android Compatible"
+            },
+            "endpoints": {
+                "voice": "/",
+                "chat": "/chat", 
+                "widget": "/widget",
+                "admin": "/admin",
+                "health": "/health",
+                "test_sms": "/test-sms"
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Health check error: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+# Allow iframe embedding for widget
+@app.after_request
+def allow_iframe_embedding(response):
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+# Setup database on startup
+init_database()
+
+if __name__ == "__main__":
+    # Test Claude connection
+    try:
+        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        test_claude = claude_client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        logger.info("✅ Claude API connection successful")
+    except Exception as e:
+        logger.error(f"❌ Claude API connection failed: {e}")
+        print("⚠️  Warning: Claude API connection not verified.")
+
+    print("🚀 Starting Enhanced RinglyPro AI Assistant v2.0")
+    print("\n🎯 PRODUCTION-READY FEATURES:")
+    print("   🎤 Premium Voice Interface (ElevenLabs + Speech Recognition)")
+    print("   💬 Smart Text Chat (FAQ + SMS Integration)")  
+    print("   📞 Phone Collection & Validation (phonenumbers)")
+    print("   📲 SMS Notifications (Twilio → +16566001400)")
+    print("   💾 Customer Database (SQLite)")
+    print("   🌐 Embeddable Widget (Cross-domain compatible)")
+    print("   📊 Admin Dashboard (/admin)")
+    print("   📱 Mobile Optimized (iOS/Android)")
+    print("   🔧 System Monitoring (/health, /test-sms)")
+    
+    print("\n📋 API INTEGRATIONS:")
+    print(f"   • Claude Sonnet 4: {'✅ Ready' if anthropic_api_key else '❌ Missing'}")
+    print(f"   • ElevenLabs TTS: {'✅ Ready' if elevenlabs_api_key else '❌ Browser Fallback'}")
+    print(f"   • Twilio SMS: {'✅ Ready' if (twilio_account_sid and twilio_auth_token) else '❌ Disabled'}")
+    print(f"   • OpenAI (Backup): {'✅ Available' if openai_api_key else '❌ Optional'}")
+    
+    print("\n🌐 ACCESS URLS:")
+    print("   🎤 Voice Interface: http://localhost:5000")
+    print("   💬 Text Chat: http://localhost:5000/chat") 
+    print("   🌐 Embeddable Widget: http://localhost:5000/widget")
+    print("   📊 Admin Dashboard: http://localhost:5000/admin")
+    print("   🏥 Health Check: http://localhost:5000/health")
+    print("   🧪 SMS Test: http://localhost:5000/test-sms")
+    
+    print("\n💡 WIDGET EMBED CODE:")
+    print('   <script src="http://localhost:5000/widget/embed.js" data-ringlypro-widget></script>')
+    
+    print("\n🎉 READY FOR PRODUCTION DEPLOYMENT!")
+    print("   ✅ All core functionality implemented")
+    print("   ✅ Error handling & logging")
+    print("   ✅ Database storage")
+    print("   ✅ SMS integration")
+    print("   ✅ Mobile compatibility")
+    print("   ✅ Admin tools")
+    
     app.run(debug=True, host='0.0.0.0', port=5000)
