@@ -102,56 +102,47 @@ def init_database():
         cursor = conn.cursor()
         
         # Original customer inquiries table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS inquiries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                phone TEXT NOT NULL,
-                question TEXT NOT NULL,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                status TEXT DEFAULT 'new',
-                sms_sent BOOLEAN DEFAULT FALSE,
-                sms_sid TEXT,
-                source TEXT DEFAULT 'chat',
-                notes TEXT
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS inquiries (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          phone TEXT NOT NULL,
+                          question TEXT NOT NULL,
+                          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                          status TEXT DEFAULT 'new',
+                          sms_sent BOOLEAN DEFAULT FALSE,
+                          sms_sid TEXT,
+                          source TEXT DEFAULT 'chat',
+                          notes TEXT)''')
         
         # Enhanced appointments table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS appointments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                customer_name TEXT NOT NULL,
-                customer_email TEXT NOT NULL,
-                customer_phone TEXT NOT NULL,
-                appointment_date DATE NOT NULL,
-                appointment_time TIME NOT NULL,
-                duration INTEGER DEFAULT 30,
-                purpose TEXT,
-                status TEXT DEFAULT 'scheduled',
-                zoom_meeting_url TEXT,
-                google_event_id TEXT,
-                hubspot_contact_id TEXT,
-                hubspot_meeting_id TEXT,
-                confirmation_code TEXT UNIQUE,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                timezone TEXT DEFAULT 'America/New_York',
-                notes TEXT
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS appointments (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          customer_name TEXT NOT NULL,
+                          customer_email TEXT NOT NULL,
+                          customer_phone TEXT NOT NULL,
+                          appointment_date DATE NOT NULL,
+                          appointment_time TIME NOT NULL,
+                          duration INTEGER DEFAULT 30,
+                          purpose TEXT,
+                          status TEXT DEFAULT 'scheduled',
+                          zoom_meeting_url TEXT,
+                          google_event_id TEXT,
+                          hubspot_contact_id TEXT,
+                          hubspot_meeting_id TEXT,
+                          confirmation_code TEXT UNIQUE,
+                          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                          timezone TEXT DEFAULT 'America/New_York',
+                          notes TEXT)''')
         
         # Calendar availability table (for blocked times)
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS availability_blocks (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                date DATE NOT NULL,
-                start_time TIME NOT NULL,
-                end_time TIME NOT NULL,
-                is_available BOOLEAN DEFAULT TRUE,
-                reason TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS availability_blocks (
+                          id INTEGER PRIMARY KEY AUTOINCREMENT,
+                          date DATE NOT NULL,
+                          start_time TIME NOT NULL,
+                          end_time TIME NOT NULL,
+                          is_available BOOLEAN DEFAULT TRUE,
+                          reason TEXT,
+                          created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
         
         conn.commit()
         conn.close()
@@ -459,10 +450,9 @@ class AppointmentManager:
             conn = sqlite3.connect('ringlypro.db')
             cursor = conn.cursor()
             
-            cursor.execute('''
-                SELECT COUNT(*) FROM appointments 
-                WHERE appointment_date = ? AND appointment_time = ? AND status != 'cancelled'
-            ''', (date_str, time_str))
+            cursor.execute('''SELECT COUNT(*) FROM appointments 
+                              WHERE appointment_date = ? AND appointment_time = ? AND status != 'cancelled' ''',
+                           (date_str, time_str))
             
             count = cursor.fetchone()[0]
             conn.close()
@@ -528,13 +518,11 @@ class AppointmentManager:
             conn = sqlite3.connect('ringlypro.db')
             cursor = conn.cursor()
             
-            cursor.execute('''
-                INSERT INTO appointments 
-                (customer_name, customer_email, customer_phone, appointment_date, 
-                 appointment_time, purpose, zoom_meeting_url, confirmation_code, 
-                 timezone, hubspot_contact_id, hubspot_meeting_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
+            cursor.execute('''INSERT INTO appointments 
+                              (customer_name, customer_email, customer_phone, appointment_date, 
+                               appointment_time, purpose, zoom_meeting_url, confirmation_code, 
+                               timezone, hubspot_contact_id, hubspot_meeting_id)
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
                 customer_data['name'],
                 customer_data['email'],
                 validated_phone,
@@ -708,9 +696,8 @@ Need help? Reply to this message or call (656) 213-3300.
             conn = sqlite3.connect('ringlypro.db')
             cursor = conn.cursor()
             
-            cursor.execute('''
-                SELECT * FROM appointments WHERE confirmation_code = ? AND status != 'cancelled'
-            ''', (confirmation_code,))
+            cursor.execute('''SELECT * FROM appointments WHERE confirmation_code = ? AND status != 'cancelled' ''',
+                           (confirmation_code,))
             
             row = cursor.fetchone()
             conn.close()
@@ -779,10 +766,8 @@ def save_customer_inquiry(phone: str, question: str, sms_sent: bool, sms_sid: st
     try:
         conn = sqlite3.connect('ringlypro.db')
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO inquiries (phone, question, sms_sent, sms_sid, source)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (phone, question, sms_sent, sms_sid, source))
+        cursor.execute('''INSERT INTO inquiries (phone, question, sms_sent, sms_sid, source)
+                          VALUES (?, ?, ?, ?, ?)''', (phone, question, sms_sent, sms_sid, source))
         conn.commit()
         conn.close()
         logger.info(f"💾 Customer inquiry saved: {phone}")
@@ -2185,19 +2170,15 @@ def admin_dashboard():
         cursor = conn.cursor()
         
         # Get inquiries
-        cursor.execute('''
-            SELECT phone, question, timestamp, status, sms_sent, source 
-            FROM inquiries ORDER BY timestamp DESC LIMIT 50
-        ''')
+        cursor.execute('''SELECT phone, question, timestamp, status, sms_sent, source 
+                          FROM inquiries ORDER BY timestamp DESC LIMIT 50''')
         inquiries = cursor.fetchall()
         
         # Get appointments
-        cursor.execute('''
-            SELECT customer_name, customer_email, customer_phone, appointment_date, 
-                   appointment_time, purpose, status, confirmation_code, created_at,
-                   hubspot_contact_id, hubspot_meeting_id
-            FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50
-        ''')
+        cursor.execute('''SELECT customer_name, customer_email, customer_phone, appointment_date, 
+                          appointment_time, purpose, status, confirmation_code, created_at,
+                          hubspot_contact_id, hubspot_meeting_id
+                          FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50''')
         appointments = cursor.fetchall()
         
         conn.close()
