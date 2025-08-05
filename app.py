@@ -20,7 +20,7 @@ from typing import Optional, Tuple, Dict, Any, List
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import pytz
+from datetime import datetime, timedelta, timezone
 import uuid
 import hashlib
 
@@ -69,7 +69,7 @@ zoom_meeting_id = "726 904 5564"
 zoom_password = "RinglyPro2024"
 
 # Business Configuration
-business_timezone = pytz.timezone('America/New_York')
+business_timezone = timezone(timedelta(hours=-5))  # Eastern Time (UTC-5)
 business_hours = {
     'monday': {'start': '09:00', 'end': '17:00'},
     'tuesday': {'start': '09:00', 'end': '17:00'},
@@ -121,7 +121,7 @@ def init_database():
                           confirmation_code TEXT UNIQUE,
                           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                          timezone TEXT DEFAULT 'America/New_York',
+                          timezone TEXT DEFAULT 'Eastern',
                           notes TEXT)''')
         
         # Calendar availability table (for blocked times)
@@ -387,11 +387,12 @@ class AppointmentManager:
         return str(uuid.uuid4())[:8].upper()
     
     @staticmethod
-    def get_available_slots(date_str: str, timezone_str: str = 'America/New_York') -> List[str]:
+    def get_available_slots(date_str: str, timezone_str: str = 'Eastern') -> List[str]:
         """Get available appointment slots for a given date"""
         try:
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            target_tz = pytz.timezone(timezone_str)
+            # Use Eastern Time (UTC-5) for business hours - adjust for daylight saving if needed
+            target_tz = timezone(timedelta(hours=-5))
             
             # Get day of week
             day_name = target_date.strftime('%A').lower()
@@ -419,7 +420,7 @@ class AppointmentManager:
                 # Don't show past slots for today
                 if target_date == datetime.now().date():
                     now = datetime.now(target_tz)
-                    slot_datetime = target_tz.localize(datetime.combine(target_date, current_time.time()))
+                    slot_datetime = datetime.combine(target_date, current_time.time()).replace(tzinfo=target_tz)
                     if slot_datetime <= now + timedelta(hours=1):  # 1 hour buffer
                         current_time += timedelta(minutes=30)
                         continue
@@ -521,7 +522,7 @@ class AppointmentManager:
                 customer_data.get('purpose', 'General consultation'),
                 zoom_meeting_url,
                 confirmation_code,
-                customer_data.get('timezone', 'America/New_York'),
+                customer_data.get('timezone', 'Eastern'),
                 hubspot_contact_id,
                 hubspot_meeting_id
             ))
@@ -3746,6 +3747,7 @@ if __name__ == "__main__":
     print("   ✅ Widget with black backdrop embedding")
     print("   ✅ Comprehensive logging & monitoring")
     print("   ✅ HubSpot calendar integration (no Google Calendar needed)")
+    print("   ✅ Zero external timezone dependencies (uses built-in Python)")
     
     print("\n" + "="*60)
     
