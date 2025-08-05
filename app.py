@@ -981,13 +981,20 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     """
     user_text_lower = user_text.lower().strip()
     
-    # Check for appointment booking intent
+    # Log for debugging
+    logger.info(f"🔍 Enhanced FAQ processing: '{user_text_lower}'")
+    
+    # Check for appointment booking intent - PRIORITY CHECK
     booking_keywords = [
         'schedule', 'book', 'appointment', 'meeting', 'consultation', 
-        'available', 'calendar', 'time', 'when can', 'set up'
+        'available', 'calendar', 'time', 'when can', 'set up', 'book an'
     ]
     
-    if any(keyword in user_text_lower for keyword in booking_keywords):
+    booking_detected = any(keyword in user_text_lower for keyword in booking_keywords)
+    logger.info(f"🎯 Booking keywords detected: {booking_detected}")
+    
+    if booking_detected:
+        logger.info("✅ Returning booking action")
         return ("I'd be happy to help you schedule an appointment! Let me guide you through the booking process.", 
                 True, "start_booking")
     
@@ -996,6 +1003,9 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     if any(keyword in user_text_lower for keyword in reschedule_keywords):
         return ("I can help you manage your existing appointment. Do you have your confirmation code?", 
                 True, "manage_appointment")
+    
+    # Only check FAQ if no booking intent detected
+    logger.info("📋 Checking FAQ database")
     
     # Try exact match first
     if user_text_lower in FAQ_BRAIN:
@@ -1012,6 +1022,7 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
         return response, True, "none"
     
     # Fallback with booking option
+    logger.info("❌ No FAQ match, offering booking")
     return ("I don't have a specific answer to that question, but I'd be happy to connect you with our team. Would you like to schedule a consultation or provide your phone number for a callback?", 
             False, "offer_booking")
 
@@ -2329,14 +2340,18 @@ ENHANCED_CHAT_TEMPLATE = '''
             })
             .then(response => response.json())
             .then(data => {
+                console.log('📨 Received response:', data);
                 addMessage(data.response, 'bot');
                 
                 if (data.action === 'start_booking') {
+                    console.log('🚀 Starting booking process');
                     setTimeout(() => showBookingForm(), 500);
                 } else if (data.action === 'show_slots') {
                     setTimeout(() => showAvailableSlots(data.slots, data.date), 500);
                 } else if (data.action === 'booking_success') {
                     setTimeout(() => showBookingConfirmation(data.appointment), 500);
+                } else {
+                    console.log('ℹ️ No special action needed, action was:', data.action);
                 }
                 
                 if (data.booking_step) {
@@ -2602,6 +2617,9 @@ def handle_enhanced_chat():
         # Get enhanced FAQ response
         response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
         
+        logger.info(f"📤 Response: {response[:50]}...")
+        logger.info(f"🎬 Action needed: {action_needed}")
+        
         response_data = {
             'response': response,
             'is_faq_match': is_faq_match,
@@ -2611,10 +2629,12 @@ def handle_enhanced_chat():
         
         # Handle specific booking actions
         if action_needed == "start_booking":
+            logger.info("🚀 Setting action to start_booking")
             response_data['action'] = 'start_booking'
         elif action_needed == "suggest_booking":
             response_data['response'] += " Type 'yes' if you'd like to schedule a consultation."
         
+        logger.info(f"📨 Final response data: {response_data}")
         return jsonify(response_data)
         
     except Exception as e:
@@ -3604,6 +3624,7 @@ def health_check():
                 "health": "/health",
                 "test_sms": "/test-sms",
                 "test_hubspot": "/test-hubspot",
+                "test_booking": "/test-booking",
                 "voice_processing": "/process-text-enhanced"
             }
         })
