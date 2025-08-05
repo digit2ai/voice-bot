@@ -2054,7 +2054,7 @@ CHAT_HTML_TEMPLATE = '''
 @app.route('/widget/embed.js')
 def widget_embed_script():
     """Widget embed JavaScript with BLACK BACKDROP"""
-    js_code = """
+    js_code = '''
 (function() {
     if (window.RinglyProWidget) return;
     
@@ -2151,7 +2151,7 @@ def widget_embed_script():
         }
     });
 })();
-"""
+'''
     
     response = app.response_class(
         response=js_code,
