@@ -916,47 +916,7 @@ FAQ_BRAIN = {
 
     "what if i need to cancel my appointment?": "You can cancel or reschedule by contacting us with your confirmation code. We recommend giving at least 24 hours notice when possible.",
 
-    "will i receive reminders about my appointment?": "Yes, you'll receive both email and SMS confirmations immediately after booking, and we typically send reminder notifications before your scheduled appointment.",
-
-    # ==================== TECHNICAL SUPPORT ====================
-    "what if the ai makes a mistake?": "RinglyPro includes monitoring and quality assurance. Any issues can be addressed through your customer support channels, and the AI continuously learns and improves.",
-
-    "can i customize how the ai responds?": "Yes, customization options are available, especially on higher-tier plans. You can customize greetings, responses, and call routing rules to match your business needs.",
-
-    "what about internet outages?": "RinglyPro is cloud-based with redundancy systems. Even if your local internet is down, the service continues to operate and can forward calls to backup numbers.",
-
-    "how do i access call recordings?": "Call recordings are accessible through your RinglyPro dashboard and mobile app (where applicable), allowing you to review and manage recorded conversations.",
-
-    "can i pause the service temporarily?": "Contact customer service to discuss temporary service adjustments for vacations or business changes.",
-
-    # ==================== ADVANCED FEATURES ====================
-    "what is lead capture automation?": "Available with the Marketing Director plan, this feature automatically captures lead information from various sources and integrates it into your CRM and follow-up systems.",
-
-    "what kind of analytics do you provide?": "Analytics include call volume, conversion rates, response times, customer satisfaction metrics, and detailed reporting available with higher-tier plans.",
-
-    "can ringlypro handle multiple locations?": "Yes, RinglyPro can be configured to handle multiple business locations with location-specific routing and responses.",
-
-    "what is reputation management?": "Part of the Marketing Director plan, reputation management helps monitor and improve your online reviews and business reputation across various platforms.",
-
-    "do you offer email marketing?": "Email marketing tools are included with the Marketing Director plan, allowing automated follow-up campaigns and customer communications.",
-
-    "what about google ads management?": "Google Ads campaign management is included with the Marketing Director plan to help drive qualified leads to your business.",
-
-    # ==================== BILLING AND PAYMENT ====================
-    "how am i billed?": "RinglyPro typically bills monthly for service plans, with usage overages billed as they occur. Specific billing details are provided during signup.",
-
-    "what payment methods do you accept?": "Standard payment methods including credit cards are accepted. Specific payment options are confirmed during the signup process.",
-
-    "can i get a refund?": "Refund policies are available - contact customer service to discuss any service issues or cancellation needs.",
-
-    "are there any contracts?": "Contract terms vary by plan level. Contact RinglyPro directly for specific terms and conditions for your chosen plan.",
-
-    # ==================== COMPARISON QUESTIONS ====================
-    "how is ringlypro different from other answering services?": "RinglyPro combines AI technology with human oversight, provides 24/7 availability, includes appointment scheduling, and offers business growth tools like marketing and CRM integration that traditional answering services don't provide.",
-
-    "is ringlypro better than hiring a receptionist?": "RinglyPro provides 24/7 availability, never takes sick days, costs less than full-time staff, and includes advanced features like CRM integration and automated booking that would require multiple employees to replicate.",
-
-    "how does ringlypro compare to just using voicemail?": "Unlike voicemail, RinglyPro provides immediate response to callers, can answer questions, schedule appointments, and route urgent calls, significantly improving customer experience and capturing more opportunities."
+    "will i receive reminders about my appointment?": "Yes, you'll receive both email and SMS confirmations immediately after booking, and we typically send reminder notifications before your scheduled appointment."
 }
 
 # ==================== FAQ PROCESSING FUNCTIONS ====================
@@ -1969,876 +1929,6 @@ CHAT_HTML_TEMPLATE = '''
         
         .chat::-webkit-scrollbar-thumb:hover {
             background: #a1a1a1;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <h3>💬 RinglyPro Assistant</h3>
-        <p>Ask about our services!</p>
-    </div>
-    <div class="chat" id="chat">
-        <div class="message bot-message">👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?</div>
-    </div>
-    <div class="input-area">
-        <div class="input-container">
-            <input type="text" id="input" placeholder="Ask about RinglyPro services..." onkeypress="if(event.key==='Enter') sendMessage()">
-            <button class="send-btn" onclick="sendMessage()">→</button>
-        </div>
-    </div>
-    <script>
-        function sendMessage() {
-            var input = document.getElementById('input');
-            var message = input.value.trim();
-            if (!message) return;
-            
-            addMessage(message, 'user');
-            input.value = '';
-            
-            fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: message})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                addMessage(data.response, 'bot');
-                if (data.needs_phone_collection) {
-                    setTimeout(showPhoneForm, 500);
-                }
-            })
-            .catch(function() {
-                addMessage('Sorry, there was an error. Please try again.', 'bot');
-            });
-        }
-        
-        function addMessage(text, type) {
-            var div = document.createElement('div');
-            div.className = 'message ' + type + '-message';
-            div.textContent = text;
-            document.getElementById('chat').appendChild(div);
-            document.getElementById('chat').scrollTop = 999999;
-        }
-        
-        function showPhoneForm() {
-            var div = document.createElement('div');
-            div.className = 'phone-form';
-            div.innerHTML = '<h4>📞 Let us connect with you!</h4><p>Enter your phone number:</p><div class="phone-inputs"><input type="tel" id="phoneInput" placeholder="(555) 123-4567"><button class="phone-btn" onclick="submitPhone()">Submit</button></div>';
-            document.getElementById('chat').appendChild(div);
-            document.getElementById('chat').scrollTop = 999999;
-        }
-        
-        function submitPhone() {
-            var phone = document.getElementById('phoneInput').value.trim();
-            if (!phone) { alert('Please enter a phone number'); return; }
-            
-            fetch('/submit_phone', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({phone: phone, last_question: 'Widget inquiry'})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                var div = document.createElement('div');
-                div.className = data.success ? 'success' : 'error';
-                div.innerHTML = (data.success ? '✅ Success: ' : '❌ Error: ') + data.message;
-                document.getElementById('chat').appendChild(div);
-                document.getElementById('chat').scrollTop = 999999;
-            });
-        }
-    </script>
-</body>
-</html>"""
-    return widget_html
-
-@app.route('/widget/embed.js')
-def widget_embed_script():
-    """Widget embed JavaScript with BLACK BACKDROP"""
-    js_code = '''
-(function() {
-    if (window.RinglyProWidget) return;
-    
-    window.RinglyProWidget = {
-        init: function(options) {
-            options = options || {};
-            var widgetUrl = options.url || 'http://localhost:5000/widget';
-            var position = options.position || 'bottom-right';
-            var color = options.color || '#2196F3';
-            
-            // Create BLACK backdrop overlay
-            var backdrop = document.createElement('div');
-            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999;display:none;backdrop-filter:blur(5px);';
-            backdrop.onclick = function() {
-                toggleWidget();
-            };
-            
-            // Create floating button
-            var button = document.createElement('div');
-            button.innerHTML = '💬';
-            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + 
-                (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + 
-                (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            // Create container (WHITE interior)
-            var container = document.createElement('div');
-            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;' +
-                (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + 
-                (position.includes('right') ? 'right:20px;' : 'left:20px;');
-            
-            // Create iframe
-            var iframe = document.createElement('iframe');
-            iframe.src = widgetUrl;
-            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:15px;background:white;';
-            container.appendChild(iframe);
-            
-            // Toggle functionality
-            var isOpen = false;
-            
-            function toggleWidget() {
-                isOpen = !isOpen;
-                container.style.display = isOpen ? 'block' : 'none';
-                backdrop.style.display = isOpen ? 'block' : 'none';
-                button.innerHTML = isOpen ? '✕' : '💬';
-                
-                if (isOpen) {
-                    button.style.background = '#f44336';
-                    button.style.zIndex = '1002';
-                } else {
-                    button.style.background = color;
-                    button.style.zIndex = '1000';
-                }
-            }
-            
-            button.onclick = toggleWidget;
-            
-            // Add hover effects
-            button.onmouseenter = function() {
-                if (!isOpen) {
-                    button.style.transform = 'scale(1.1)';
-                    button.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25)';
-                }
-            };
-            
-            button.onmouseleave = function() {
-                if (!isOpen) {
-                    button.style.transform = 'scale(1)';
-                    button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-                }
-            };
-            
-            // Mobile responsiveness
-            if (window.innerWidth <= 480) {
-                container.style.cssText = 'position:fixed;width:calc(100vw - 20px);height:calc(100vh - 40px);display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;top:10px;left:10px;right:10px;bottom:10px;';
-            }
-            
-            document.body.appendChild(backdrop);
-            document.body.appendChild(button);
-            document.body.appendChild(container);
-            
-            console.log('✨ RinglyPro Widget with Black Backdrop loaded!');
-        }
-    };
-    
-    // Auto-initialize
-    document.addEventListener('DOMContentLoaded', function() {
-        var script = document.querySelector('script[data-ringlypro-widget]');
-        if (script) {
-            window.RinglyProWidget.init({
-                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
-                position: script.getAttribute('data-position') || 'bottom-right',
-                color: script.getAttribute('data-color') || '#2196F3'
-            });
-        }
-    });
-})();
-'''
-    
-    response = app.response_class(
-        response=js_code,
-        status=200,
-        mimetype='application/javascript'
-    )
-    response.headers['Access-Control-Allow-Origin'] = '*'
-    response.headers['Cache-Control'] = 'no-cache'
-    return response
-
-@app.route('/admin')
-def admin_dashboard():
-    """Enhanced admin dashboard with appointments and inquiries"""
-    try:
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
-        
-        # Get inquiries
-        cursor.execute('''SELECT phone, question, timestamp, status, sms_sent, source 
-                          FROM inquiries ORDER BY timestamp DESC LIMIT 50''')
-        inquiries = cursor.fetchall()
-        
-        # Get appointments
-        cursor.execute('''SELECT customer_name, customer_email, customer_phone, appointment_date, 
-                          appointment_time, purpose, status, confirmation_code, created_at,
-                          hubspot_contact_id, hubspot_meeting_id
-                          FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50''')
-        appointments = cursor.fetchall()
-        
-        conn.close()
-        
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>RinglyPro Admin Dashboard</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }}
-        h1 {{ color: #2196F3; text-align: center; margin-bottom: 30px; }}
-        .stats {{ display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }}
-        .stat-card {{ background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; min-width: 200px; }}
-        .stat-card h3 {{ font-size: 2.5em; margin: 0; }}
-        .stat-card p {{ margin: 10px 0 0 0; opacity: 0.9; }}
-        .tabs {{ display: flex; gap: 10px; margin-bottom: 20px; }}
-        .tab {{ padding: 12px 24px; background: #e0e0e0; border: none; cursor: pointer; border-radius: 8px; font-weight: 600; transition: all 0.3s; }}
-        .tab.active {{ background: #2196F3; color: white; }}
-        .tab:hover {{ transform: translateY(-2px); }}
-        .tab-content {{ display: none; }}
-        .tab-content.active {{ display: block; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }}
-        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
-        th {{ background: #f8f9fa; font-weight: bold; color: #333; }}
-        .status-scheduled {{ color: #4caf50; font-weight: bold; }}
-        .status-cancelled {{ color: #f44336; font-weight: bold; }}
-        .status-completed {{ color: #2196F3; font-weight: bold; }}
-        .confirmation-code {{ font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; }}
-        .sms-sent {{ color: #4caf50; }}
-        .sms-failed {{ color: #f44336; }}
-        .hubspot-integrated {{ color: #ff6600; font-size: 0.8em; }}
-        .action-buttons {{ display: flex; gap: 5px; }}
-        .btn {{ padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em; }}
-        .btn-view {{ background: #2196F3; color: white; }}
-        .btn-cancel {{ background: #f44336; color: white; }}
-        .system-status {{ background: linear-gradient(135deg, #4caf50, #45a049); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }}
-        .system-status h3 {{ margin-bottom: 15px; }}
-        .status-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }}
-        .status-item {{ background: rgba(255,255,255,0.2); padding: 10px; border-radius: 5px; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📊 RinglyPro Admin Dashboard</h1>
-        
-        <div class="system-status">
-            <h3>🔧 System Status</h3>
-            <div class="status-grid">
-                <div class="status-item">
-                    <strong>📧 Email:</strong> {"✅ Configured" if email_user and email_password else "❌ Not configured"}
-                </div>
-                <div class="status-item">
-                    <strong>📱 SMS:</strong> {"✅ Configured" if twilio_account_sid and twilio_auth_token else "❌ Not configured"}
-                </div>
-                <div class="status-item">
-                    <strong>🏢 HubSpot:</strong> {"✅ Configured" if hubspot_api_token else "❌ Not configured"}
-                </div>
-                <div class="status-item">
-                    <strong>🎤 Voice:</strong> ✅ Active
-                </div>
-                <div class="status-item">
-                    <strong>💬 Chat:</strong> ✅ Active
-                </div>
-                <div class="status-item">
-                    <strong>📅 Booking:</strong> ✅ Active
-                </div>
-            </div>
-        </div>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <h3>{len(inquiries)}</h3>
-                <p>Recent Inquiries</p>
-            </div>
-            <div class="stat-card">
-                <h3>{len(appointments)}</h3>
-                <p>Total Appointments</p>
-            </div>
-            <div class="stat-card">
-                <h3>{len([a for a in appointments if a[6] == 'scheduled'])}</h3>
-                <p>Scheduled</p>
-            </div>
-            <div class="stat-card">
-                <h3>{len([a for a in appointments if a[9] is not None])}</h3>
-                <p>HubSpot Synced</p>
-            </div>
-        </div>
-        
-        <div class="tabs">
-            <button class="tab active" onclick="showTab('appointments')">📅 Appointments</button>
-            <button class="tab" onclick="showTab('inquiries')">💬 Inquiries</button>
-            <button class="tab" onclick="showTab('analytics')">📊 Analytics</button>
-        </div>
-        
-        <div id="appointments" class="tab-content active">
-            <h2>Recent Appointments</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Customer</th>
-                        <th>Contact Info</th>
-                        <th>Date & Time</th>
-                        <th>Purpose</th>
-                        <th>Status</th>
-                        <th>Confirmation</th>
-                        <th>Integration</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for apt in appointments:
-            name, email, phone, date, time, purpose, status, code, created, hubspot_contact_id, hubspot_meeting_id = apt
-            status_class = f"status-{status}"
-            hubspot_status = "🏢 HubSpot" if hubspot_contact_id else "📋 Local"
-            
-            # Truncate purpose if too long
-            display_purpose = purpose[:50] + '...' if len(purpose) > 50 else purpose
-            
-            html += f"""
-                <tr>
-                    <td><strong>{name}</strong><br><small>{email}</small></td>
-                    <td>{phone or 'N/A'}</td>
-                    <td><strong>{date}</strong><br>{time}</td>
-                    <td>{display_purpose}</td>
-                    <td class="{status_class}">{status.title()}</td>
-                    <td><span class="confirmation-code">{code}</span></td>
-                    <td><span class="hubspot-integrated">{hubspot_status}</span></td>
-                    <td class="action-buttons">
-                        <button class="btn btn-view" onclick="viewAppointment('{code}')">View</button>
-                    </td>
-                </tr>
-            """
-        
-        html += """
-                </tbody>
-            </table>
-        </div>
-        
-        <div id="inquiries" class="tab-content">
-            <h2>Recent Customer Inquiries</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Phone Number</th>
-                        <th>Question/Message</th>
-                        <th>Timestamp</th>
-                        <th>Source</th>
-                        <th>SMS Status</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-        """
-        
-        for inquiry in inquiries:
-            phone, question, timestamp, status, sms_sent, source = inquiry
-            sms_status = "✅ Sent" if sms_sent else "❌ Failed"
-            sms_class = "sms-sent" if sms_sent else "sms-failed"
-            
-            # Truncate long questions
-            display_question = question[:100] + '...' if len(question) > 100 else question
-            
-            html += f"""
-                <tr>
-                    <td><strong>{phone}</strong></td>
-                    <td>{display_question}</td>
-                    <td>{timestamp}</td>
-                    <td>{source or 'chat'}</td>
-                    <td class="{sms_class}">{sms_status}</td>
-                    <td>{status}</td>
-                </tr>
-            """
-        
-        html += f"""
-                </tbody>
-            </table>
-        </div>
-        
-        <div id="analytics" class="tab-content">
-            <h2>Analytics & Insights</h2>
-            <div class="stats">
-                <div class="stat-card">
-                    <h3>{len(set(i[0] for i in inquiries))}</h3>
-                    <p>Unique Customers</p>
-                </div>
-                <div class="stat-card">
-                    <h3>{len([i for i in inquiries if i[4]])}</h3>
-                    <p>SMS Sent</p>
-                </div>
-                <div class="stat-card">
-                    <h3>{len([a for a in appointments if a[4] and 'today' in a[4]])}</h3>
-                    <p>Today's Appointments</p>
-                </div>
-                <div class="stat-card">
-                    <h3>{round((len([a for a in appointments if a[9]]) / len(appointments) * 100) if appointments else 0)}%</h3>
-                    <p>HubSpot Integration Rate</p>
-                </div>
-            </div>
-            
-            <h3>System Performance</h3>
-            <table>
-                <tr><td><strong>Database Status</strong></td><td>✅ Connected</td></tr>
-                <tr><td><strong>Total Records</strong></td><td>{len(inquiries) + len(appointments)}</td></tr>
-                <tr><td><strong>Conversion Rate</strong></td><td>{round((len(appointments) / len(inquiries) * 100) if inquiries else 0)}% (Inquiries → Appointments)</td></tr>
-                <tr><td><strong>Average Response Time</strong></td><td>< 2 seconds</td></tr>
-            </table>
-        </div>
-    </div>
-    
-    <script>
-        function showTab(tabName) {{
-            // Hide all tab contents
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            
-            // Show selected tab
-            document.getElementById(tabName).classList.add('active');
-            event.target.classList.add('active');
-        }}
-        
-        function viewAppointment(confirmationCode) {{
-            window.open('/appointment/' + confirmationCode, '_blank');
-        }}
-        
-        // Auto-refresh every 30 seconds
-        setTimeout(() => {{
-            location.reload();
-        }}, 30000);
-        
-        console.log('📊 RinglyPro Admin Dashboard loaded');
-        console.log('📈 {len(appointments)} appointments, {len(inquiries)} inquiries');
-    </script>
-</body>
-</html>
-        """
-        
-        return html
-        
-    except Exception as e:
-        logger.error(f"❌ Admin dashboard error: {e}")
-        return f"<h1>Admin Dashboard Error</h1><p>{e}</p>"
-
-@app.route('/test-sms')
-def test_sms():
-    """Test SMS functionality"""
-    try:
-        success, result = send_sms_notification("+15551234567", "This is a test message from RinglyPro SMS system", "test")
-        
-        return jsonify({
-            "test_result": "success" if success else "failed",
-            "message": result,
-            "timestamp": datetime.now().isoformat(),
-            "twilio_configured": bool(twilio_account_sid and twilio_auth_token)
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "test_result": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-
-@app.route('/test-hubspot')
-def test_hubspot():
-    """Test HubSpot connectivity"""
-    try:
-        hubspot_service = HubSpotService()
-        result = hubspot_service.test_connection()
-        
-        return jsonify({
-            "test_result": "success" if result.get("success") else "failed",
-            "message": result.get("message", result.get("error")),
-            "timestamp": datetime.now().isoformat(),
-            "hubspot_configured": bool(hubspot_api_token)
-        })
-        
-    except Exception as e:
-        return jsonify({
-            "test_result": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        })
-
-@app.route('/health')
-def health_check():
-    """Enhanced health check with appointment system status"""
-    try:
-        # Check database
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM inquiries')
-        inquiry_count = cursor.fetchone()[0]
-        
-        # Check appointments
-        cursor.execute('SELECT COUNT(*) FROM appointments WHERE status = "scheduled"')
-        scheduled_appointments = cursor.fetchone()[0]
-        
-        cursor.execute('SELECT COUNT(*) FROM appointments')
-        total_appointments = cursor.fetchone()[0]
-        
-        # Check HubSpot integration rate
-        cursor.execute('SELECT COUNT(*) FROM appointments WHERE hubspot_contact_id IS NOT NULL')
-        hubspot_integrated = cursor.fetchone()[0]
-        
-        conn.close()
-        
-        # Check API keys
-        api_status = {
-            "claude": "available" if anthropic_api_key else "missing",
-            "openai": "available" if openai_api_key else "missing", 
-            "elevenlabs": "available" if elevenlabs_api_key else "missing",
-            "twilio": "available" if (twilio_account_sid and twilio_auth_token) else "missing",
-            "email": "available" if (email_user and email_password) else "missing",
-            "hubspot": "available" if hubspot_api_token else "missing"
-        }
-        
-        # Calculate performance metrics
-        conversion_rate = round((total_appointments / inquiry_count * 100) if inquiry_count > 0 else 0, 1)
-        hubspot_integration_rate = round((hubspot_integrated / total_appointments * 100) if total_appointments > 0 else 0, 1)
-        
-        return jsonify({
-            "status": "healthy",
-            "timestamp": datetime.now().isoformat(),
-            "version": "3.0.0 - COMPLETE Enhanced with Appointment Booking & HubSpot Integration",
-            "database": {
-                "status": "connected",
-                "total_inquiries": inquiry_count,
-                "total_appointments": total_appointments,
-                "scheduled_appointments": scheduled_appointments,
-                "hubspot_integrated": hubspot_integrated
-            },
-            "api_keys": api_status,
-            "performance_metrics": {
-                "conversion_rate": f"{conversion_rate}%",
-                "hubspot_integration_rate": f"{hubspot_integration_rate}%",
-                "uptime": "24/7",
-                "avg_response_time": "< 2 seconds"
-            },
-            "features": {
-                "voice_interface": "✅ Premium TTS + Speech Recognition",
-                "text_chat": "✅ Enhanced FAQ + Phone Collection", 
-                "appointment_booking": "✅ Real-time Calendar + Email/SMS Confirmations",
-                "hubspot_integration": "✅ Contact & Meeting Creation",
-                "phone_collection": "✅ Validation + SMS Notifications",
-                "email_confirmations": "✅ SMTP Integration",
-                "zoom_integration": "✅ Meeting URLs + Details",
-                "widget": "✅ Embeddable Chat Widget with Backdrop",
-                "admin_dashboard": "✅ Appointments + Inquiries + Analytics",
-                "database": "✅ SQLite with Enhanced Schema",
-                "mobile_support": "✅ iOS/Android Compatible"
-            },
-            "business_hours": business_hours,
-            "endpoints": {
-                "voice": "/",
-                "chat": "/chat", 
-                "enhanced_chat": "/chat-enhanced",
-                "booking": "/book-appointment",
-                "slots": "/get-available-slots",
-                "appointments": "/appointment/<code>",
-                "phone_submit": "/submit_phone",
-                "widget": "/widget",
-                "widget_embed": "/widget/embed.js",
-                "admin": "/admin",
-                "health": "/health",
-                "test_sms": "/test-sms",
-                "test_hubspot": "/test-hubspot",
-                "voice_processing": "/process-text-enhanced"
-            }
-        })
-        
-    except Exception as e:
-        logger.error(f"❌ Health check error: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 500
-
-# ==================== IFRAME EMBEDDING SUPPORT ====================
-
-@app.after_request
-def allow_iframe_embedding(response):
-    """Allow iframe embedding for widget"""
-    response.headers['X-Frame-Options'] = 'ALLOWALL'
-    response.headers['Content-Security-Policy'] = "frame-ancestors *"
-    return response
-
-# ==================== DATABASE INITIALIZATION ====================
-
-# Setup database on startup
-init_database()
-
-# ==================== MAIN APPLICATION STARTUP ====================
-
-if __name__ == "__main__":
-    # Test Claude connection
-    try:
-        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
-        test_claude = claude_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=10,
-            messages=[{"role": "user", "content": "Hello"}]
-        )
-        logger.info("✅ Claude API connection successful")
-    except Exception as e:
-        logger.error(f"❌ Claude API connection failed: {e}")
-        print("⚠️  Warning: Claude API connection not verified.")
-
-    # Test HubSpot connection if configured
-    if hubspot_api_token:
-        try:
-            hubspot_service = HubSpotService()
-            hubspot_test = hubspot_service.test_connection()
-            if hubspot_test.get("success"):
-                logger.info("✅ HubSpot API connection successful")
-            else:
-                logger.warning(f"⚠️ HubSpot connection issue: {hubspot_test.get('error')}")
-        except Exception as e:
-            logger.warning(f"⚠️ HubSpot connection test failed: {e}")
-
-    print("🚀 Starting COMPLETE Enhanced RinglyPro AI Assistant v3.0")
-    print("\n" + "="*60)
-    print("🎯 ORIGINAL FEATURES (PRESERVED):")
-    print("   🎤 Premium Voice Interface (ElevenLabs + Speech Recognition)")
-    print("   💬 Smart Text Chat (FAQ + SMS Integration)")  
-    print("   📞 Phone Collection & Validation (phonenumbers)")
-    print("   📲 SMS Notifications (Twilio → +16566001400)")
-    print("   💾 Customer Database (SQLite)")
-    print("   🌐 Embeddable Widget (Cross-domain compatible)")
-    print("   📊 Admin Dashboard (/admin)")
-    print("   📱 Mobile Optimized (iOS/Android)")
-    print("   🔧 System Monitoring (/health, /test-sms)")
-    
-    print("\n🆕 NEW APPOINTMENT BOOKING FEATURES:")
-    print("   📅 Real-time Calendar Availability")
-    print("   ⏰ Business Hours Management (Mon-Fri 9-5, Sat 10-2)")
-    print("   📧 Email Confirmations (SMTP)")
-    print("   📲 SMS Appointment Confirmations (Twilio)")
-    print("   🔗 Zoom Meeting Integration")
-    print("   📋 Confirmation Codes & Management")
-    print("   💾 Appointments Database Table")
-    print("   🎨 Enhanced Booking Interface")
-    print("   🤖 Intelligent Booking Intent Detection")
-    print("   📝 Step-by-step Booking Workflow")
-    print("   ✅ Form Validation & Error Handling")
-    
-    print("\n🏢 HUBSPOT CRM INTEGRATION:")
-    print("   👥 Contact Creation & Management")
-    print("   📅 Meeting Creation & Association")
-    print("   🔗 Automatic Contact-Meeting Linking")
-    print("   📊 CRM Data Synchronization")
-    print("   📈 Lead Source Tracking")
-    print("   🎯 Lifecycle Stage Management")
-    
-    print("\n📋 API INTEGRATIONS:")
-    print(f"   • Claude Sonnet 3.5: {'✅ Ready' if anthropic_api_key else '❌ Missing'}")
-    print(f"   • ElevenLabs TTS: {'✅ Ready' if elevenlabs_api_key else '❌ Browser Fallback'}")
-    print(f"   • Twilio SMS: {'✅ Ready' if (twilio_account_sid and twilio_auth_token) else '❌ Disabled'}")
-    print(f"   • Email SMTP: {'✅ Ready' if (email_user and email_password) else '❌ Disabled'}")
-    print(f"   • HubSpot CRM: {'✅ Ready' if hubspot_api_token else '❌ Optional'}")
-    print(f"   • OpenAI (Backup): {'✅ Available' if openai_api_key else '❌ Optional'}")
-    
-    print("\n🌐 ACCESS URLS:")
-    print("   🎤 Voice Interface: http://localhost:5000")
-    print("   💬 Original Text Chat: http://localhost:5000/chat") 
-    print("   📅 Enhanced Chat + Booking: http://localhost:5000/chat-enhanced")
-    print("   🌐 Embeddable Widget: http://localhost:5000/widget")
-    print("   📊 Admin Dashboard: http://localhost:5000/admin")
-    print("   🏥 Health Check: http://localhost:5000/health")
-    print("   🧪 SMS Test: http://localhost:5000/test-sms")
-    print("   🏢 HubSpot Test: http://localhost:5000/test-hubspot")
-    
-    print("\n🔧 API ENDPOINTS:")
-    print("   POST /chat - Original FAQ + Phone Collection")
-    print("   POST /chat-enhanced - Enhanced with Booking")
-    print("   POST /book-appointment - Book new appointment")
-    print("   POST /get-available-slots - Get available time slots")
-    print("   GET /appointment/<code> - Get appointment by confirmation code")
-    print("   POST /submit_phone - Phone number collection")
-    print("   POST /process-text-enhanced - Voice processing")
-    
-    print("\n💡 WIDGET EMBED CODE:")
-    print('   <script src="http://localhost:5000/widget/embed.js" data-ringlypro-widget></script>')
-    
-    print("\n📋 REQUIRED ENVIRONMENT VARIABLES:")
-    print("   • ANTHROPIC_API_KEY (Required)")
-    print("   • EMAIL_USER & EMAIL_PASSWORD (For appointment confirmations)")
-    print("   • TWILIO_ACCOUNT_SID & TWILIO_AUTH_TOKEN (For SMS)")
-    print("   • HUBSPOT_ACCESS_TOKEN (For CRM integration)")
-    print("   • ELEVENLABS_API_KEY (For premium voice)")
-    print("   • SMTP_SERVER, SMTP_PORT (Email server config)")
-    
-    print("\n📊 DATABASE TABLES:")
-    print("   • inquiries - Customer questions & phone submissions")
-    print("   • appointments - Scheduled appointments with confirmations")
-    print("   • availability_blocks - Calendar blocking & management")
-    
-    print("\n🎉 READY FOR PRODUCTION!")
-    print("   ✅ All original functionality preserved (3000+ lines)")
-    print("   ✅ New appointment booking capabilities added")
-    print("   ✅ HubSpot CRM integration included")
-    print("   ✅ Enhanced admin dashboard with analytics")
-    print("   ✅ Email & SMS confirmations")
-    print("   ✅ Real-time availability checking")
-    print("   ✅ Mobile-optimized booking forms")
-    print("   ✅ Professional appointment management")
-    print("   ✅ Widget with black backdrop embedding")
-    print("   ✅ Comprehensive logging & monitoring")
-    
-    print("\n" + "="*60)
-    
-    # Start the application
-    port = int(os.environ.get("PORT", 5000))
-    app.run(debug=True, host='0.0.0.0', port=port);
-            transform: scale(1.05);
-        }
-        
-        .phone-form {
-            background: linear-gradient(135deg, #fff3e0, #ffecb3);
-            border: 2px solid #ff9800;
-            border-radius: 15px;
-            padding: 20px;
-            margin: 15px 0;
-            animation: slideIn 0.5s ease;
-        }
-        
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .phone-form h4 {
-            color: #e65100;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
-        
-        .phone-form p {
-            color: #bf360c;
-            margin-bottom: 15px;
-            font-size: 14px;
-        }
-        
-        .phone-inputs {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .phone-inputs input {
-            flex: 1;
-            padding: 10px 12px;
-            border: 2px solid #ff9800;
-            border-radius: 10px;
-            outline: none;
-            font-size: 14px;
-        }
-        
-        .phone-inputs input:focus {
-            border-color: #f57c00;
-        }
-        
-        .phone-btn {
-            padding: 10px 20px;
-            background: #4caf50;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        
-        .phone-btn:hover {
-            background: #45a049;
-            transform: translateY(-1px);
-        }
-        
-        .success-message {
-            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
-            border: 2px solid #4caf50;
-            color: #2e7d32;
-            padding: 15px;
-            border-radius: 12px;
-            margin: 15px 0;
-            animation: slideIn 0.5s ease;
-        }
-        
-        .error-message {
-            background: linear-gradient(135deg, #ffebee, #ffcdd2);
-            border: 2px solid #f44336;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 12px;
-            margin: 15px 0;
-            animation: slideIn 0.5s ease;
-        }
-        
-        .typing-indicator {
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            color: #666;
-            font-style: italic;
-            padding: 10px 0;
-        }
-        
-        .typing-dots {
-            display: flex;
-            gap: 3px;
-        }
-        
-        .typing-dots span {
-            width: 6px;
-            height: 6px;
-            background: #666;
-            border-radius: 50%;
-            animation: typing 1.4s infinite;
-        }
-        
-        .typing-dots span:nth-child(2) {
-            animation-delay: 0.2s;
-        }
-        
-        .typing-dots span:nth-child(3) {
-            animation-delay: 0.4s;
-        }
-        
-        @keyframes typing {
-            0%, 60%, 100% { opacity: 0.3; }
-            30% { opacity: 1; }
-        }
-        
-        @media (max-width: 600px) {
-            body {
-                padding: 10px;
-            }
-            
-            .chat-container {
-                height: calc(100vh - 20px);
-            }
-            
-            .header {
-                padding: 15px;
-            }
-            
-            .header h1 {
-                font-size: 1.3rem;
-            }
-            
-            .chat-messages {
-                padding: 15px;
-            }
-            
-            .input-area {
-                padding: 15px;
-            }
         }
     </style>
 </head>
@@ -3869,4 +2959,805 @@ def chat_widget():
         }
         
         .send-btn:hover {
-            background: #1976D2
+            background: #1976D2;
+            transform: scale(1.05);
+        }
+        
+        .phone-form {
+            background: linear-gradient(135deg, #fff3e0, #ffecb3);
+            border: 2px solid #ff9800;
+            border-radius: 15px;
+            padding: 20px;
+            margin: 15px 0;
+        }
+        
+        .phone-form h4 {
+            color: #e65100;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .phone-form p {
+            color: #bf360c;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        
+        .phone-inputs {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .phone-inputs input {
+            flex: 1;
+            padding: 10px 12px;
+            border: 2px solid #ff9800;
+            border-radius: 10px;
+            outline: none;
+            font-size: 14px;
+        }
+        
+        .phone-btn {
+            padding: 10px 20px;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        
+        .success-message {
+            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
+            border: 2px solid #4caf50;
+            color: #2e7d32;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+        }
+        
+        .error-message {
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
+            border: 2px solid #f44336;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 12px;
+            margin: 15px 0;
+        }
+        
+        .chat::-webkit-scrollbar { width: 4px; }
+        .chat::-webkit-scrollbar-track { background: #f1f1f1; }
+        .chat::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 2px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3>💬 RinglyPro Widget</h3>
+        <p>Ask about our services!</p>
+    </div>
+    
+    <div class="chat" id="chat">
+        <div class="message bot-message">
+            👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?
+        </div>
+    </div>
+    
+    <div class="input-area">
+        <div class="input-container">
+            <input type="text" id="input" placeholder="Ask about services..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="send-btn" onclick="sendMessage()">→</button>
+        </div>
+    </div>
+
+    <script>
+        function sendMessage() {
+            var input = document.getElementById('input');
+            var message = input.value.trim();
+            if (!message) return;
+            
+            addMessage(message, 'user');
+            input.value = '';
+            
+            fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                addMessage(data.response, 'bot');
+                if (data.needs_phone_collection) {
+                    setTimeout(showPhoneForm, 500);
+                }
+            })
+            .catch(function() {
+                addMessage('Sorry, there was an error. Please try again.', 'bot');
+            });
+        }
+        
+        function addMessage(text, type) {
+            var div = document.createElement('div');
+            div.className = 'message ' + type + '-message';
+            div.textContent = text;
+            document.getElementById('chat').appendChild(div);
+            document.getElementById('chat').scrollTop = 999999;
+        }
+        
+        function showPhoneForm() {
+            var div = document.createElement('div');
+            div.className = 'phone-form';
+            div.innerHTML = '<h4>📞 Let us connect with you!</h4><p>Enter your phone number:</p><div class="phone-inputs"><input type="tel" id="phoneInput" placeholder="(555) 123-4567"><button class="phone-btn" onclick="submitPhone()">Submit</button></div>';
+            document.getElementById('chat').appendChild(div);
+            document.getElementById('chat').scrollTop = 999999;
+        }
+        
+        function submitPhone() {
+            var phone = document.getElementById('phoneInput').value.trim();
+            if (!phone) { alert('Please enter a phone number'); return; }
+            
+            fetch('/submit_phone', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({phone: phone, last_question: 'Widget inquiry'})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var div = document.createElement('div');
+                div.className = data.success ? 'success-message' : 'error-message';
+                div.innerHTML = (data.success ? '✅ Success: ' : '❌ Error: ') + data.message;
+                document.getElementById('chat').appendChild(div);
+                document.getElementById('chat').scrollTop = 999999;
+            });
+        }
+    </script>
+</body>
+</html>"""
+    
+    return widget_html
+
+@app.route('/widget/embed.js')
+def widget_embed_script():
+    """Widget embed JavaScript with BLACK BACKDROP"""
+    js_code = '''
+(function() {
+    if (window.RinglyProWidget) return;
+    
+    window.RinglyProWidget = {
+        init: function(options) {
+            options = options || {};
+            var widgetUrl = options.url || 'http://localhost:5000/widget';
+            var position = options.position || 'bottom-right';
+            var color = options.color || '#2196F3';
+            
+            // Create BLACK backdrop overlay
+            var backdrop = document.createElement('div');
+            backdrop.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:999;display:none;backdrop-filter:blur(5px);';
+            backdrop.onclick = function() {
+                toggleWidget();
+            };
+            
+            // Create floating button
+            var button = document.createElement('div');
+            button.innerHTML = '💬';
+            button.style.cssText = 'position:fixed;width:60px;height:60px;border-radius:50%;cursor:pointer;z-index:1000;display:flex;align-items:center;justify-content:center;font-size:24px;color:white;box-shadow:0 4px 12px rgba(0,0,0,0.15);transition:all 0.3s;background:' + color + ';' + 
+                (position.includes('bottom') ? 'bottom:20px;' : 'top:20px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            // Create container (WHITE interior)
+            var container = document.createElement('div');
+            container.style.cssText = 'position:fixed;width:350px;height:500px;display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;' +
+                (position.includes('bottom') ? 'bottom:90px;' : 'top:90px;') + 
+                (position.includes('right') ? 'right:20px;' : 'left:20px;');
+            
+            // Create iframe
+            var iframe = document.createElement('iframe');
+            iframe.src = widgetUrl;
+            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:15px;background:white;';
+            container.appendChild(iframe);
+            
+            // Toggle functionality
+            var isOpen = false;
+            
+            function toggleWidget() {
+                isOpen = !isOpen;
+                container.style.display = isOpen ? 'block' : 'none';
+                backdrop.style.display = isOpen ? 'block' : 'none';
+                button.innerHTML = isOpen ? '✕' : '💬';
+                
+                if (isOpen) {
+                    button.style.background = '#f44336';
+                    button.style.zIndex = '1002';
+                } else {
+                    button.style.background = color;
+                    button.style.zIndex = '1000';
+                }
+            }
+            
+            button.onclick = toggleWidget;
+            
+            // Add hover effects
+            button.onmouseenter = function() {
+                if (!isOpen) {
+                    button.style.transform = 'scale(1.1)';
+                    button.style.boxShadow = '0 6px 20px rgba(0,0,0,0.25)';
+                }
+            };
+            
+            button.onmouseleave = function() {
+                if (!isOpen) {
+                    button.style.transform = 'scale(1)';
+                    button.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+                }
+            };
+            
+            // Mobile responsiveness
+            if (window.innerWidth <= 480) {
+                container.style.cssText = 'position:fixed;width:calc(100vw - 20px);height:calc(100vh - 40px);display:none;z-index:1001;border-radius:15px;overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.3);background:white;top:10px;left:10px;right:10px;bottom:10px;';
+            }
+            
+            document.body.appendChild(backdrop);
+            document.body.appendChild(button);
+            document.body.appendChild(container);
+            
+            console.log('✨ RinglyPro Widget with Black Backdrop loaded!');
+        }
+    };
+    
+    // Auto-initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        var script = document.querySelector('script[data-ringlypro-widget]');
+        if (script) {
+            window.RinglyProWidget.init({
+                url: script.getAttribute('data-url') || 'http://localhost:5000/widget',
+                position: script.getAttribute('data-position') || 'bottom-right',
+                color: script.getAttribute('data-color') || '#2196F3'
+            });
+        }
+    });
+})();
+'''
+    
+    response = app.response_class(
+        response=js_code,
+        status=200,
+        mimetype='application/javascript'
+    )
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+@app.route('/admin')
+def admin_dashboard():
+    """Enhanced admin dashboard with appointments and inquiries"""
+    try:
+        conn = sqlite3.connect('ringlypro.db')
+        cursor = conn.cursor()
+        
+        # Get inquiries
+        cursor.execute('''SELECT phone, question, timestamp, status, sms_sent, source 
+                          FROM inquiries ORDER BY timestamp DESC LIMIT 50''')
+        inquiries = cursor.fetchall()
+        
+        # Get appointments
+        cursor.execute('''SELECT customer_name, customer_email, customer_phone, appointment_date, 
+                          appointment_time, purpose, status, confirmation_code, created_at,
+                          hubspot_contact_id, hubspot_meeting_id
+                          FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50''')
+        appointments = cursor.fetchall()
+        
+        conn.close()
+        
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RinglyPro Admin Dashboard</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }}
+        h1 {{ color: #2196F3; text-align: center; margin-bottom: 30px; }}
+        .stats {{ display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }}
+        .stat-card {{ background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; min-width: 200px; }}
+        .stat-card h3 {{ font-size: 2.5em; margin: 0; }}
+        .stat-card p {{ margin: 10px 0 0 0; opacity: 0.9; }}
+        .tabs {{ display: flex; gap: 10px; margin-bottom: 20px; }}
+        .tab {{ padding: 12px 24px; background: #e0e0e0; border: none; cursor: pointer; border-radius: 8px; font-weight: 600; transition: all 0.3s; }}
+        .tab.active {{ background: #2196F3; color: white; }}
+        .tab:hover {{ transform: translateY(-2px); }}
+        .tab-content {{ display: none; }}
+        .tab-content.active {{ display: block; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background: #f8f9fa; font-weight: bold; color: #333; }}
+        .status-scheduled {{ color: #4caf50; font-weight: bold; }}
+        .status-cancelled {{ color: #f44336; font-weight: bold; }}
+        .status-completed {{ color: #2196F3; font-weight: bold; }}
+        .confirmation-code {{ font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px; }}
+        .sms-sent {{ color: #4caf50; }}
+        .sms-failed {{ color: #f44336; }}
+        .hubspot-integrated {{ color: #ff6600; font-size: 0.8em; }}
+        .action-buttons {{ display: flex; gap: 5px; }}
+        .btn {{ padding: 4px 8px; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8em; }}
+        .btn-view {{ background: #2196F3; color: white; }}
+        .btn-cancel {{ background: #f44336; color: white; }}
+        .system-status {{ background: linear-gradient(135deg, #4caf50, #45a049); color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }}
+        .system-status h3 {{ margin-bottom: 15px; }}
+        .status-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }}
+        .status-item {{ background: rgba(255,255,255,0.2); padding: 10px; border-radius: 5px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 RinglyPro Admin Dashboard</h1>
+        
+        <div class="system-status">
+            <h3>🔧 System Status</h3>
+            <div class="status-grid">
+                <div class="status-item">
+                    <strong>📧 Email:</strong> {"✅ Configured" if email_user and email_password else "❌ Not configured"}
+                </div>
+                <div class="status-item">
+                    <strong>📱 SMS:</strong> {"✅ Configured" if twilio_account_sid and twilio_auth_token else "❌ Not configured"}
+                </div>
+                <div class="status-item">
+                    <strong>🏢 HubSpot:</strong> {"✅ Configured" if hubspot_api_token else "❌ Not configured"}
+                </div>
+                <div class="status-item">
+                    <strong>🎤 Voice:</strong> ✅ Active
+                </div>
+                <div class="status-item">
+                    <strong>💬 Chat:</strong> ✅ Active
+                </div>
+                <div class="status-item">
+                    <strong>📅 Booking:</strong> ✅ Active
+                </div>
+            </div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>{len(inquiries)}</h3>
+                <p>Recent Inquiries</p>
+            </div>
+            <div class="stat-card">
+                <h3>{len(appointments)}</h3>
+                <p>Total Appointments</p>
+            </div>
+            <div class="stat-card">
+                <h3>{len([a for a in appointments if a[6] == 'scheduled'])}</h3>
+                <p>Scheduled</p>
+            </div>
+            <div class="stat-card">
+                <h3>{len([a for a in appointments if a[9] is not None])}</h3>
+                <p>HubSpot Synced</p>
+            </div>
+        </div>
+        
+        <div class="tabs">
+            <button class="tab active" onclick="showTab('appointments')">📅 Appointments</button>
+            <button class="tab" onclick="showTab('inquiries')">💬 Inquiries</button>
+            <button class="tab" onclick="showTab('analytics')">📊 Analytics</button>
+        </div>
+        
+        <div id="appointments" class="tab-content active">
+            <h2>Recent Appointments</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Customer</th>
+                        <th>Contact Info</th>
+                        <th>Date & Time</th>
+                        <th>Purpose</th>
+                        <th>Status</th>
+                        <th>Confirmation</th>
+                        <th>Integration</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        for apt in appointments:
+            name, email, phone, date, time, purpose, status, code, created, hubspot_contact_id, hubspot_meeting_id = apt
+            status_class = f"status-{status}"
+            hubspot_status = "🏢 HubSpot" if hubspot_contact_id else "📋 Local"
+            
+            # Truncate purpose if too long
+            display_purpose = purpose[:50] + '...' if len(purpose) > 50 else purpose
+            
+            html += f"""
+                <tr>
+                    <td><strong>{name}</strong><br><small>{email}</small></td>
+                    <td>{phone or 'N/A'}</td>
+                    <td><strong>{date}</strong><br>{time}</td>
+                    <td>{display_purpose}</td>
+                    <td class="{status_class}">{status.title()}</td>
+                    <td><span class="confirmation-code">{code}</span></td>
+                    <td><span class="hubspot-integrated">{hubspot_status}</span></td>
+                    <td class="action-buttons">
+                        <button class="btn btn-view" onclick="viewAppointment('{code}')">View</button>
+                    </td>
+                </tr>
+            """
+        
+        html += """
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="inquiries" class="tab-content">
+            <h2>Recent Customer Inquiries</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Phone Number</th>
+                        <th>Question/Message</th>
+                        <th>Timestamp</th>
+                        <th>Source</th>
+                        <th>SMS Status</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+        """
+        
+        for inquiry in inquiries:
+            phone, question, timestamp, status, sms_sent, source = inquiry
+            sms_status = "✅ Sent" if sms_sent else "❌ Failed"
+            sms_class = "sms-sent" if sms_sent else "sms-failed"
+            
+            # Truncate long questions
+            display_question = question[:100] + '...' if len(question) > 100 else question
+            
+            html += f"""
+                <tr>
+                    <td><strong>{phone}</strong></td>
+                    <td>{display_question}</td>
+                    <td>{timestamp}</td>
+                    <td>{source or 'chat'}</td>
+                    <td class="{sms_class}">{sms_status}</td>
+                    <td>{status}</td>
+                </tr>
+            """
+        
+        html += f"""
+                </tbody>
+            </table>
+        </div>
+        
+        <div id="analytics" class="tab-content">
+            <h2>Analytics & Insights</h2>
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>{len(set(i[0] for i in inquiries))}</h3>
+                    <p>Unique Customers</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{len([i for i in inquiries if i[4]])}</h3>
+                    <p>SMS Sent</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{len([a for a in appointments if a[4] and 'today' in a[4]])}</h3>
+                    <p>Today's Appointments</p>
+                </div>
+                <div class="stat-card">
+                    <h3>{round((len([a for a in appointments if a[9]]) / len(appointments) * 100) if appointments else 0)}%</h3>
+                    <p>HubSpot Integration Rate</p>
+                </div>
+            </div>
+            
+            <h3>System Performance</h3>
+            <table>
+                <tr><td><strong>Database Status</strong></td><td>✅ Connected</td></tr>
+                <tr><td><strong>Total Records</strong></td><td>{len(inquiries) + len(appointments)}</td></tr>
+                <tr><td><strong>Conversion Rate</strong></td><td>{round((len(appointments) / len(inquiries) * 100) if inquiries else 0)}% (Inquiries → Appointments)</td></tr>
+                <tr><td><strong>Average Response Time</strong></td><td>< 2 seconds</td></tr>
+            </table>
+        </div>
+    </div>
+    
+    <script>
+        function showTab(tabName) {{
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+        }}
+        
+        function viewAppointment(confirmationCode) {{
+            window.open('/appointment/' + confirmationCode, '_blank');
+        }}
+        
+        // Auto-refresh every 30 seconds
+        setTimeout(() => {{
+            location.reload();
+        }}, 30000);
+        
+        console.log('📊 RinglyPro Admin Dashboard loaded');
+        console.log('📈 {len(appointments)} appointments, {len(inquiries)} inquiries');
+    </script>
+</body>
+</html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        logger.error(f"❌ Admin dashboard error: {e}")
+        return f"<h1>Admin Dashboard Error</h1><p>{e}</p>"
+
+@app.route('/test-sms')
+def test_sms():
+    """Test SMS functionality"""
+    try:
+        success, result = send_sms_notification("+15551234567", "This is a test message from RinglyPro SMS system", "test")
+        
+        return jsonify({
+            "test_result": "success" if success else "failed",
+            "message": result,
+            "timestamp": datetime.now().isoformat(),
+            "twilio_configured": bool(twilio_account_sid and twilio_auth_token)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "test_result": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        })
+
+@app.route('/test-hubspot')
+def test_hubspot():
+    """Test HubSpot connectivity"""
+    try:
+        hubspot_service = HubSpotService()
+        result = hubspot_service.test_connection()
+        
+        return jsonify({
+            "test_result": "success" if result.get("success") else "failed",
+            "message": result.get("message", result.get("error")),
+            "timestamp": datetime.now().isoformat(),
+            "hubspot_configured": bool(hubspot_api_token)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "test_result": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        })
+
+@app.route('/health')
+def health_check():
+    """Enhanced health check with appointment system status"""
+    try:
+        # Check database
+        conn = sqlite3.connect('ringlypro.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM inquiries')
+        inquiry_count = cursor.fetchone()[0]
+        
+        # Check appointments
+        cursor.execute('SELECT COUNT(*) FROM appointments WHERE status = "scheduled"')
+        scheduled_appointments = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(*) FROM appointments')
+        total_appointments = cursor.fetchone()[0]
+        
+        # Check HubSpot integration rate
+        cursor.execute('SELECT COUNT(*) FROM appointments WHERE hubspot_contact_id IS NOT NULL')
+        hubspot_integrated = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        # Check API keys
+        api_status = {
+            "claude": "available" if anthropic_api_key else "missing",
+            "openai": "available" if openai_api_key else "missing", 
+            "elevenlabs": "available" if elevenlabs_api_key else "missing",
+            "twilio": "available" if (twilio_account_sid and twilio_auth_token) else "missing",
+            "email": "available" if (email_user and email_password) else "missing",
+            "hubspot": "available" if hubspot_api_token else "missing"
+        }
+        
+        # Calculate performance metrics
+        conversion_rate = round((total_appointments / inquiry_count * 100) if inquiry_count > 0 else 0, 1)
+        hubspot_integration_rate = round((hubspot_integrated / total_appointments * 100) if total_appointments > 0 else 0, 1)
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "3.0.0 - COMPLETE Enhanced with Appointment Booking & HubSpot Integration",
+            "database": {
+                "status": "connected",
+                "total_inquiries": inquiry_count,
+                "total_appointments": total_appointments,
+                "scheduled_appointments": scheduled_appointments,
+                "hubspot_integrated": hubspot_integrated
+            },
+            "api_keys": api_status,
+            "performance_metrics": {
+                "conversion_rate": f"{conversion_rate}%",
+                "hubspot_integration_rate": f"{hubspot_integration_rate}%",
+                "uptime": "24/7",
+                "avg_response_time": "< 2 seconds"
+            },
+            "features": {
+                "voice_interface": "✅ Premium TTS + Speech Recognition",
+                "text_chat": "✅ Enhanced FAQ + Phone Collection", 
+                "appointment_booking": "✅ Real-time Calendar + Email/SMS Confirmations",
+                "hubspot_integration": "✅ Contact & Meeting Creation",
+                "phone_collection": "✅ Validation + SMS Notifications",
+                "email_confirmations": "✅ SMTP Integration",
+                "zoom_integration": "✅ Meeting URLs + Details",
+                "widget": "✅ Embeddable Chat Widget with Backdrop",
+                "admin_dashboard": "✅ Appointments + Inquiries + Analytics",
+                "database": "✅ SQLite with Enhanced Schema",
+                "mobile_support": "✅ iOS/Android Compatible"
+            },
+            "business_hours": business_hours,
+            "endpoints": {
+                "voice": "/",
+                "chat": "/chat", 
+                "enhanced_chat": "/chat-enhanced",
+                "booking": "/book-appointment",
+                "slots": "/get-available-slots",
+                "appointments": "/appointment/<code>",
+                "phone_submit": "/submit_phone",
+                "widget": "/widget",
+                "widget_embed": "/widget/embed.js",
+                "admin": "/admin",
+                "health": "/health",
+                "test_sms": "/test-sms",
+                "test_hubspot": "/test-hubspot",
+                "voice_processing": "/process-text-enhanced"
+            }
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Health check error: {e}")
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
+
+# ==================== IFRAME EMBEDDING SUPPORT ====================
+
+@app.after_request
+def allow_iframe_embedding(response):
+    """Allow iframe embedding for widget"""
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+# ==================== DATABASE INITIALIZATION ====================
+
+# Setup database on startup
+init_database()
+
+# ==================== MAIN APPLICATION STARTUP ====================
+
+if __name__ == "__main__":
+    # Test Claude connection
+    try:
+        claude_client = anthropic.Anthropic(api_key=anthropic_api_key)
+        test_claude = claude_client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "Hello"}]
+        )
+        logger.info("✅ Claude API connection successful")
+    except Exception as e:
+        logger.error(f"❌ Claude API connection failed: {e}")
+        print("⚠️  Warning: Claude API connection not verified.")
+
+    # Test HubSpot connection if configured
+    if hubspot_api_token:
+        try:
+            hubspot_service = HubSpotService()
+            hubspot_test = hubspot_service.test_connection()
+            if hubspot_test.get("success"):
+                logger.info("✅ HubSpot API connection successful")
+            else:
+                logger.warning(f"⚠️ HubSpot connection issue: {hubspot_test.get('error')}")
+        except Exception as e:
+            logger.warning(f"⚠️ HubSpot connection test failed: {e}")
+
+    print("🚀 Starting COMPLETE Enhanced RinglyPro AI Assistant v3.0")
+    print("\n" + "="*60)
+    print("🎯 ORIGINAL FEATURES (PRESERVED):")
+    print("   🎤 Premium Voice Interface (ElevenLabs + Speech Recognition)")
+    print("   💬 Smart Text Chat (FAQ + SMS Integration)")  
+    print("   📞 Phone Collection & Validation (phonenumbers)")
+    print("   📲 SMS Notifications (Twilio → +16566001400)")
+    print("   💾 Customer Database (SQLite)")
+    print("   🌐 Embeddable Widget (Cross-domain compatible)")
+    print("   📊 Admin Dashboard (/admin)")
+    print("   📱 Mobile Optimized (iOS/Android)")
+    print("   🔧 System Monitoring (/health, /test-sms)")
+    
+    print("\n🆕 NEW APPOINTMENT BOOKING FEATURES:")
+    print("   📅 Real-time Calendar Availability")
+    print("   ⏰ Business Hours Management (Mon-Fri 9-5, Sat 10-2)")
+    print("   📧 Email Confirmations (SMTP)")
+    print("   📲 SMS Appointment Confirmations (Twilio)")
+    print("   🔗 Zoom Meeting Integration")
+    print("   📋 Confirmation Codes & Management")
+    print("   💾 Appointments Database Table")
+    print("   🎨 Enhanced Booking Interface")
+    print("   🤖 Intelligent Booking Intent Detection")
+    print("   📝 Step-by-step Booking Workflow")
+    print("   ✅ Form Validation & Error Handling")
+    
+    print("\n🏢 HUBSPOT CRM INTEGRATION:")
+    print("   👥 Contact Creation & Management")
+    print("   📅 Meeting Creation & Association")
+    print("   🔗 Automatic Contact-Meeting Linking")
+    print("   📊 CRM Data Synchronization")
+    print("   📈 Lead Source Tracking")
+    print("   🎯 Lifecycle Stage Management")
+    
+    print("\n📋 API INTEGRATIONS:")
+    print(f"   • Claude Sonnet 3.5: {'✅ Ready' if anthropic_api_key else '❌ Missing'}")
+    print(f"   • ElevenLabs TTS: {'✅ Ready' if elevenlabs_api_key else '❌ Browser Fallback'}")
+    print(f"   • Twilio SMS: {'✅ Ready' if (twilio_account_sid and twilio_auth_token) else '❌ Disabled'}")
+    print(f"   • Email SMTP: {'✅ Ready' if (email_user and email_password) else '❌ Disabled'}")
+    print(f"   • HubSpot CRM: {'✅ Ready' if hubspot_api_token else '❌ Optional'}")
+    print(f"   • OpenAI (Backup): {'✅ Available' if openai_api_key else '❌ Optional'}")
+    
+    print("\n🌐 ACCESS URLS:")
+    print("   🎤 Voice Interface: http://localhost:5000")
+    print("   💬 Original Text Chat: http://localhost:5000/chat") 
+    print("   📅 Enhanced Chat + Booking: http://localhost:5000/chat-enhanced")
+    print("   🌐 Embeddable Widget: http://localhost:5000/widget")
+    print("   📊 Admin Dashboard: http://localhost:5000/admin")
+    print("   🏥 Health Check: http://localhost:5000/health")
+    print("   🧪 SMS Test: http://localhost:5000/test-sms")
+    print("   🏢 HubSpot Test: http://localhost:5000/test-hubspot")
+    
+    print("\n🔧 API ENDPOINTS:")
+    print("   POST /chat - Original FAQ + Phone Collection")
+    print("   POST /chat-enhanced - Enhanced with Booking")
+    print("   POST /book-appointment - Book new appointment")
+    print("   POST /get-available-slots - Get available time slots")
+    print("   GET /appointment/<code> - Get appointment by confirmation code")
+    print("   POST /submit_phone - Phone number collection")
+    print("   POST /process-text-enhanced - Voice processing")
+    
+    print("\n💡 WIDGET EMBED CODE:")
+    print('   <script src="http://localhost:5000/widget/embed.js" data-ringlypro-widget></script>')
+    
+    print("\n📋 REQUIRED ENVIRONMENT VARIABLES:")
+    print("   • ANTHROPIC_API_KEY (Required)")
+    print("   • EMAIL_USER & EMAIL_PASSWORD (For appointment confirmations)")
+    print("   • TWILIO_ACCOUNT_SID & TWILIO_AUTH_TOKEN (For SMS)")
+    print("   • HUBSPOT_ACCESS_TOKEN (For CRM integration)")
+    print("   • ELEVENLABS_API_KEY (For premium voice)")
+    print("   • SMTP_SERVER, SMTP_PORT (Email server config)")
+    
+    print("\n📊 DATABASE TABLES:")
+    print("   • inquiries - Customer questions & phone submissions")
+    print("   • appointments - Scheduled appointments with confirmations")
+    print("   • availability_blocks - Calendar blocking & management")
+    
+    print("\n🎉 READY FOR PRODUCTION!")
+    print("   ✅ All original functionality preserved (3000+ lines)")
+    print("   ✅ New appointment booking capabilities added")
+    print("   ✅ HubSpot CRM integration included")
+    print("   ✅ Enhanced admin dashboard with analytics")
+    print("   ✅ Email & SMS confirmations")
+    print("   ✅ Real-time availability checking")
+    print("   ✅ Mobile-optimized booking forms")
+    print("   ✅ Professional appointment management")
+    print("   ✅ Widget with black backdrop embedding")
+    print("   ✅ Comprehensive logging & monitoring")
+    
+    print("\n" + "="*60)
+    
+    # Start the application
+    port = int(os.environ.get("PORT", 5000))
+    app.run(debug=True, host='0.0.0.0', port=port)
