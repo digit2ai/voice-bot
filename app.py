@@ -1122,6 +1122,35 @@ VOICE_HTML_TEMPLATE = '''
       background: rgba(255, 255, 255, 0.3);
     }
 
+    .booking-button {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      border: none;
+      border-radius: 15px;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+      animation: bookingPulse 3s ease-in-out infinite;
+    }
+
+    .booking-button:hover {
+      background: linear-gradient(135deg, #45a049, #388e3c);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+      animation: none;
+    }
+
+    @keyframes bookingPulse {
+      0%, 100% { box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); }
+      50% { box-shadow: 0 4px 25px rgba(76, 175, 80, 0.6); }
+    }
+
     .mic-button {
       width: 130px;
       height: 130px;
@@ -1331,15 +1360,23 @@ VOICE_HTML_TEMPLATE = '''
         font-size: 0.7rem;
         padding: 0.4rem 0.8rem;
       }
+
+      .booking-button {
+        top: 10px;
+        left: 10px;
+        font-size: 0.7rem;
+        padding: 0.5rem 1rem;
+      }
     }
   </style>
 </head>
 <body>
   <div class="container">
+    <button class="booking-button" onclick="window.location.href='/chat-enhanced'">📅 Book Appointment</button>
     <button class="interface-switcher" onclick="window.location.href='/chat'">💬 Try Text Chat</button>
     
     <h1>RinglyPro AI</h1>
-    <div class="subtitle">Your Intelligent Business Assistant</div>
+    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Ask questions or click "📅 Book Appointment" to schedule</small></div>
     
     <div class="language-selector">
       <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
@@ -1353,7 +1390,7 @@ VOICE_HTML_TEMPLATE = '''
       </svg>
     </button>
     
-    <div id="status">🎙️ Tap to talk to RinglyPro AI</div>
+    <div id="status">🎙️ Tap to talk • Click "📅 Book Appointment" to schedule</div>
     
     <div class="controls">
       <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
@@ -1552,14 +1589,14 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-            this.updateStatus('🎙️ Tap to continue');
+                            this.updateStatus('🎙️ Tap to continue or book appointment');
         }
 
         setupEventListeners() {
             this.micBtn.addEventListener('click', () => {
                 if (!this.userInteracted) {
                     this.userInteracted = true;
-                    this.updateStatus('🎙️ Voice enabled! Click to start');
+                    this.updateStatus('🎙️ Voice enabled! Tap to talk or click "📅 Book Appointment"');
                     return;
                 }
                 this.toggleListening();
@@ -1682,7 +1719,7 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.updateUI('ready');
             this.clearError();
-            this.updateStatus('🎙️ Ready to listen');
+            this.updateStatus('🎙️ Ready to listen or book appointment');
         }
     }
 
@@ -3755,7 +3792,7 @@ if __name__ == "__main__":
     print(f"   • OpenAI (Backup): {'✅ Available' if openai_api_key else '❌ Optional'}")
     
     print("\n🌐 ACCESS URLS:")
-    print("   🎤 Voice Interface: http://localhost:5000")
+    print("   🎤 Voice Interface: http://localhost:5000 (with booking button)")
     print("   💬 Original Text Chat: http://localhost:5000/chat") 
     print("   📅 Enhanced Chat + Booking: http://localhost:5000/chat-enhanced")
     print("   🌐 Embeddable Widget: http://localhost:5000/widget")
@@ -3804,6 +3841,7 @@ if __name__ == "__main__":
     print("   ✅ Comprehensive logging & monitoring")
     print("   ✅ HubSpot calendar integration (no Google Calendar needed)")
     print("   ✅ Zero external timezone dependencies (uses built-in Python)")
+    print("   ✅ Voice interface with prominent booking button redirect")
     
     print("\n" + "="*60)
     
