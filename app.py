@@ -20,10 +20,6 @@ from typing import Optional, Tuple, Dict, Any, List
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 import pytz
 import uuid
 import hashlib
@@ -61,11 +57,6 @@ smtp_port = int(os.getenv("SMTP_PORT", "587"))
 email_user = os.getenv("EMAIL_USER")
 email_password = os.getenv("EMAIL_PASSWORD")
 from_email = os.getenv("FROM_EMAIL", email_user)
-
-# Google Calendar Configuration
-google_client_id = os.getenv("GOOGLE_CLIENT_ID")
-google_client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
-google_redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5000/oauth/callback")
 
 # HubSpot Configuration
 hubspot_api_token = os.getenv("HUBSPOT_ACCESS_TOKEN")
@@ -125,7 +116,6 @@ def init_database():
                           purpose TEXT,
                           status TEXT DEFAULT 'scheduled',
                           zoom_meeting_url TEXT,
-                          google_event_id TEXT,
                           hubspot_contact_id TEXT,
                           hubspot_meeting_id TEXT,
                           confirmation_code TEXT UNIQUE,
@@ -865,7 +855,7 @@ FAQ_BRAIN = {
 
     "does ringlypro work with stripe?": "Yes, Stripe/Payment Gateway Setup is included in the Office Manager and Business Growth plans.",
 
-    "can ringlypro integrate with google calendar?": "Yes, RinglyPro can integrate with Google Calendar and other popular calendar systems for seamless appointment scheduling.",
+    "can ringlypro integrate with google calendar?": "Yes, RinglyPro integrates with popular calendar systems through our HubSpot CRM integration, which can sync with Google Calendar and other calendar platforms for seamless appointment scheduling.",
 
     "does ringlypro work with microsoft office?": "Integration with Microsoft Office tools is available through Zapier connections and direct integrations on higher-tier plans.",
 
@@ -3589,7 +3579,7 @@ def health_check():
                 "voice_interface": "✅ Premium TTS + Speech Recognition",
                 "text_chat": "✅ Enhanced FAQ + Phone Collection", 
                 "appointment_booking": "✅ Real-time Calendar + Email/SMS Confirmations",
-                "hubspot_integration": "✅ Contact & Meeting Creation",
+                "hubspot_integration": "✅ Contact & Meeting Creation + Calendar Sync",
                 "phone_collection": "✅ Validation + SMS Notifications",
                 "email_confirmations": "✅ SMTP Integration",
                 "zoom_integration": "✅ Meeting URLs + Details",
@@ -3755,6 +3745,7 @@ if __name__ == "__main__":
     print("   ✅ Professional appointment management")
     print("   ✅ Widget with black backdrop embedding")
     print("   ✅ Comprehensive logging & monitoring")
+    print("   ✅ HubSpot calendar integration (no Google Calendar needed)")
     
     print("\n" + "="*60)
     
