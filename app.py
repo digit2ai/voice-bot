@@ -891,6 +891,12 @@ FAQ_BRAIN = {
     # ==================== APPOINTMENT BOOKING SPECIFIC ====================
     "how do i schedule an appointment?": "I can help you schedule an appointment right now! I'll need your name, email, phone number, preferred date, and what you'd like to discuss. Would you like to book an appointment?",
     
+    "book an appointment": "Perfect! I'd be happy to help you schedule an appointment. Let me guide you through the booking process right now.",
+    
+    "schedule appointment": "Excellent! I can help you schedule an appointment immediately. Let me set up the booking form for you.",
+    
+    "i want to book": "Great! I'm ready to help you book an appointment. Let me get the scheduling process started for you right away.",
+    
     "what are your available times?": "We're available Monday-Friday 9 AM to 5 PM, and Saturday 10 AM to 2 PM (Eastern Time). I can show you specific available slots once you let me know your preferred date.",
     
     "how far in advance can i book?": "You can schedule appointments up to 30 days in advance. For same-day appointments, we require at least 1 hour notice.",
@@ -1376,7 +1382,7 @@ VOICE_HTML_TEMPLATE = '''
     <button class="interface-switcher" onclick="window.location.href='/chat'">💬 Try Text Chat</button>
     
     <h1>RinglyPro AI</h1>
-    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Ask questions or click "📅 Book Appointment" to schedule</small></div>
+    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" or ask questions • Click "📅 Book" to schedule</small></div>
     
     <div class="language-selector">
       <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
@@ -1390,7 +1396,7 @@ VOICE_HTML_TEMPLATE = '''
       </svg>
     </button>
     
-    <div id="status">🎙️ Tap to talk • Click "📅 Book Appointment" to schedule</div>
+    <div id="status">🎙️ Say "book appointment" or tap to talk • Click button to schedule</div>
     
     <div class="controls">
       <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
@@ -1502,6 +1508,31 @@ VOICE_HTML_TEMPLATE = '''
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
 
+                // Check for booking redirect action
+                if (data.action === 'redirect_to_booking') {
+                    console.log('🎯 Booking redirect detected');
+                    this.updateStatus('📅 Opening booking form...');
+                    
+                    // Play audio first, then redirect
+                    if (data.audio) {
+                        await this.playPremiumAudio(data.audio, data.response);
+                        // Show redirect message and redirect
+                        this.updateStatus('📅 Redirecting to booking form...');
+                        setTimeout(() => {
+                            window.location.href = data.redirect_url;
+                        }, 1000);
+                    } else {
+                        await this.playBrowserTTS(data.response);
+                        // Show redirect message and redirect
+                        this.updateStatus('📅 Redirecting to booking form...');
+                        setTimeout(() => {
+                            window.location.href = data.redirect_url;
+                        }, 1000);
+                    }
+                    return;
+                }
+
+                // Regular audio playback for non-booking responses
                 if (data.audio) {
                     await this.playPremiumAudio(data.audio, data.response);
                 } else {
@@ -1542,15 +1573,18 @@ VOICE_HTML_TEMPLATE = '''
                     };
                     
                     this.currentAudio.onerror = () => {
+                        console.log('Premium audio failed, falling back to browser TTS');
                         this.playBrowserTTS(responseText).then(resolve);
                     };
                     
                     this.currentAudio.play().catch(() => {
+                        console.log('Premium audio play failed, falling back to browser TTS');
                         this.playBrowserTTS(responseText).then(resolve);
                     });
                 });
                 
             } catch (error) {
+                console.log('Premium audio processing failed, falling back to browser TTS');
                 return this.playBrowserTTS(responseText);
             }
         }
@@ -1589,14 +1623,14 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-                            this.updateStatus('🎙️ Tap to continue or book appointment');
+                            this.updateStatus('🎙️ Say "book appointment" or tap to continue');
         }
 
         setupEventListeners() {
             this.micBtn.addEventListener('click', () => {
                 if (!this.userInteracted) {
                     this.userInteracted = true;
-                    this.updateStatus('🎙️ Voice enabled! Tap to talk or click "📅 Book Appointment"');
+                    this.updateStatus('🎙️ Voice enabled! Say "book appointment" or tap to talk');
                     return;
                 }
                 this.toggleListening();
@@ -1696,7 +1730,7 @@ VOICE_HTML_TEMPLATE = '''
             this.updateUI('ready');
             
             setTimeout(() => {
-                this.updateStatus('🎙️ Tap to try again');
+                this.updateStatus('🎙️ Say "book appointment" or tap to try again');
             }, 3000);
         }
 
@@ -1719,7 +1753,7 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.updateUI('ready');
             this.clearError();
-            this.updateStatus('🎙️ Ready to listen or book appointment');
+            this.updateStatus('🎙️ Ready! Say "book appointment" or ask questions');
         }
     }
 
@@ -2836,7 +2870,7 @@ def submit_phone():
 
 @app.route('/process-text-enhanced', methods=['POST'])
 def process_text_enhanced():
-    """Enhanced text processing with premium audio"""
+    """Enhanced text processing with premium audio and booking detection"""
     logger.info("🎤 Enhanced text processing request")
     
     try:
@@ -2875,7 +2909,77 @@ def process_text_enhanced():
         
         logger.info(f"📝 Processing: {user_text}")
         
-        # Generate response using FAQ function
+        # Check for booking intent in voice
+        booking_keywords = [
+            'book', 'schedule', 'appointment', 'meeting', 'consultation',
+            'want to book', 'book an appointment', 'schedule meeting',
+            'yes i want to book', 'book appointment', 'schedule appointment'
+        ]
+        
+        booking_detected = any(keyword in user_lower for keyword in booking_keywords)
+        
+        if booking_detected:
+            logger.info("🎯 Booking intent detected in voice!")
+            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment booking form for you now. Please provide your details there and I'll get you scheduled right away."
+            
+            # Try to generate premium audio for booking response
+            audio_data = None
+            engine_used = "browser_fallback"
+            
+            if elevenlabs_api_key:
+                try:
+                    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
+                    
+                    headers = {
+                        "Accept": "audio/mpeg",
+                        "Content-Type": "application/json",
+                        "xi-api-key": elevenlabs_api_key
+                    }
+                    
+                    tts_data = {
+                        "text": booking_response,
+                        "model_id": "eleven_flash_v2_5" if is_mobile else "eleven_multilingual_v2",
+                        "voice_settings": {
+                            "stability": 0.8,
+                            "similarity_boost": 0.9,
+                            "style": 0.3,
+                            "use_speaker_boost": False
+                        }
+                    }
+                    
+                    if is_mobile:
+                        tts_data["optimize_streaming_latency"] = 4
+                        tts_data["output_format"] = "mp3_44100_128"
+                    
+                    timeout = 8 if is_mobile else 10
+                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                    
+                    if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                        engine_used = "elevenlabs"
+                        logger.info("✅ ElevenLabs booking audio generated successfully")
+                    
+                except Exception as tts_error:
+                    logger.error(f"❌ ElevenLabs error: {tts_error}")
+            
+            response_payload = {
+                "response": booking_response,
+                "language": user_language,
+                "context": "booking_redirect",
+                "action": "redirect_to_booking",
+                "redirect_url": "/chat-enhanced",
+                "engine_used": engine_used
+            }
+            
+            if audio_data:
+                response_payload["audio"] = audio_data
+                logger.info("✅ Booking response with premium audio")
+            else:
+                logger.info("✅ Booking response with browser TTS fallback")
+            
+            return jsonify(response_payload)
+        
+        # Regular FAQ processing for non-booking requests
         faq_response, is_faq = get_faq_response(user_text)
         response_text = faq_response
         context = "professional" if is_faq else "friendly"
@@ -3753,6 +3857,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("🎯 ORIGINAL FEATURES (PRESERVED):")
     print("   🎤 Premium Voice Interface (ElevenLabs + Speech Recognition)")
+    print("   🗣️ Voice Booking Detection (Say 'book appointment' → auto-redirect)")
     print("   💬 Smart Text Chat (FAQ + SMS Integration)")  
     print("   📞 Phone Collection & Validation (phonenumbers)")
     print("   📲 SMS Notifications (Twilio → +16566001400)")
@@ -3842,6 +3947,7 @@ if __name__ == "__main__":
     print("   ✅ HubSpot calendar integration (no Google Calendar needed)")
     print("   ✅ Zero external timezone dependencies (uses built-in Python)")
     print("   ✅ Voice interface with prominent booking button redirect")
+    print("   ✅ Voice booking detection with audio confirmation + auto-redirect")
     
     print("\n" + "="*60)
     
