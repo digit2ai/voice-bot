@@ -1152,9 +1152,158 @@ VOICE_HTML_TEMPLATE = '''
       animation: none;
     }
 
-    @keyframes bookingPulse {
-      0%, 100% { box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3); }
-      50% { box-shadow: 0 4px 25px rgba(76, 175, 80, 0.6); }
+    .booking-form-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(44, 62, 80, 0.95);
+      backdrop-filter: blur(10px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    
+    .booking-form-container {
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 20px;
+      padding: 30px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+    
+    .booking-form-header {
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+      color: white;
+      padding: 20px;
+      margin: -30px -30px 20px -30px;
+      border-radius: 20px 20px 0 0;
+      text-align: center;
+    }
+    
+    .booking-form-header h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    
+    .booking-form-header p {
+      margin: 5px 0 0 0;
+      opacity: 0.9;
+      font-size: 0.9rem;
+    }
+    
+    .close-booking-form {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 20px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #1565c0;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #2196f3;
+      border-radius: 10px;
+      outline: none;
+      font-size: 14px;
+      background: white;
+      color: #333;
+      transition: border-color 0.3s ease;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: #1976d2;
+    }
+    
+    .date-time-row {
+      display: flex;
+      gap: 15px;
+    }
+    
+    .date-time-row .form-group {
+      flex: 1;
+    }
+    
+    .available-slots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .time-slot {
+      padding: 8px 12px;
+      background: #e3f2fd;
+      border: 2px solid #2196f3;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #1565c0;
+      transition: all 0.3s ease;
+    }
+    
+    .time-slot:hover,
+    .time-slot.selected {
+      background: #2196f3;
+      color: white;
+    }
+    
+    .booking-submit-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #4caf50, #45a049);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      margin-top: 10px;
+    }
+    
+    .booking-submit-btn:hover {
+      background: linear-gradient(135deg, #45a049, #388e3c);
+      transform: translateY(-2px);
+    }
+    
+    .booking-submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
     }
 
     .mic-button {
@@ -1373,6 +1522,23 @@ VOICE_HTML_TEMPLATE = '''
         font-size: 0.7rem;
         padding: 0.5rem 1rem;
       }
+      
+      .booking-form-container {
+        margin: 10px;
+        max-width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+        padding: 20px;
+      }
+      
+      .booking-form-header {
+        margin: -20px -20px 15px -20px;
+        padding: 15px;
+      }
+      
+      .date-time-row {
+        flex-direction: column;
+        gap: 10px;
+      }
     }
   </style>
 </head>
@@ -1382,7 +1548,7 @@ VOICE_HTML_TEMPLATE = '''
     <button class="interface-switcher" onclick="window.location.href='/chat'">💬 Try Text Chat</button>
     
     <h1>RinglyPro AI</h1>
-    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" or ask questions • Click "📅 Book" to schedule</small></div>
+    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" for instant inline booking • Ask questions • Click "📅 Book"</small></div>
     
     <div class="language-selector">
       <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
@@ -1396,7 +1562,7 @@ VOICE_HTML_TEMPLATE = '''
       </svg>
     </button>
     
-    <div id="status">🎙️ Say "book appointment" or tap to talk • Click button to schedule</div>
+    <div id="status">🎙️ Say "book appointment" for instant booking or tap to talk</div>
     
     <div class="controls">
       <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
@@ -1411,6 +1577,51 @@ VOICE_HTML_TEMPLATE = '''
         <div class="ai-indicator"></div>
         Enhanced Claude AI + Premium TTS
       </div>
+    </div>
+  </div>
+
+  <!-- Inline Booking Form Overlay -->
+  <div id="bookingFormOverlay" class="booking-form-overlay">
+    <div class="booking-form-container">
+      <div class="booking-form-header">
+        <button class="close-booking-form" onclick="closeBookingForm()">×</button>
+        <h2>📅 Schedule Your Appointment</h2>
+        <p>Fill out the details below to book your consultation</p>
+      </div>
+      
+      <form id="inlineBookingForm">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="inlineCustomerName" placeholder="Your full name" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Email Address *</label>
+          <input type="email" id="inlineCustomerEmail" placeholder="your@email.com" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Phone Number *</label>
+          <input type="tel" id="inlineCustomerPhone" placeholder="(555) 123-4567" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Preferred Date *</label>
+          <input type="date" id="inlineAppointmentDate" min="" onchange="loadInlineAvailableSlots()" required>
+        </div>
+        
+        <div class="form-group">
+          <label>What would you like to discuss?</label>
+          <textarea id="inlineAppointmentPurpose" placeholder="Brief description of your needs..." rows="3"></textarea>
+        </div>
+        
+        <div id="inlineTimeSlotsContainer" style="display: none;">
+          <label>Available Times *</label>
+          <div id="inlineAvailableSlots" class="available-slots"></div>
+        </div>
+        
+        <button type="button" class="booking-submit-btn" onclick="submitInlineBooking()">Book Appointment</button>
+      </form>
     </div>
   </div>
 
@@ -1510,24 +1721,22 @@ VOICE_HTML_TEMPLATE = '''
 
                 // Check for booking redirect action
                 if (data.action === 'redirect_to_booking') {
-                    console.log('🎯 Booking redirect detected');
+                    console.log('🎯 Booking redirect detected - showing inline form');
                     this.updateStatus('📅 Opening booking form...');
                     
-                    // Play audio first, then redirect
+                    // Play audio first, then show form
                     if (data.audio) {
                         await this.playPremiumAudio(data.audio, data.response);
-                        // Show redirect message and redirect
-                        this.updateStatus('📅 Redirecting to booking form...');
+                        // Show inline booking form after audio
                         setTimeout(() => {
-                            window.location.href = data.redirect_url;
-                        }, 1000);
+                            this.showInlineBookingForm();
+                        }, 500);
                     } else {
                         await this.playBrowserTTS(data.response);
-                        // Show redirect message and redirect
-                        this.updateStatus('📅 Redirecting to booking form...');
+                        // Show inline booking form after audio
                         setTimeout(() => {
-                            window.location.href = data.redirect_url;
-                        }, 1000);
+                            this.showInlineBookingForm();
+                        }, 500);
                     }
                     return;
                 }
@@ -1623,14 +1832,14 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-                            this.updateStatus('🎙️ Say "book appointment" or tap to continue');
+                            this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to continue');
         }
 
         setupEventListeners() {
             this.micBtn.addEventListener('click', () => {
                 if (!this.userInteracted) {
                     this.userInteracted = true;
-                    this.updateStatus('🎙️ Voice enabled! Say "book appointment" or tap to talk');
+                    this.updateStatus('🎙️ Voice enabled! Say "book appointment" for instant booking');
                     return;
                 }
                 this.toggleListening();
@@ -1730,7 +1939,7 @@ VOICE_HTML_TEMPLATE = '''
             this.updateUI('ready');
             
             setTimeout(() => {
-                this.updateStatus('🎙️ Say "book appointment" or tap to try again');
+                this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to try again');
             }, 3000);
         }
 
@@ -1744,6 +1953,25 @@ VOICE_HTML_TEMPLATE = '''
             this.errorMessage.classList.remove('show');
         }
 
+        showInlineBookingForm() {
+            const overlay = document.getElementById('bookingFormOverlay');
+            const dateInput = document.getElementById('inlineAppointmentDate');
+            
+            // Set minimum date to today
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.min = today;
+            
+            // Show the overlay
+            overlay.style.display = 'flex';
+            
+            // Focus on first input
+            setTimeout(() => {
+                document.getElementById('inlineCustomerName').focus();
+            }, 100);
+            
+            this.updateStatus('📅 Fill out the booking form above');
+        }
+
         clearAll() {
             this.stopAudio();
             if (this.isListening) this.stopListening();
@@ -1753,18 +1981,192 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.updateUI('ready');
             this.clearError();
-            this.updateStatus('🎙️ Ready! Say "book appointment" or ask questions');
+            
+            // Close booking form if open
+            const overlay = document.getElementById('bookingFormOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            this.updateStatus('🎙️ Ready! Say "book appointment" for instant booking');
         }
     }
 
     // Initialize when page loads
     document.addEventListener('DOMContentLoaded', () => {
         try {
-            new EnhancedVoiceBot();
+            window.voiceBot = new EnhancedVoiceBot();
         } catch (error) {
             console.error('Failed to create voice bot:', error);
         }
     });
+
+    // Global functions for inline booking form
+    let selectedInlineTimeSlot = null;
+
+    function closeBookingForm() {
+        const overlay = document.getElementById('bookingFormOverlay');
+        overlay.style.display = 'none';
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('🎙️ Ready! Say "book appointment" for instant booking');
+        }
+    }
+
+    function loadInlineAvailableSlots() {
+        const date = document.getElementById('inlineAppointmentDate').value;
+        if (!date) return;
+        
+        fetch('/get-available-slots', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: date })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('inlineTimeSlotsContainer');
+            const slotsDiv = document.getElementById('inlineAvailableSlots');
+            
+            if (data.slots && data.slots.length > 0) {
+                slotsDiv.innerHTML = '';
+                data.slots.forEach(slot => {
+                    const slotBtn = document.createElement('div');
+                    slotBtn.className = 'time-slot';
+                    slotBtn.textContent = formatTimeSlot(slot);
+                    slotBtn.onclick = () => selectInlineTimeSlot(slot, slotBtn);
+                    slotsDiv.appendChild(slotBtn);
+                });
+                container.style.display = 'block';
+            } else {
+                slotsDiv.innerHTML = '<p style="color: #f44336; margin: 10px 0;">No available slots for this date. Please choose another date.</p>';
+                container.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading slots:', error);
+        });
+    }
+
+    function selectInlineTimeSlot(time, element) {
+        document.querySelectorAll('#inlineAvailableSlots .time-slot').forEach(slot => 
+            slot.classList.remove('selected')
+        );
+        element.classList.add('selected');
+        selectedInlineTimeSlot = time;
+    }
+
+    function formatTimeSlot(time) {
+        const [hours, minutes] = time.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+        return `${displayHour}:${minutes} ${ampm}`;
+    }
+
+    function submitInlineBooking() {
+        const name = document.getElementById('inlineCustomerName').value.trim();
+        const email = document.getElementById('inlineCustomerEmail').value.trim();
+        const phone = document.getElementById('inlineCustomerPhone').value.trim();
+        const date = document.getElementById('inlineAppointmentDate').value;
+        const purpose = document.getElementById('inlineAppointmentPurpose').value.trim();
+        
+        if (!name || !email || !phone || !date || !selectedInlineTimeSlot) {
+            alert('Please fill in all required fields and select a time slot.');
+            return;
+        }
+        
+        const submitBtn = document.querySelector('.booking-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Booking...';
+        
+        const bookingData = {
+            name: name,
+            email: email,
+            phone: phone,
+            date: date,
+            time: selectedInlineTimeSlot,
+            purpose: purpose || 'General consultation'
+        };
+        
+        fetch('/book-appointment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bookingData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showInlineBookingConfirmation(data.appointment);
+            } else {
+                showInlineBookingError(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Booking error:', error);
+            showInlineBookingError('There was an error booking your appointment. Please try again.');
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Book Appointment';
+        });
+    }
+
+    function showInlineBookingConfirmation(appointment) {
+        const container = document.querySelector('.booking-form-container');
+        
+        const date = new Date(appointment.date + 'T' + appointment.time);
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const formattedDate = date.toLocaleDateString('en-US', options);
+        const formattedTime = formatTimeSlot(appointment.time);
+        
+        container.innerHTML = `
+            <div class="booking-form-header">
+                <button class="close-booking-form" onclick="closeBookingForm()">×</button>
+                <h2>✅ Appointment Confirmed!</h2>
+                <p>Your appointment has been successfully scheduled</p>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #e8f5e8, #c8e6c9); color: #2e7d32; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <div style="background: white; padding: 15px; border-radius: 8px;">
+                    <strong>📅 Date:</strong> ${formattedDate}<br>
+                    <strong>🕐 Time:</strong> ${formattedTime} EST<br>
+                    <strong>👤 Name:</strong> ${appointment.customer_name}<br>
+                    <strong>📧 Email:</strong> ${appointment.customer_email}<br>
+                    <strong>📞 Phone:</strong> ${appointment.customer_phone}<br>
+                    <strong>🔗 Zoom:</strong> <a href="${appointment.zoom_url}" target="_blank" style="color: #2196F3;">Join Meeting</a><br>
+                    <strong>📋 Confirmation:</strong> <span style="font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">${appointment.confirmation_code}</span><br>
+                    <strong>💬 Purpose:</strong> ${appointment.purpose}
+                </div>
+                <p style="margin-top: 15px; font-size: 14px;">
+                    You'll receive email and SMS confirmations shortly. Save your confirmation code for any changes needed.
+                </p>
+            </div>
+            
+            <button type="button" class="booking-submit-btn" onclick="closeBookingForm()" style="background: linear-gradient(135deg, #2196F3, #1976D2);">
+                Close & Continue
+            </button>
+        `;
+        
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('✅ Appointment booked successfully!');
+        }
+    }
+
+    function showInlineBookingError(message) {
+        const form = document.getElementById('inlineBookingForm');
+        
+        // Remove existing error messages
+        const existingError = form.querySelector('.error-message');
+        if (existingError) existingError.remove();
+        
+        // Add error message
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.style.cssText = 'background: linear-gradient(135deg, #ffebee, #ffcdd2); border: 2px solid #f44336; color: #c62828; padding: 15px; border-radius: 12px; margin: 15px 0;';
+        errorDiv.innerHTML = `<strong>❌ Error:</strong><br>${message}`;
+        
+        form.insertBefore(errorDiv, form.firstChild);
+        
+        // Scroll error into view
+        errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   </script>
 </body>
 </html>
@@ -2920,7 +3322,7 @@ def process_text_enhanced():
         
         if booking_detected:
             logger.info("🎯 Booking intent detected in voice!")
-            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment booking form for you now. Please provide your details there and I'll get you scheduled right away."
+            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
             
             # Try to generate premium audio for booking response
             audio_data = None
@@ -2967,7 +3369,6 @@ def process_text_enhanced():
                 "language": user_language,
                 "context": "booking_redirect",
                 "action": "redirect_to_booking",
-                "redirect_url": "/chat-enhanced",
                 "engine_used": engine_used
             }
             
@@ -3857,7 +4258,7 @@ if __name__ == "__main__":
     print("\n" + "="*60)
     print("🎯 ORIGINAL FEATURES (PRESERVED):")
     print("   🎤 Premium Voice Interface (ElevenLabs + Speech Recognition)")
-    print("   🗣️ Voice Booking Detection (Say 'book appointment' → auto-redirect)")
+    print("   🗣️ Voice Booking Detection → Inline Form (Say 'book appointment')")
     print("   💬 Smart Text Chat (FAQ + SMS Integration)")  
     print("   📞 Phone Collection & Validation (phonenumbers)")
     print("   📲 SMS Notifications (Twilio → +16566001400)")
@@ -3947,7 +4348,7 @@ if __name__ == "__main__":
     print("   ✅ HubSpot calendar integration (no Google Calendar needed)")
     print("   ✅ Zero external timezone dependencies (uses built-in Python)")
     print("   ✅ Voice interface with prominent booking button redirect")
-    print("   ✅ Voice booking detection with audio confirmation + auto-redirect")
+    print("   ✅ Voice booking → audio confirmation → inline form (no page redirect)")
     
     print("\n" + "="*60)
     
