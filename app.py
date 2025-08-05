@@ -2329,6 +2329,9 @@ ENHANCED_CHAT_TEMPLATE = '''
             
             isWaitingForResponse = true;
             
+            console.log('📤 Sending message:', message);
+            console.log('📊 Current booking step:', bookingStep);
+            
             fetch('/chat-enhanced', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2354,14 +2357,16 @@ ENHANCED_CHAT_TEMPLATE = '''
                     console.log('ℹ️ No special action needed, action was:', data.action);
                 }
                 
+                // Update booking step for conversation context
                 if (data.booking_step) {
                     bookingStep = data.booking_step;
+                    console.log('📊 Updated booking step to:', bookingStep);
                 }
                 
                 isWaitingForResponse = false;
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('❌ Error:', error);
                 addMessage('Sorry, there was an error processing your request. Please try again.', 'bot');
                 isWaitingForResponse = false;
             });
@@ -2613,6 +2618,29 @@ def handle_enhanced_chat():
             return jsonify({'response': 'Please enter a question.', 'action': 'none'})
         
         logger.info(f"💬 Enhanced chat message: {user_message}")
+        logger.info(f"📊 Current booking step: {booking_step}")
+        
+        user_message_lower = user_message.lower().strip()
+        
+        # Handle follow-up responses based on conversation context
+        if booking_step == 'awaiting_confirmation':
+            logger.info("🔄 Processing follow-up response")
+            if user_message_lower in ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'y']:
+                logger.info("✅ User confirmed booking")
+                return jsonify({
+                    'response': 'Perfect! Let me set up the booking form for you.',
+                    'action': 'start_booking',
+                    'booking_step': 'form_ready',
+                    'is_faq_match': True
+                })
+            elif user_message_lower in ['no', 'nope', 'not now', 'maybe later', 'n']:
+                logger.info("❌ User declined booking")
+                return jsonify({
+                    'response': 'No problem! Feel free to ask me any questions about RinglyPro services, or let me know if you change your mind about scheduling.',
+                    'action': 'none',
+                    'booking_step': 'none',
+                    'is_faq_match': True
+                })
         
         # Get enhanced FAQ response
         response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
@@ -2631,8 +2659,12 @@ def handle_enhanced_chat():
         if action_needed == "start_booking":
             logger.info("🚀 Setting action to start_booking")
             response_data['action'] = 'start_booking'
+            response_data['booking_step'] = 'form_ready'
         elif action_needed == "suggest_booking":
             response_data['response'] += " Type 'yes' if you'd like to schedule a consultation."
+            response_data['booking_step'] = 'awaiting_confirmation'
+        elif action_needed == "offer_booking":
+            response_data['booking_step'] = 'awaiting_confirmation'
         
         logger.info(f"📨 Final response data: {response_data}")
         return jsonify(response_data)
@@ -3625,6 +3657,7 @@ def health_check():
                 "test_sms": "/test-sms",
                 "test_hubspot": "/test-hubspot",
                 "test_booking": "/test-booking",
+                "test_conversation": "/test-conversation",
                 "voice_processing": "/process-text-enhanced"
             }
         })
@@ -3730,6 +3763,8 @@ if __name__ == "__main__":
     print("   🏥 Health Check: http://localhost:5000/health")
     print("   🧪 SMS Test: http://localhost:5000/test-sms")
     print("   🏢 HubSpot Test: http://localhost:5000/test-hubspot")
+    print("   📅 Booking Test: http://localhost:5000/test-booking")
+    print("   💬 Conversation Test: http://localhost:5000/test-conversation")
     
     print("\n🔧 API ENDPOINTS:")
     print("   POST /chat - Original FAQ + Phone Collection")
