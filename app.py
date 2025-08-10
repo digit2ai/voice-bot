@@ -1707,202 +1707,219 @@ class EnhancedVoiceBot {
             };
         }
 
-        async processTranscript(transcript) {
-            if (!transcript || transcript.length < 2) {
-                this.handleError('No speech detected');
-                return;
-            }
+async processTranscript(transcript) {
+    if (!transcript || transcript.length < 2) {
+        this.handleError('No speech detected');
+        return;
+    }
 
-            this.isProcessing = true;
-            this.updateUI('processing');
-            this.updateStatus('🤖 Processing...');
-            
-            // Clear any existing timeout
-            if (this.processTimeout) {
-                clearTimeout(this.processTimeout);
-            }
-            
-            // Add timeout for the entire processing
-            this.processTimeout = setTimeout(() => {
-                if (this.isProcessing) {
-                    console.log('Processing timeout - resetting UI');
-                    this.handleError('Processing took too long. Please try again.');
-                }
-            }, 15000); // 15 second overall timeout
+    this.isProcessing = true;
+    this.updateUI('processing');
+    this.updateStatus('🤖 Processing...');
+    
+    // Clear any existing timeout
+    if (this.processTimeout) {
+        clearTimeout(this.processTimeout);
+    }
+    
+    // Add timeout for the entire processing
+    this.processTimeout = setTimeout(() => {
+        if (this.isProcessing) {
+            console.log('Processing timeout - resetting UI');
+            this.handleError('Processing took too long. Please try again.');
+        }
+    }, 15000); // 15 second overall timeout
 
-            try {
-                const response = await fetch('/process-text-enhanced', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: transcript,
-                        language: this.currentLanguage,
-                        mobile: this.isMobile
-                    })
-                });
+    try {
+        const response = await fetch('/process-text-enhanced', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: transcript,
+                language: this.currentLanguage,
+                mobile: this.isMobile
+            })
+        });
 
-                clearTimeout(this.processTimeout);
+        clearTimeout(this.processTimeout);
 
-                if (!response.ok) throw new Error('Server error: ' + response.status);
+        if (!response.ok) throw new Error('Server error: ' + response.status);
 
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
 
-                console.log('Received data:', data);
+        console.log('Received data:', data);
 
-                // Check for booking redirect action
-                if (data.action === 'redirect_to_booking') {
-                    console.log('🎯 Booking redirect detected');
-                    
-                    // On mobile with text_only, skip audio completely
-                    if (data.engine_used === 'text_only' || this.isMobile) {
-                        console.log('📱 Mobile or text-only mode - skipping audio');
-                        this.updateStatus('📅 Opening booking form...');
-                        
-                        // Reset processing state immediately
-                        this.isProcessing = false;
-                        this.updateUI('ready');
-                        
-                        // Show the booking form directly
-                        setTimeout(() => {
-                            this.showInlineBookingForm();
-                        }, 500);
-                        return;
-                    }
-                    
-                    // Desktop with audio
-                    if (data.audio) {
-                        await this.playPremiumAudio(data.audio, data.response);
-                    } else {
-                        await this.playBrowserTTS(data.response);
-                    }
-                    
-                    // Show booking form after audio
-                    setTimeout(() => {
-                        this.showInlineBookingForm();
-                    }, 500);
-                    return;
-                }
-
-                // Regular responses (non-booking)
-                if (data.engine_used === 'text_only' || this.isMobile) {
-                    console.log('📱 Text-only response for mobile');
-                    // Display the response text for a few seconds
-                    this.updateStatus('💬 ' + (data.response || 'Response received').substring(0, 100) + '...');
-                    
-                    // Reset after showing the text
-                    setTimeout(() => {
-                        this.audioFinished();
-                    }, 3000);
-                } else if (data.audio) {
-                    await this.playPremiumAudio(data.audio, data.response);
-                } else if (data.response) {
-                    await this.playBrowserTTS(data.response);
-                } else {
-                    // No response received
-                    this.audioFinished();
-                }
-
-            } catch (error) {
-                clearTimeout(this.processTimeout);
-                this.handleError('Processing error: ' + error.message);
-            }
+        // Show text immediately on mobile if flag is set
+        if (data.show_text && data.response) {
+            this.updateStatus('💬 ' + data.response.substring(0, 150) + '...');
         }
 
-        async playPremiumAudio(audioBase64, responseText) {
-            // Skip audio on mobile
-            if (this.isMobile) {
-                console.log('📱 Skipping audio playback on mobile');
-                this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+        // Check for booking redirect action
+        if (data.action === 'redirect_to_booking') {
+            console.log('🎯 Booking redirect detected');
+            
+            // Try to play audio (even on mobile)
+            if (data.audio) {
+                await this.playPremiumAudio(data.audio, data.response, data.show_text);
+            } else if (!this.isMobile) {
+                await this.playBrowserTTS(data.response);
+            }
+            
+            // Show booking form after audio (or immediately on mobile if no audio)
+            setTimeout(() => {
+                this.showInlineBookingForm();
+            }, data.audio ? 1000 : 500);
+            
+            // Reset state if no audio
+            if (!data.audio && this.isMobile) {
                 setTimeout(() => {
                     this.audioFinished();
                 }, 2000);
-                return Promise.resolve();
             }
+            return;
+        }
 
-            try {
-                const audioData = atob(audioBase64);
-                const arrayBuffer = new ArrayBuffer(audioData.length);
-                const uint8Array = new Uint8Array(arrayBuffer);
-                
-                for (let i = 0; i < audioData.length; i++) {
-                    uint8Array[i] = audioData.charCodeAt(i);
-                }
+        // Regular responses (non-booking)
+        if (data.audio) {
+            await this.playPremiumAudio(data.audio, data.response, data.show_text);
+        } else if (data.response) {
+            await this.playBrowserTTS(data.response);
+        } else {
+            // No response received
+            this.audioFinished();
+        }
 
-                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                this.currentAudio = new Audio(audioUrl);
-                
-                return new Promise((resolve) => {
-                    let audioStarted = false;
-                    
-                    const playTimeout = setTimeout(() => {
-                        if (!audioStarted) {
-                            console.log('Audio timeout - showing text instead');
-                            this.currentAudio = null;
-                            URL.revokeObjectURL(audioUrl);
-                            this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
-                            setTimeout(() => {
-                                this.audioFinished();
-                                resolve();
-                            }, 2000);
-                        }
-                    }, 3000);
-                    
-                    this.currentAudio.onplay = () => {
-                        audioStarted = true;
-                        clearTimeout(playTimeout);
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus('🔊 Speaking...');
-                    };
-                    
-                    this.currentAudio.onended = () => {
-                        clearTimeout(playTimeout);
+    } catch (error) {
+        clearTimeout(this.processTimeout);
+        this.handleError('Processing error: ' + error.message);
+    }
+}
+
+async playPremiumAudio(audioBase64, responseText, showText = false) {
+    try {
+        // Show text while audio plays (great for mobile!)
+        if (showText && this.isMobile) {
+            this.updateStatus('🔊 ' + responseText.substring(0, 150) + '...');
+        }
+
+        const audioData = atob(audioBase64);
+        const arrayBuffer = new ArrayBuffer(audioData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        for (let i = 0; i < audioData.length; i++) {
+            uint8Array[i] = audioData.charCodeAt(i);
+        }
+
+        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        this.currentAudio = new Audio(audioUrl);
+        
+        return new Promise((resolve) => {
+            let audioStarted = false;
+            
+            const playTimeout = setTimeout(() => {
+                if (!audioStarted) {
+                    console.log('Audio timeout - keeping text visible');
+                    this.currentAudio = null;
+                    URL.revokeObjectURL(audioUrl);
+                    // Keep showing text
+                    if (!showText) {
+                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                    }
+                    setTimeout(() => {
                         this.audioFinished();
-                        URL.revokeObjectURL(audioUrl);
                         resolve();
-                    };
-                    
-                    this.currentAudio.onerror = (error) => {
-                        clearTimeout(playTimeout);
-                        console.log('Premium audio failed:', error);
-                        this.currentAudio = null;
-                        URL.revokeObjectURL(audioUrl);
-                        
-                        // Show text instead
-                        this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 2000);
-                    };
-                    
-                    this.currentAudio.play().catch((error) => {
-                        clearTimeout(playTimeout);
-                        console.log('Audio play failed:', error);
-                        this.currentAudio = null;
-                        URL.revokeObjectURL(audioUrl);
-                        
-                        // Show text instead
-                        this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 2000);
-                    });
-                });
+                    }, 3000);
+                }
+            }, 5000); // Give mobile more time
+            
+            this.currentAudio.onplay = () => {
+                audioStarted = true;
+                clearTimeout(playTimeout);
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                if (!showText) {
+                    this.updateStatus('🔊 Rachel is speaking...');
+                }
+            };
+            
+            this.currentAudio.onended = () => {
+                clearTimeout(playTimeout);
+                // Keep text visible for a moment after audio ends
+                if (showText) {
+                    setTimeout(() => {
+                        this.audioFinished();
+                    }, 1500);
+                } else {
+                    this.audioFinished();
+                }
+                URL.revokeObjectURL(audioUrl);
+                resolve();
+            };
+            
+            this.currentAudio.onerror = (error) => {
+                clearTimeout(playTimeout);
+                console.log('Premium audio failed:', error);
+                this.currentAudio = null;
+                URL.revokeObjectURL(audioUrl);
                 
-            } catch (error) {
-                console.log('Premium audio processing failed:', error);
-                this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                // Keep showing text
+                if (!showText) {
+                    this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                }
                 setTimeout(() => {
                     this.audioFinished();
-                }, 2000);
-                return Promise.resolve();
-            }
-        }
+                    resolve();
+                }, 3000);
+            };
+            
+            // Attempt to play audio
+            this.currentAudio.play().catch((error) => {
+                clearTimeout(playTimeout);
+                console.log('Audio play failed:', error);
+                
+                // On mobile, clicking might help
+                if (this.isMobile) {
+                    this.updateStatus('📱 Tap anywhere to hear Rachel\'s response...');
+                    
+                    const playOnClick = () => {
+                        this.currentAudio.play().catch(() => {
+                            console.log('Still cannot play audio');
+                        });
+                        document.removeEventListener('click', playOnClick);
+                    };
+                    document.addEventListener('click', playOnClick);
+                    
+                    setTimeout(() => {
+                        document.removeEventListener('click', playOnClick);
+                        this.audioFinished();
+                        resolve();
+                    }, 5000);
+                } else {
+                    this.currentAudio = null;
+                    URL.revokeObjectURL(audioUrl);
+                    if (!showText) {
+                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                    }
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 3000);
+                }
+            });
+        });
+        
+    } catch (error) {
+        console.log('Premium audio processing failed:', error);
+        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+        setTimeout(() => {
+            this.audioFinished();
+        }, 3000);
+        return Promise.resolve();
+    }
+}
 
         async playBrowserTTS(text) {
             // Skip TTS on mobile
@@ -3471,7 +3488,8 @@ def process_text_enhanced():
             return jsonify({
                 "response": "I think I heard an echo. Please speak again.",
                 "language": user_language,
-                "context": "clarification"
+                "context": "clarification",
+                "show_text": is_mobile  # Show text on mobile
             })
         
         if not user_text or len(user_text) < 2:
@@ -3495,24 +3513,15 @@ def process_text_enhanced():
             logger.info("🎯 Booking intent detected in voice!")
             booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
             
-            # Skip audio generation on mobile to avoid delays
-            if is_mobile:
-                logger.info("📱 Mobile device - skipping audio generation")
-                return jsonify({
-                    "response": booking_response,
-                    "language": user_language,
-                    "context": "booking_redirect",
-                    "action": "redirect_to_booking",
-                    "engine_used": "text_only"
-                })
-            
-            # Try to generate premium audio for desktop only
+            # Try to generate premium audio with Rachel's voice (even on mobile)
             audio_data = None
             engine_used = "browser_fallback"
             
-            if elevenlabs_api_key and not is_mobile:
+            if elevenlabs_api_key:
                 try:
-                    url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
+                    # Rachel's voice ID in ElevenLabs
+                    rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{rachel_voice_id}"
                     
                     headers = {
                         "Accept": "audio/mpeg",
@@ -3522,22 +3531,27 @@ def process_text_enhanced():
                     
                     tts_data = {
                         "text": booking_response,
-                        "model_id": "eleven_multilingual_v2",
+                        "model_id": "eleven_turbo_v2_5" if is_mobile else "eleven_multilingual_v2",
                         "voice_settings": {
-                            "stability": 0.8,
-                            "similarity_boost": 0.9,
-                            "style": 0.3,
-                            "use_speaker_boost": False
+                            "stability": 0.75,
+                            "similarity_boost": 0.85,
+                            "style": 0.2,
+                            "use_speaker_boost": True
                         }
                     }
                     
-                    timeout = 10
+                    # Optimize for mobile
+                    if is_mobile:
+                        tts_data["optimize_streaming_latency"] = 4
+                        tts_data["output_format"] = "mp3_22050_32"  # Lower quality for faster loading
+                    
+                    timeout = 5 if is_mobile else 10
                     tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                     
                     if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                         audio_data = base64.b64encode(tts_response.content).decode('utf-8')
-                        engine_used = "elevenlabs"
-                        logger.info("✅ ElevenLabs booking audio generated successfully")
+                        engine_used = "elevenlabs_rachel"
+                        logger.info("✅ Rachel's voice audio generated successfully")
                     
                 except Exception as tts_error:
                     logger.error(f"❌ ElevenLabs error: {tts_error}")
@@ -3547,12 +3561,13 @@ def process_text_enhanced():
                 "language": user_language,
                 "context": "booking_redirect",
                 "action": "redirect_to_booking",
-                "engine_used": engine_used
+                "engine_used": engine_used,
+                "show_text": is_mobile  # Always show text on mobile
             }
             
             if audio_data:
                 response_payload["audio"] = audio_data
-                logger.info("✅ Booking response with premium audio")
+                logger.info("✅ Booking response with Rachel's voice")
             else:
                 logger.info("✅ Booking response with browser TTS fallback")
             
@@ -3563,24 +3578,15 @@ def process_text_enhanced():
         response_text = faq_response
         context = "professional" if is_faq else "friendly"
         
-        # Skip audio for mobile to prevent delays
-        if is_mobile:
-            logger.info("📱 Mobile device - returning text only")
-            return jsonify({
-                "response": response_text,
-                "language": user_language,
-                "context": context,
-                "is_faq": is_faq,
-                "engine_used": "text_only"
-            })
-        
-        # Try to generate premium audio with ElevenLabs (desktop only)
+        # Try to generate premium audio with Rachel's voice for all responses
         audio_data = None
         engine_used = "browser_fallback"
         
-        if elevenlabs_api_key and not is_mobile:
+        if elevenlabs_api_key:
             try:
-                url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
+                # Rachel's voice ID
+                rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{rachel_voice_id}"
                 
                 headers = {
                     "Accept": "audio/mpeg",
@@ -3595,22 +3601,27 @@ def process_text_enhanced():
                 
                 tts_data = {
                     "text": speech_text,
-                    "model_id": "eleven_multilingual_v2",
+                    "model_id": "eleven_turbo_v2_5" if is_mobile else "eleven_multilingual_v2",
                     "voice_settings": {
-                        "stability": 0.8,
-                        "similarity_boost": 0.9,
+                        "stability": 0.75,
+                        "similarity_boost": 0.85,
                         "style": 0.2,
-                        "use_speaker_boost": False
+                        "use_speaker_boost": True
                     }
                 }
                 
-                timeout = 10
+                # Optimize for mobile
+                if is_mobile:
+                    tts_data["optimize_streaming_latency"] = 4
+                    tts_data["output_format"] = "mp3_22050_32"  # Lower quality for faster loading
+                
+                timeout = 5 if is_mobile else 10
                 tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                 
                 if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                     audio_data = base64.b64encode(tts_response.content).decode('utf-8')
-                    engine_used = "elevenlabs"
-                    logger.info("✅ ElevenLabs audio generated successfully")
+                    engine_used = "elevenlabs_rachel"
+                    logger.info("✅ Rachel's voice audio generated successfully")
                 else:
                     logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
                     
@@ -3622,12 +3633,13 @@ def process_text_enhanced():
             "language": user_language,
             "context": context,
             "is_faq": is_faq,
-            "engine_used": engine_used
+            "engine_used": engine_used,
+            "show_text": is_mobile  # Always show text on mobile
         }
         
         if audio_data:
             response_payload["audio"] = audio_data
-            logger.info("✅ Response with premium audio")
+            logger.info("✅ Response with Rachel's voice")
         else:
             logger.info("✅ Response with browser TTS fallback")
         
