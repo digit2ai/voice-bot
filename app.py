@@ -2068,7 +2068,11 @@ startListening() {
         return;
     }
     
-   if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
+    try {  // ← ADD THIS
+        console.log('Starting speech recognition...');
+        
+        // Ensure audio context is active on mobile
+        if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
             this.audioContext.resume().then(() => {
                 console.log('Audio context resumed before listening');
             });
@@ -2081,6 +2085,8 @@ startListening() {
     } catch (error) {
         console.error('Failed to start:', error);
         this.handleError('Failed to start listening: ' + error.message);
+    }
+}
 
         stopListening() {
             if (this.isListening && this.recognition) {
