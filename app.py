@@ -1629,6 +1629,8 @@ VOICE_HTML_TEMPLATE = '''
     // Enhanced Voice Interface JavaScript
     class EnhancedVoiceBot {
         constructor() {
+            this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            this.processTimeout = null;            
             this.micBtn = document.getElementById('micBtn');
             this.status = document.getElementById('status');
             this.stopBtn = document.getElementById('stopBtn');
@@ -3324,11 +3326,22 @@ def process_text_enhanced():
             logger.info("🎯 Booking intent detected in voice!")
             booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
             
-            # Try to generate premium audio for booking response
+            # Skip audio generation on mobile to avoid delays
+            if is_mobile:
+                logger.info("📱 Mobile device - skipping audio generation")
+                return jsonify({
+                    "response": booking_response,
+                    "language": user_language,
+                    "context": "booking_redirect",
+                    "action": "redirect_to_booking",
+                    "engine_used": "text_only"
+                })
+            
+            # Try to generate premium audio for desktop only
             audio_data = None
             engine_used = "browser_fallback"
             
-            if elevenlabs_api_key:
+            if elevenlabs_api_key and not is_mobile:
                 try:
                     url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
                     
@@ -3340,7 +3353,7 @@ def process_text_enhanced():
                     
                     tts_data = {
                         "text": booking_response,
-                        "model_id": "eleven_flash_v2_5" if is_mobile else "eleven_multilingual_v2",
+                        "model_id": "eleven_multilingual_v2",
                         "voice_settings": {
                             "stability": 0.8,
                             "similarity_boost": 0.9,
@@ -3349,11 +3362,7 @@ def process_text_enhanced():
                         }
                     }
                     
-                    if is_mobile:
-                        tts_data["optimize_streaming_latency"] = 4
-                        tts_data["output_format"] = "mp3_44100_128"
-                    
-                    timeout = 8 if is_mobile else 10
+                    timeout = 10
                     tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                     
                     if tts_response.status_code == 200 and len(tts_response.content) > 1000:
@@ -3379,6 +3388,85 @@ def process_text_enhanced():
                 logger.info("✅ Booking response with browser TTS fallback")
             
             return jsonify(response_payload)
+        
+        # Regular FAQ processing for non-booking requests
+        faq_response, is_faq = get_faq_response(user_text)
+        response_text = faq_response
+        context = "professional" if is_faq else "friendly"
+        
+        # Skip audio for mobile to prevent delays
+        if is_mobile:
+            logger.info("📱 Mobile device - returning text only")
+            return jsonify({
+                "response": response_text,
+                "language": user_language,
+                "context": context,
+                "is_faq": is_faq,
+                "engine_used": "text_only"
+            })
+        
+        # Try to generate premium audio with ElevenLabs (desktop only)
+        audio_data = None
+        engine_used = "browser_fallback"
+        
+        if elevenlabs_api_key and not is_mobile:
+            try:
+                url = "https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM"
+                
+                headers = {
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "xi-api-key": elevenlabs_api_key
+                }
+                
+                # Optimize text for speech
+                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
+                speech_text = speech_text.replace("AI", "A.I.")
+                speech_text = speech_text.replace("$", " dollars")
+                
+                tts_data = {
+                    "text": speech_text,
+                    "model_id": "eleven_multilingual_v2",
+                    "voice_settings": {
+                        "stability": 0.8,
+                        "similarity_boost": 0.9,
+                        "style": 0.2,
+                        "use_speaker_boost": False
+                    }
+                }
+                
+                timeout = 10
+                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                
+                if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                    audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                    engine_used = "elevenlabs"
+                    logger.info("✅ ElevenLabs audio generated successfully")
+                else:
+                    logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                    
+            except Exception as tts_error:
+                logger.error(f"❌ ElevenLabs error: {tts_error}")
+        
+        response_payload = {
+            "response": response_text,
+            "language": user_language,
+            "context": context,
+            "is_faq": is_faq,
+            "engine_used": engine_used
+        }
+        
+        if audio_data:
+            response_payload["audio"] = audio_data
+            logger.info("✅ Response with premium audio")
+        else:
+            logger.info("✅ Response with browser TTS fallback")
+        
+        return jsonify(response_payload)
+        
+    except Exception as e:
+        logger.error(f"❌ Processing error: {e}")
+        return jsonify({"error": "I had a technical issue. Please try again."}), 500
         
         # Regular FAQ processing for non-booking requests
         faq_response, is_faq = get_faq_response(user_text)
