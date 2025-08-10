@@ -1625,9 +1625,9 @@ VOICE_HTML_TEMPLATE = '''
     </div>
   </div>
 
-  <script>
+<script>
     // Enhanced Voice Interface JavaScript
-class EnhancedVoiceBot {
+    class EnhancedVoiceBot {
         constructor() {
             this.micBtn = document.getElementById('micBtn');
             this.status = document.getElementById('status');
@@ -1659,18 +1659,6 @@ class EnhancedVoiceBot {
 
             this.setupEventListeners();
             this.initSpeechRecognition();
-            
-            // Request audio permissions on mobile
-            if (this.isMobile) {
-                document.addEventListener('click', () => {
-                    if (window.AudioContext || window.webkitAudioContext) {
-                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        if (audioContext.state === 'suspended') {
-                            audioContext.resume();
-                        }
-                    }
-                }, { once: true });
-            }
         }
 
         initSpeechRecognition() {
@@ -1682,23 +1670,28 @@ class EnhancedVoiceBot {
             this.recognition.lang = this.currentLanguage;
 
             this.recognition.onstart = () => {
+                console.log('Recognition started');
                 this.isListening = true;
                 this.updateUI('listening');
                 this.updateStatus('🎙️ Listening... Speak now');
             };
 
             this.recognition.onresult = (event) => {
+                console.log('Recognition result received');
                 if (event.results && event.results.length > 0) {
                     const transcript = event.results[0][0].transcript.trim();
+                    console.log('Transcript:', transcript);
                     this.processTranscript(transcript);
                 }
             };
 
             this.recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
                 this.handleError('Speech recognition error: ' + event.error);
             };
 
             this.recognition.onend = () => {
+                console.log('Recognition ended');
                 this.isListening = false;
                 if (!this.isProcessing) {
                     this.updateUI('ready');
@@ -1707,242 +1700,223 @@ class EnhancedVoiceBot {
             };
         }
 
-async processTranscript(transcript) {
-    if (!transcript || transcript.length < 2) {
-        this.handleError('No speech detected');
-        return;
-    }
+        async processTranscript(transcript) {
+            if (!transcript || transcript.length < 2) {
+                this.handleError('No speech detected');
+                return;
+            }
 
-    this.isProcessing = true;
-    this.updateUI('processing');
-    this.updateStatus('🤖 Processing...');
-    
-    // Clear any existing timeout
-    if (this.processTimeout) {
-        clearTimeout(this.processTimeout);
-    }
-    
-    // Add timeout for the entire processing
-    this.processTimeout = setTimeout(() => {
-        if (this.isProcessing) {
-            console.log('Processing timeout - resetting UI');
-            this.handleError('Processing took too long. Please try again.');
-        }
-    }, 15000); // 15 second overall timeout
-
-    try {
-        const response = await fetch('/process-text-enhanced', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                text: transcript,
-                language: this.currentLanguage,
-                mobile: this.isMobile
-            })
-        });
-
-        clearTimeout(this.processTimeout);
-
-        if (!response.ok) throw new Error('Server error: ' + response.status);
-
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-
-        console.log('Received data:', data);
-
-        // Show text immediately on mobile if flag is set
-        if (data.show_text && data.response) {
-            this.updateStatus('💬 ' + data.response.substring(0, 150) + '...');
-        }
-
-        // Check for booking redirect action
-        if (data.action === 'redirect_to_booking') {
-            console.log('🎯 Booking redirect detected');
+            console.log('Processing transcript:', transcript);
+            this.isProcessing = true;
+            this.updateUI('processing');
+            this.updateStatus('🤖 Processing...');
             
-            // Try to play audio (even on mobile)
-            if (data.audio) {
-                await this.playPremiumAudio(data.audio, data.response, data.show_text);
-            } else if (!this.isMobile) {
-                await this.playBrowserTTS(data.response);
+            // Clear any existing timeout
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
             }
             
-            // Show booking form after audio (or immediately on mobile if no audio)
-            setTimeout(() => {
-                this.showInlineBookingForm();
-            }, data.audio ? 1000 : 500);
-            
-            // Reset state if no audio
-            if (!data.audio && this.isMobile) {
-                setTimeout(() => {
-                    this.audioFinished();
-                }, 2000);
-            }
-            return;
-        }
+            // Add timeout for the entire processing
+            this.processTimeout = setTimeout(() => {
+                if (this.isProcessing) {
+                    console.log('Processing timeout - resetting UI');
+                    this.handleError('Processing took too long. Please try again.');
+                }
+            }, 15000);
 
-        // Regular responses (non-booking)
-        if (data.audio) {
-            await this.playPremiumAudio(data.audio, data.response, data.show_text);
-        } else if (data.response) {
-            await this.playBrowserTTS(data.response);
-        } else {
-            // No response received
-            this.audioFinished();
-        }
+            try {
+                const response = await fetch('/process-text-enhanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: transcript,
+                        language: this.currentLanguage,
+                        mobile: this.isMobile
+                    })
+                });
 
-    } catch (error) {
-        clearTimeout(this.processTimeout);
-        this.handleError('Processing error: ' + error.message);
-    }
-}
+                clearTimeout(this.processTimeout);
 
-async playPremiumAudio(audioBase64, responseText, showText = false) {
-    try {
-        // Show text while audio plays (great for mobile!)
-        if (showText && this.isMobile) {
-            this.updateStatus('🔊 ' + responseText.substring(0, 150) + '...');
-        }
+                if (!response.ok) throw new Error('Server error: ' + response.status);
 
-        const audioData = atob(audioBase64);
-        const arrayBuffer = new ArrayBuffer(audioData.length);
-        const uint8Array = new Uint8Array(arrayBuffer);
-        
-        for (let i = 0; i < audioData.length; i++) {
-            uint8Array[i] = audioData.charCodeAt(i);
-        }
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
 
-        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-        const audioUrl = URL.createObjectURL(audioBlob);
-        
-        this.currentAudio = new Audio(audioUrl);
-        
-        return new Promise((resolve) => {
-            let audioStarted = false;
-            
-            const playTimeout = setTimeout(() => {
-                if (!audioStarted) {
-                    console.log('Audio timeout - keeping text visible');
-                    this.currentAudio = null;
-                    URL.revokeObjectURL(audioUrl);
-                    // Keep showing text
-                    if (!showText) {
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                console.log('Received data:', data);
+
+                // Always show text if available
+                if (data.show_text && data.response) {
+                    this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
+                }
+
+                // Check for booking redirect action
+                if (data.action === 'redirect_to_booking') {
+                    console.log('🎯 Booking redirect detected');
+                    
+                    // Play audio if available
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
                     }
+                    
+                    // Show booking form
                     setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, 3000);
+                        this.showInlineBookingForm();
+                    }, 500);
+                    return;
                 }
-            }, 5000); // Give mobile more time
-            
-            this.currentAudio.onplay = () => {
-                audioStarted = true;
-                clearTimeout(playTimeout);
-                this.isPlaying = true;
-                this.updateUI('speaking');
-                if (!showText) {
-                    this.updateStatus('🔊 Rachel is speaking...');
+
+                // Regular responses
+                if (data.audio) {
+                    console.log('Playing Rachel audio response');
+                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                } else if (data.response) {
+                    console.log('Using browser TTS');
+                    await this.playBrowserTTS(data.response);
+                } else {
+                    this.audioFinished();
                 }
-            };
+
+            } catch (error) {
+                clearTimeout(this.processTimeout);
+                this.handleError('Processing error: ' + error.message);
+            }
+        }
+
+        async playPremiumAudio(audioBase64, responseText, showText = false) {
+            console.log('Playing premium audio, showText:', showText);
             
-            this.currentAudio.onended = () => {
-                clearTimeout(playTimeout);
-                // Keep text visible for a moment after audio ends
+            try {
+                // Keep text visible while audio plays
                 if (showText) {
-                    setTimeout(() => {
-                        this.audioFinished();
-                    }, 1500);
-                } else {
-                    this.audioFinished();
+                    this.updateStatus('🔊 ' + responseText.substring(0, 150) + (responseText.length > 150 ? '...' : ''));
                 }
-                URL.revokeObjectURL(audioUrl);
-                resolve();
-            };
-            
-            this.currentAudio.onerror = (error) => {
-                clearTimeout(playTimeout);
-                console.log('Premium audio failed:', error);
-                this.currentAudio = null;
-                URL.revokeObjectURL(audioUrl);
-                
-                // Keep showing text
-                if (!showText) {
-                    this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                }
-                setTimeout(() => {
-                    this.audioFinished();
-                    resolve();
-                }, 3000);
-            };
-            
-            // Attempt to play audio
-            this.currentAudio.play().catch((error) => {
-                clearTimeout(playTimeout);
-                console.log('Audio play failed:', error);
-                
-                // On mobile, clicking might help
-                if (this.isMobile) {
-                    this.updateStatus('📱 Tap anywhere to hear Rachel\'s response...');
-                    
-                    const playOnClick = () => {
-                        this.currentAudio.play().catch(() => {
-                            console.log('Still cannot play audio');
-                        });
-                        document.removeEventListener('click', playOnClick);
-                    };
-                    document.addEventListener('click', playOnClick);
-                    
-                    setTimeout(() => {
-                        document.removeEventListener('click', playOnClick);
-                        this.audioFinished();
-                        resolve();
-                    }, 5000);
-                } else {
-                    this.currentAudio = null;
-                    URL.revokeObjectURL(audioUrl);
-                    if (!showText) {
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                    }
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, 3000);
-                }
-            });
-        });
-        
-    } catch (error) {
-        console.log('Premium audio processing failed:', error);
-        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-        setTimeout(() => {
-            this.audioFinished();
-        }, 3000);
-        return Promise.resolve();
-    }
-}
 
-        async playBrowserTTS(text) {
-            // Skip TTS on mobile
-            if (this.isMobile) {
-                console.log('📱 Skipping TTS on mobile');
-                this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                const audioData = atob(audioBase64);
+                const arrayBuffer = new ArrayBuffer(audioData.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < audioData.length; i++) {
+                    uint8Array[i] = audioData.charCodeAt(i);
+                }
+
+                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                this.currentAudio = new Audio(audioUrl);
+                
+                // For mobile, ensure audio context is active
+                if (this.isMobile && window.AudioContext) {
+                    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    if (audioContext.state === 'suspended') {
+                        await audioContext.resume();
+                    }
+                }
+                
+                return new Promise((resolve) => {
+                    let audioStarted = false;
+                    
+                    const playTimeout = setTimeout(() => {
+                        if (!audioStarted) {
+                            console.log('Audio timeout - fallback to text');
+                            this.currentAudio = null;
+                            URL.revokeObjectURL(audioUrl);
+                            if (!showText) {
+                                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                            }
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, 3000);
+                        }
+                    }, 5000);
+                    
+                    this.currentAudio.onplay = () => {
+                        console.log('Audio started playing');
+                        audioStarted = true;
+                        clearTimeout(playTimeout);
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        if (!showText) {
+                            this.updateStatus('🔊 Rachel is speaking...');
+                        }
+                    };
+                    
+                    this.currentAudio.onended = () => {
+                        console.log('Audio ended');
+                        clearTimeout(playTimeout);
+                        URL.revokeObjectURL(audioUrl);
+                        if (showText) {
+                            setTimeout(() => {
+                                this.audioFinished();
+                            }, 1000);
+                        } else {
+                            this.audioFinished();
+                        }
+                        resolve();
+                    };
+                    
+                    this.currentAudio.onerror = (error) => {
+                        console.error('Audio error:', error);
+                        clearTimeout(playTimeout);
+                        this.currentAudio = null;
+                        URL.revokeObjectURL(audioUrl);
+                        if (!showText) {
+                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                        }
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 3000);
+                    };
+                    
+                    // Play audio
+                    console.log('Attempting to play audio...');
+                    this.currentAudio.play().then(() => {
+                        console.log('Audio playing successfully');
+                    }).catch((error) => {
+                        console.error('Audio play failed:', error);
+                        clearTimeout(playTimeout);
+                        
+                        // Fallback to text display
+                        if (!showText) {
+                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                        }
+                        
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 3000);
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Premium audio processing failed:', error);
+                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
                 setTimeout(() => {
                     this.audioFinished();
-                }, 2000);
+                }, 3000);
                 return Promise.resolve();
             }
+        }
 
+        async playBrowserTTS(text) {
+            console.log('Playing browser TTS');
+            
             return new Promise((resolve) => {
                 try {
                     speechSynthesis.cancel();
                     
                     if (!window.speechSynthesis) {
                         console.log('Speech synthesis not available');
-                        this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                        this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                         setTimeout(() => {
                             this.audioFinished();
                             resolve();
-                        }, 2000);
+                        }, 3000);
                         return;
                     }
                     
@@ -1957,11 +1931,11 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
                     const speechTimeout = setTimeout(() => {
                         if (!speechStarted) {
                             speechSynthesis.cancel();
-                            this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                            this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                             setTimeout(() => {
                                 this.audioFinished();
                                 resolve();
-                            }, 2000);
+                            }, 3000);
                         }
                     }, 2000);
 
@@ -1982,27 +1956,28 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
                     utterance.onerror = (error) => {
                         clearTimeout(speechTimeout);
                         console.log('Browser TTS error:', error);
-                        this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                        this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                         setTimeout(() => {
                             this.audioFinished();
                             resolve();
-                        }, 2000);
+                        }, 3000);
                     };
 
                     speechSynthesis.speak(utterance);
                     
                 } catch (error) {
                     console.log('Browser TTS failed:', error);
-                    this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                    this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                     setTimeout(() => {
                         this.audioFinished();
                         resolve();
-                    }, 2000);
+                    }, 3000);
                 }
             });
         }
 
         audioFinished() {
+            console.log('Audio finished');
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
@@ -2011,11 +1986,7 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
 
         setupEventListeners() {
             this.micBtn.addEventListener('click', () => {
-                if (!this.userInteracted) {
-                    this.userInteracted = true;
-                    this.updateStatus('🎙️ Voice enabled! Say "book appointment" for instant booking');
-                    return;
-                }
+                console.log('Mic button clicked');
                 this.toggleListening();
             });
             
@@ -2051,14 +2022,19 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
         }
 
         startListening() {
-            if (this.isProcessing || !this.recognition) return;
+            if (this.isProcessing || !this.recognition) {
+                console.log('Cannot start: processing or no recognition');
+                return;
+            }
             
             try {
+                console.log('Starting speech recognition...');
                 this.clearError();
                 speechSynthesis.cancel();
                 this.recognition.start();
                 this.stopBtn.disabled = false;
             } catch (error) {
+                console.error('Failed to start:', error);
                 this.handleError('Failed to start listening: ' + error.message);
             }
         }
@@ -2106,13 +2082,13 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
         }
 
         handleError(message) {
+            console.error('Error:', message);
             this.showError(message);
             this.isProcessing = false;
             this.isListening = false;
             this.isPlaying = false;
             this.updateUI('ready');
             
-            // Clear any pending timeouts
             if (this.processTimeout) {
                 clearTimeout(this.processTimeout);
                 this.processTimeout = null;
@@ -2137,14 +2113,11 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
             const overlay = document.getElementById('bookingFormOverlay');
             const dateInput = document.getElementById('inlineAppointmentDate');
             
-            // Set minimum date to today
             const today = new Date().toISOString().split('T')[0];
             dateInput.min = today;
             
-            // Show the overlay
             overlay.style.display = 'flex';
             
-            // Focus on first input (desktop only)
             if (!this.isMobile) {
                 setTimeout(() => {
                     document.getElementById('inlineCustomerName').focus();
@@ -2158,7 +2131,6 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
             this.stopAudio();
             if (this.isListening) this.stopListening();
             
-            // Clear any pending timeouts
             if (this.processTimeout) {
                 clearTimeout(this.processTimeout);
                 this.processTimeout = null;
@@ -2170,7 +2142,6 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
             this.updateUI('ready');
             this.clearError();
             
-            // Close booking form if open
             const overlay = document.getElementById('bookingFormOverlay');
             if (overlay) overlay.style.display = 'none';
             
@@ -2182,12 +2153,13 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
     document.addEventListener('DOMContentLoaded', () => {
         try {
             window.voiceBot = new EnhancedVoiceBot();
+            console.log('Voice bot initialized successfully');
         } catch (error) {
             console.error('Failed to create voice bot:', error);
         }
     });
 
-    // Rest of your existing global functions remain the same...
+    // Keep the rest of your existing functions for the booking form...
     let selectedInlineTimeSlot = null;
 
     function closeBookingForm() {
@@ -2340,878 +2312,18 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
     function showInlineBookingError(message) {
         const form = document.getElementById('inlineBookingForm');
         
-        // Remove existing error messages
         const existingError = form.querySelector('.error-message');
         if (existingError) existingError.remove();
         
-        // Add error message
         const errorDiv = document.createElement('div');
         errorDiv.className = 'error-message';
         errorDiv.style.cssText = 'background: linear-gradient(135deg, #ffebee, #ffcdd2); border: 2px solid #f44336; color: #c62828; padding: 15px; border-radius: 12px; margin: 15px 0;';
         errorDiv.innerHTML = `<strong>❌ Error:</strong><br>${message}`;
         
         form.insertBefore(errorDiv, form.firstChild);
-        
-        // Scroll error into view
         errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 </script>
-</body>
-</html>
-'''
-
-CHAT_HTML_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RinglyPro Chat Assistant</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        
-        .chat-container {
-            width: 100%;
-            max-width: 500px;
-            height: 600px;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            position: relative;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #2196F3, #1976D2);
-            color: white;
-            padding: 20px;
-            text-align: center;
-            position: relative;
-        }
-        
-        .interface-switcher {
-            position: absolute;
-            top: 15px;
-            right: 15px;
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            border-radius: 12px;
-            color: white;
-            padding: 8px 12px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.3s ease;
-        }
-        
-        .interface-switcher:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        .header h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin-bottom: 5px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-            font-size: 0.9rem;
-        }
-        
-        .chat-messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background: white;
-        }
-        
-        .message {
-            margin-bottom: 15px;
-            max-width: 85%;
-            animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .message.user {
-            margin-left: auto;
-        }
-        
-        .message-content {
-            padding: 12px 16px;
-            border-radius: 18px;
-            font-size: 14px;
-            line-height: 1.4;
-        }
-        
-        .message.bot .message-content {
-            background: #f1f3f4;
-            color: #333;
-            border-bottom-left-radius: 6px;
-        }
-        
-        .message.user .message-content {
-            background: #2196F3;
-            color: white;
-            text-align: right;
-            border-bottom-right-radius: 6px;
-        }
-        
-        .input-area {
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-        }
-        
-        .input-container {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-        
-        .input-container input {
-            flex: 1;
-            padding: 12px 16px;
-            border: 2px solid #e0e0e0;
-            border-radius: 25px;
-            outline: none;
-            font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .input-container input:focus {
-            border-color: #2196F3;
-        }
-        
-        .send-btn {
-            width: 45px;
-            height: 45px;
-            background: #2196F3;
-            border: none;
-            border-radius: 50%;
-            color: white;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
-            font-size: 18px;
-        }
-        
-        .send-btn:hover {
-            background: #1976D2;
-            transform: scale(1.05);
-        }
-        
-        .phone-form { 
-            background: #fff3e0; 
-            border: 2px solid #ff9800; 
-            border-radius: 12px; 
-            padding: 15px; 
-            margin: 10px 0;
-        }
-        
-        .phone-form h4 { color: #e65100; margin-bottom: 8px; font-size: 14px; }
-        .phone-form p { color: #bf360c; margin-bottom: 12px; font-size: 13px; }
-        
-        .phone-inputs { display: flex; gap: 8px; margin-top: 10px; }
-        
-        .phone-inputs input { 
-            flex: 1; 
-            padding: 10px; 
-            border: 1px solid #ff9800; 
-            border-radius: 8px; 
-            background: white;
-            color: #333;
-            outline: none;
-        }
-        
-        .phone-inputs input::placeholder {
-            color: #999;
-        }
-        
-        .phone-btn { 
-            padding: 10px 16px; 
-            background: #4caf50; 
-            color: white; 
-            border: none; 
-            border-radius: 8px; 
-            cursor: pointer;
-        }
-        
-        .success { 
-            background: #e8f5e8; 
-            border: 2px solid #4caf50; 
-            color: #2e7d32; 
-            padding: 12px; 
-            border-radius: 8px; 
-            margin: 10px 0;
-        }
-        
-        .error { 
-            background: #ffebee; 
-            border: 2px solid #f44336; 
-            color: #c62828; 
-            padding: 12px; 
-            border-radius: 8px; 
-            margin: 10px 0;
-        }
-
-        .chat::-webkit-scrollbar {
-            width: 4px;
-        }
-        
-        .chat::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-        
-        .chat::-webkit-scrollbar-thumb {
-            background: #c1c1c1;
-            border-radius: 2px;
-        }
-        
-        .chat::-webkit-scrollbar-thumb:hover {
-            background: #a1a1a1;
-        }
-    </style>
-</head>
-<body>
-    <div class="chat-container">
-        <div class="header">
-            <button class="interface-switcher" onclick="window.location.href='/'">🎤 Voice Chat</button>
-            <h1>💬 RinglyPro Assistant</h1>
-            <p>Ask me anything about our services!</p>
-        </div>
-        
-        <div class="chat-messages" id="chatMessages">
-            <div class="message bot">
-                <div class="message-content">
-                    👋 Hello! I'm your RinglyPro assistant. Ask me about our services, pricing, features, or how to get started. If I can't answer your question, I'll connect you with our customer service team!
-                </div>
-            </div>
-        </div>
-        
-        <div class="input-area">
-            <div class="input-container">
-                <input type="text" id="userInput" placeholder="Ask about RinglyPro services..." onkeypress="handleKeyPress(event)">
-                <button class="send-btn" onclick="sendMessage()">→</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let isWaitingForResponse = false;
-
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !isWaitingForResponse) {
-                sendMessage();
-            }
-        }
-
-        function sendMessage() {
-            if (isWaitingForResponse) return;
-            
-            const input = document.getElementById('userInput');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            addMessage(message, 'user');
-            input.value = '';
-            showTypingIndicator();
-            
-            isWaitingForResponse = true;
-            
-            fetch('/chat', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ message: message })
-            })
-            .then(response => response.json())
-            .then(data => {
-                hideTypingIndicator();
-                addMessage(data.response, 'bot');
-                
-                if (data.needs_phone_collection) {
-                    setTimeout(() => showPhoneForm(), 500);
-                }
-                
-                isWaitingForResponse = false;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                hideTypingIndicator();
-                addMessage('Sorry, there was an error processing your request. Please try again.', 'bot');
-                isWaitingForResponse = false;
-            });
-        }
-
-        function addMessage(message, sender) {
-            const chatMessages = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.textContent = message;
-            
-            messageDiv.appendChild(contentDiv);
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function showTypingIndicator() {
-            const chatMessages = document.getElementById('chatMessages');
-            const typingDiv = document.createElement('div');
-            typingDiv.id = 'typingIndicator';
-            typingDiv.className = 'typing-indicator';
-            typingDiv.innerHTML = `
-                RinglyPro is typing
-                <div class="typing-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            `;
-            chatMessages.appendChild(typingDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function hideTypingIndicator() {
-            const typingIndicator = document.getElementById('typingIndicator');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
-        }
-
-        function showPhoneForm() {
-            const chatMessages = document.getElementById('chatMessages');
-            const phoneFormDiv = document.createElement('div');
-            phoneFormDiv.className = 'phone-form';
-            phoneFormDiv.innerHTML = `
-                <h4>📞 Let's connect you with our team!</h4>
-                <p>Please enter your phone number so our customer service team can provide personalized assistance:</p>
-                <div class="phone-inputs">
-                    <input type="tel" id="phoneInput" placeholder="(555) 123-4567" style="flex: 1;">
-                    <button class="phone-btn" onclick="submitPhone()">Submit</button>
-                </div>
-            `;
-            chatMessages.appendChild(phoneFormDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-            
-            setTimeout(() => {
-                const phoneInput = document.getElementById('phoneInput');
-                if (phoneInput) phoneInput.focus();
-            }, 100);
-        }
-
-        function submitPhone() {
-            const phoneInput = document.getElementById('phoneInput');
-            const phoneNumber = phoneInput.value.trim();
-            
-            if (!phoneNumber) {
-                alert('Please enter a phone number.');
-                return;
-            }
-            
-            fetch('/submit_phone', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                    phone: phoneNumber,
-                    last_question: sessionStorage.getItem('lastQuestion') || 'Chat inquiry'
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                const chatMessages = document.getElementById('chatMessages');
-                
-                const responseDiv = document.createElement('div');
-                responseDiv.className = data.success ? 'success-message' : 'error-message';
-                responseDiv.innerHTML = `
-                    <strong>${data.success ? '✅ Success!' : '❌ Error:'}</strong><br>
-                    ${data.message}
-                `;
-                chatMessages.appendChild(responseDiv);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('There was an error submitting your phone number. Please try again.');
-            });
-        }
-
-        // Store last question for context
-        document.getElementById('userInput').addEventListener('input', function() {
-            sessionStorage.setItem('lastQuestion', this.value);
-        });
-    </script>
-</body>
-</html>
-'''
-
-ENHANCED_CHAT_TEMPLATE = '''
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RinglyPro Appointment Assistant</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh; display: flex; justify-content: center; align-items: center;
-        }
-        
-        .chat-container {
-            width: 100%; max-width: 500px; height: 600px;
-            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(20px);
-            border-radius: 20px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            display: flex; flex-direction: column; overflow: hidden; position: relative;
-        }
-        
-        .header {
-            background: linear-gradient(135deg, #2196F3, #1976D2); color: white;
-            padding: 20px; text-align: center; position: relative;
-        }
-        
-        .interface-switcher {
-            position: absolute; top: 15px; right: 15px;
-            background: rgba(255, 255, 255, 0.2); border: none; border-radius: 12px;
-            color: white; padding: 8px 12px; cursor: pointer; font-size: 12px;
-            transition: all 0.3s ease;
-        }
-        
-        .interface-switcher:hover { background: rgba(255, 255, 255, 0.3); }
-        
-        .header h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 5px; }
-        .header p { opacity: 0.9; font-size: 0.9rem; }
-        
-        .chat-messages {
-            flex: 1; padding: 20px; overflow-y: auto; background: white;
-        }
-        
-        .message {
-            margin-bottom: 15px; max-width: 85%; animation: fadeIn 0.3s ease;
-        }
-        
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .message.user { margin-left: auto; }
-        
-        .message-content {
-            padding: 12px 16px; border-radius: 18px; font-size: 14px; line-height: 1.4;
-        }
-        
-        .message.bot .message-content {
-            background: #f1f3f4; color: #333; border-bottom-left-radius: 6px;
-        }
-        
-        .message.user .message-content {
-            background: #2196F3; color: white; text-align: right; border-bottom-right-radius: 6px;
-        }
-        
-        .booking-form {
-            background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-            border: 2px solid #2196f3; border-radius: 15px; padding: 20px; margin: 15px 0;
-            animation: slideIn 0.5s ease;
-        }
-        
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .booking-form h4 { color: #0d47a1; margin-bottom: 15px; font-size: 16px; }
-        
-        .form-group { margin-bottom: 15px; }
-        
-        .form-group label {
-            display: block; margin-bottom: 5px; color: #1565c0; font-weight: 600;
-        }
-        
-        .form-group input, .form-group select, .form-group textarea {
-            width: 100%; padding: 10px 12px; border: 2px solid #2196f3;
-            border-radius: 10px; outline: none; font-size: 14px;
-        }
-        
-        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
-            border-color: #1976d2;
-        }
-        
-        .date-time-row { display: flex; gap: 10px; }
-        .date-time-row .form-group { flex: 1; }
-        
-        .available-slots {
-            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;
-        }
-        
-        .time-slot {
-            padding: 8px 12px; background: #e3f2fd; border: 2px solid #2196f3;
-            border-radius: 8px; cursor: pointer; font-size: 12px; color: #1565c0;
-            transition: all 0.3s ease;
-        }
-        
-        .time-slot:hover, .time-slot.selected {
-            background: #2196f3; color: white;
-        }
-        
-        .booking-btn {
-            width: 100%; padding: 12px; background: #4caf50; color: white;
-            border: none; border-radius: 10px; cursor: pointer; font-weight: 600;
-            font-size: 16px; transition: all 0.3s ease;
-        }
-        
-        .booking-btn:hover { background: #45a049; transform: translateY(-1px); }
-        
-        .confirmation {
-            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
-            border: 2px solid #4caf50; color: #2e7d32; padding: 20px;
-            border-radius: 12px; margin: 15px 0; animation: slideIn 0.5s ease;
-        }
-        
-        .confirmation h4 { margin-bottom: 10px; }
-        .confirmation .details { background: white; padding: 15px; border-radius: 8px; margin-top: 10px; }
-        
-        .input-area {
-            padding: 20px; background: white; border-top: 1px solid #e0e0e0;
-        }
-        
-        .input-container { display: flex; gap: 10px; align-items: center; }
-        
-        .input-container input {
-            flex: 1; padding: 12px 16px; border: 2px solid #e0e0e0;
-            border-radius: 25px; outline: none; font-size: 14px;
-            transition: border-color 0.3s ease;
-        }
-        
-        .input-container input:focus { border-color: #2196F3; }
-        
-        .send-btn {
-            width: 45px; height: 45px; background: #2196F3; border: none;
-            border-radius: 50%; color: white; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            transition: all 0.3s ease; font-size: 18px;
-        }
-        
-        .send-btn:hover { background: #1976D2; transform: scale(1.05); }
-        
-        .error-message {
-            background: linear-gradient(135deg, #ffebee, #ffcdd2);
-            border: 2px solid #f44336; color: #c62828; padding: 15px;
-            border-radius: 12px; margin: 15px 0; animation: slideIn 0.5s ease;
-        }
-        
-        @media (max-width: 600px) {
-            body { padding: 10px; }
-            .chat-container { height: calc(100vh - 20px); }
-            .date-time-row { flex-direction: column; }
-        }
-    </style>
-</head>
-<body>
-    <div class="chat-container">
-        <div class="header">
-            <button class="interface-switcher" onclick="window.location.href='/'">🎤 Voice Chat</button>
-            <h1>📅 RinglyPro Booking</h1>
-            <p>Schedule appointments & get answers!</p>
-        </div>
-        
-        <div class="chat-messages" id="chatMessages">
-            <div class="message bot">
-                <div class="message-content">
-                    👋 Welcome! I can help you schedule an appointment or answer questions about RinglyPro services. 
-                    Just say "book appointment" to get started, or ask me anything!
-                </div>
-            </div>
-        </div>
-        
-        <div class="input-area">
-            <div class="input-container">
-                <input type="text" id="userInput" placeholder="Try: 'Book an appointment' or ask about services..." onkeypress="handleKeyPress(event)">
-                <button class="send-btn" onclick="sendMessage()">→</button>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        let isWaitingForResponse = false;
-        let bookingStep = 'none';
-        let bookingData = {};
-        let selectedTimeSlot = null;
-
-        function handleKeyPress(event) {
-            if (event.key === 'Enter' && !isWaitingForResponse) {
-                sendMessage();
-            }
-        }
-
-        function sendMessage() {
-            if (isWaitingForResponse) return;
-            
-            const input = document.getElementById('userInput');
-            const message = input.value.trim();
-            
-            if (!message) return;
-            
-            addMessage(message, 'user');
-            input.value = '';
-            
-            isWaitingForResponse = true;
-            
-            console.log('📤 Sending message:', message);
-            console.log('📊 Current booking step:', bookingStep);
-            
-            fetch('/chat-enhanced', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    message: message,
-                    booking_step: bookingStep,
-                    booking_data: bookingData
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                console.log('📨 Received response:', data);
-                addMessage(data.response, 'bot');
-                
-                if (data.action === 'start_booking') {
-                    console.log('🚀 Starting booking process');
-                    setTimeout(() => showBookingForm(), 500);
-                } else if (data.action === 'show_slots') {
-                    setTimeout(() => showAvailableSlots(data.slots, data.date), 500);
-                } else if (data.action === 'booking_success') {
-                    setTimeout(() => showBookingConfirmation(data.appointment), 500);
-                } else {
-                    console.log('ℹ️ No special action needed, action was:', data.action);
-                }
-                
-                // Update booking step for conversation context
-                if (data.booking_step) {
-                    bookingStep = data.booking_step;
-                    console.log('📊 Updated booking step to:', bookingStep);
-                }
-                
-                isWaitingForResponse = false;
-            })
-            .catch(error => {
-                console.error('❌ Error:', error);
-                addMessage('Sorry, there was an error processing your request. Please try again.', 'bot');
-                isWaitingForResponse = false;
-            });
-        }
-
-        function addMessage(message, sender) {
-            const chatMessages = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-            contentDiv.textContent = message;
-            
-            messageDiv.appendChild(contentDiv);
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function showBookingForm() {
-            const chatMessages = document.getElementById('chatMessages');
-            const bookingDiv = document.createElement('div');
-            bookingDiv.className = 'booking-form';
-            bookingDiv.innerHTML = `
-                <h4>📅 Schedule Your Appointment</h4>
-                <div class="form-group">
-                    <label>Full Name *</label>
-                    <input type="text" id="customerName" placeholder="Your full name" required>
-                </div>
-                <div class="form-group">
-                    <label>Email Address *</label>
-                    <input type="email" id="customerEmail" placeholder="your@email.com" required>
-                </div>
-                <div class="form-group">
-                    <label>Phone Number *</label>
-                    <input type="tel" id="customerPhone" placeholder="(555) 123-4567" required>
-                </div>
-                <div class="form-group">
-                    <label>Preferred Date *</label>
-                    <input type="date" id="appointmentDate" min="${new Date().toISOString().split('T')[0]}" onchange="loadAvailableSlots()" required>
-                </div>
-                <div class="form-group">
-                    <label>What would you like to discuss?</label>
-                    <textarea id="appointmentPurpose" placeholder="Brief description of your needs..." rows="3"></textarea>
-                </div>
-                <div id="timeSlotsContainer" style="display: none;">
-                    <label>Available Times *</label>
-                    <div id="availableSlots" class="available-slots"></div>
-                </div>
-                <button class="booking-btn" onclick="submitBooking()">Book Appointment</button>
-            `;
-            chatMessages.appendChild(bookingDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function loadAvailableSlots() {
-            const date = document.getElementById('appointmentDate').value;
-            if (!date) return;
-            
-            fetch('/get-available-slots', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ date: date })
-            })
-            .then(response => response.json())
-            .then(data => {
-                const container = document.getElementById('timeSlotsContainer');
-                const slotsDiv = document.getElementById('availableSlots');
-                
-                if (data.slots && data.slots.length > 0) {
-                    slotsDiv.innerHTML = '';
-                    data.slots.forEach(slot => {
-                        const slotBtn = document.createElement('div');
-                        slotBtn.className = 'time-slot';
-                        slotBtn.textContent = formatTime(slot);
-                        slotBtn.onclick = () => selectTimeSlot(slot, slotBtn);
-                        slotsDiv.appendChild(slotBtn);
-                    });
-                    container.style.display = 'block';
-                } else {
-                    slotsDiv.innerHTML = '<p style="color: #f44336;">No available slots for this date. Please choose another date.</p>';
-                    container.style.display = 'block';
-                }
-            })
-            .catch(error => {
-                console.error('Error loading slots:', error);
-            });
-        }
-
-        function selectTimeSlot(time, element) {
-            document.querySelectorAll('.time-slot').forEach(slot => slot.classList.remove('selected'));
-            element.classList.add('selected');
-            selectedTimeSlot = time;
-        }
-
-        function formatTime(time) {
-            const [hours, minutes] = time.split(':');
-            const hour = parseInt(hours);
-            const ampm = hour >= 12 ? 'PM' : 'AM';
-            const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
-            return `${displayHour}:${minutes} ${ampm}`;
-        }
-
-        function submitBooking() {
-            const name = document.getElementById('customerName').value.trim();
-            const email = document.getElementById('customerEmail').value.trim();
-            const phone = document.getElementById('customerPhone').value.trim();
-            const date = document.getElementById('appointmentDate').value;
-            const purpose = document.getElementById('appointmentPurpose').value.trim();
-            
-            if (!name || !email || !phone || !date || !selectedTimeSlot) {
-                alert('Please fill in all required fields and select a time slot.');
-                return;
-            }
-            
-            const bookingData = {
-                name: name,
-                email: email,
-                phone: phone,
-                date: date,
-                time: selectedTimeSlot,
-                purpose: purpose || 'General consultation'
-            };
-            
-            fetch('/book-appointment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bookingData)
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    showBookingConfirmation(data.appointment);
-                } else {
-                    showError(data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Booking error:', error);
-                showError('There was an error booking your appointment. Please try again.');
-            });
-        }
-
-        function showBookingConfirmation(appointment) {
-            const chatMessages = document.getElementById('chatMessages');
-            const confirmDiv = document.createElement('div');
-            confirmDiv.className = 'confirmation';
-            
-            const date = new Date(appointment.date + 'T' + appointment.time);
-            const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-            const formattedDate = date.toLocaleDateString('en-US', options);
-            const formattedTime = formatTime(appointment.time);
-            
-            confirmDiv.innerHTML = `
-                <h4>✅ Appointment Confirmed!</h4>
-                <p>Your appointment has been successfully scheduled.</p>
-                <div class="details">
-                    <strong>📅 Date:</strong> ${formattedDate}<br>
-                    <strong>🕐 Time:</strong> ${formattedTime} EST<br>
-                    <strong>👤 Name:</strong> ${appointment.customer_name}<br>
-                    <strong>📧 Email:</strong> ${appointment.customer_email}<br>
-                    <strong>📞 Phone:</strong> ${appointment.customer_phone}<br>
-                    <strong>🔗 Zoom:</strong> <a href="${appointment.zoom_url}" target="_blank">Join Meeting</a><br>
-                    <strong>📋 Confirmation:</strong> ${appointment.confirmation_code}<br>
-                    <strong>💬 Purpose:</strong> ${appointment.purpose}
-                </div>
-                <p style="margin-top: 10px; font-size: 14px; color: #666;">
-                    You'll receive email and SMS confirmations shortly. Save your confirmation code for any changes needed.
-                </p>
-            `;
-            
-            chatMessages.appendChild(confirmDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
-        function showError(message) {
-            const chatMessages = document.getElementById('chatMessages');
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.innerHTML = `<strong>❌ Error:</strong><br>${message}`;
-            chatMessages.appendChild(errorDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-    </script>
 </body>
 </html>
 '''
@@ -3489,7 +2601,7 @@ def process_text_enhanced():
                 "response": "I think I heard an echo. Please speak again.",
                 "language": user_language,
                 "context": "clarification",
-                "show_text": is_mobile  # Show text on mobile
+                "show_text": is_mobile
             })
         
         if not user_text or len(user_text) < 2:
@@ -3513,15 +2625,15 @@ def process_text_enhanced():
             logger.info("🎯 Booking intent detected in voice!")
             booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
             
-            # Try to generate premium audio with Rachel's voice (even on mobile)
+            # Try to generate premium audio with Rachel's voice
             audio_data = None
             engine_used = "browser_fallback"
             
             if elevenlabs_api_key:
                 try:
-                    # Rachel's voice ID in ElevenLabs
-                    rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
-                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{rachel_voice_id}"
+                    # Use Rachel's voice - correct voice ID
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # This is Rachel's voice
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
                     
                     headers = {
                         "Accept": "audio/mpeg",
@@ -3531,30 +2643,25 @@ def process_text_enhanced():
                     
                     tts_data = {
                         "text": booking_response,
-                        "model_id": "eleven_turbo_v2_5" if is_mobile else "eleven_multilingual_v2",
+                        "model_id": "eleven_monolingual_v1",  # Better for English
                         "voice_settings": {
-                            "stability": 0.75,
-                            "similarity_boost": 0.85,
-                            "style": 0.2,
-                            "use_speaker_boost": True
+                            "stability": 0.5,
+                            "similarity_boost": 0.75
                         }
                     }
                     
-                    # Optimize for mobile
-                    if is_mobile:
-                        tts_data["optimize_streaming_latency"] = 4
-                        tts_data["output_format"] = "mp3_22050_32"  # Lower quality for faster loading
-                    
-                    timeout = 5 if is_mobile else 10
+                    timeout = 10
                     tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                     
                     if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                         audio_data = base64.b64encode(tts_response.content).decode('utf-8')
                         engine_used = "elevenlabs_rachel"
                         logger.info("✅ Rachel's voice audio generated successfully")
+                    else:
+                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
                     
                 except Exception as tts_error:
-                    logger.error(f"❌ ElevenLabs error: {tts_error}")
+                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
             
             response_payload = {
                 "response": booking_response,
@@ -3562,7 +2669,7 @@ def process_text_enhanced():
                 "context": "booking_redirect",
                 "action": "redirect_to_booking",
                 "engine_used": engine_used,
-                "show_text": is_mobile  # Always show text on mobile
+                "show_text": True  # Always show text
             }
             
             if audio_data:
@@ -3578,15 +2685,15 @@ def process_text_enhanced():
         response_text = faq_response
         context = "professional" if is_faq else "friendly"
         
-        # Try to generate premium audio with Rachel's voice for all responses
+        # Try to generate premium audio with Rachel's voice
         audio_data = None
         engine_used = "browser_fallback"
         
         if elevenlabs_api_key:
             try:
                 # Rachel's voice ID
-                rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
-                url = f"https://api.elevenlabs.io/v1/text-to-speech/{rachel_voice_id}"
+                voice_id = "21m00Tcm4TlvDq8ikWAM"
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
                 
                 headers = {
                     "Accept": "audio/mpeg",
@@ -3601,32 +2708,25 @@ def process_text_enhanced():
                 
                 tts_data = {
                     "text": speech_text,
-                    "model_id": "eleven_turbo_v2_5" if is_mobile else "eleven_multilingual_v2",
+                    "model_id": "eleven_monolingual_v1",  # Better for English
                     "voice_settings": {
-                        "stability": 0.75,
-                        "similarity_boost": 0.85,
-                        "style": 0.2,
-                        "use_speaker_boost": True
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
                     }
                 }
                 
-                # Optimize for mobile
-                if is_mobile:
-                    tts_data["optimize_streaming_latency"] = 4
-                    tts_data["output_format"] = "mp3_22050_32"  # Lower quality for faster loading
-                
-                timeout = 5 if is_mobile else 10
+                timeout = 10
                 tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
                 
                 if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                     audio_data = base64.b64encode(tts_response.content).decode('utf-8')
                     engine_used = "elevenlabs_rachel"
-                    logger.info("✅ Rachel's voice audio generated successfully")
+                    logger.info(f"✅ Rachel's voice audio generated ({len(tts_response.content)} bytes)")
                 else:
-                    logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                    logger.warning(f"⚠️ ElevenLabs failed: Status {tts_response.status_code}")
                     
             except Exception as tts_error:
-                logger.error(f"❌ ElevenLabs error: {tts_error}")
+                logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
         
         response_payload = {
             "response": response_text,
@@ -3634,12 +2734,12 @@ def process_text_enhanced():
             "context": context,
             "is_faq": is_faq,
             "engine_used": engine_used,
-            "show_text": is_mobile  # Always show text on mobile
+            "show_text": True  # Always show text
         }
         
         if audio_data:
             response_payload["audio"] = audio_data
-            logger.info("✅ Response with Rachel's voice")
+            logger.info("✅ Response with Rachel's voice audio")
         else:
             logger.info("✅ Response with browser TTS fallback")
         
