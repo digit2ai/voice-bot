@@ -1627,6 +1627,7 @@ VOICE_HTML_TEMPLATE = '''
 
 <script>
     // Enhanced Voice Interface JavaScript
+// Enhanced Voice Interface JavaScript
     class EnhancedVoiceBot {
         constructor() {
             this.micBtn = document.getElementById('micBtn');
@@ -1646,7 +1647,7 @@ VOICE_HTML_TEMPLATE = '''
             this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             this.processTimeout = null;
             this.audioContext = null;
-            this.recognitionTimeout = null;
+            this.recognitionTimeout = null; // Add this
             
             // Initialize audio context on first user interaction (mobile)
             if (this.isMobile) {
@@ -1692,14 +1693,8 @@ VOICE_HTML_TEMPLATE = '''
             
             this.recognition = new SpeechRecognition();
             this.recognition.continuous = false;
-            this.recognition.interimResults = true;  // Enable interim results
+            this.recognition.interimResults = false;
             this.recognition.lang = this.currentLanguage;
-            this.recognition.maxAlternatives = 1;
-            
-            // Add timeout settings for mobile
-            if (this.isMobile) {
-                this.recognition.continuous = true;  // Keep listening on mobile
-            }
 
             this.recognition.onstart = () => {
                 console.log('Recognition started');
@@ -1711,55 +1706,29 @@ VOICE_HTML_TEMPLATE = '''
             this.recognition.onresult = (event) => {
                 console.log('Recognition result received');
                 if (event.results && event.results.length > 0) {
-                    const lastResult = event.results[event.results.length - 1];
-                    if (lastResult.isFinal) {
-                        const transcript = lastResult[0].transcript.trim();
-                        console.log('Final transcript:', transcript);
-                        
-                        // Stop recognition after getting final result
-                        if (this.isMobile && this.recognition) {
-                            this.recognition.stop();
-                        }
-                        
-                        this.processTranscript(transcript);
-                    } else {
-                        // Show interim results to user
-                        console.log('Interim transcript:', lastResult[0].transcript);
-                        this.updateStatus('🎤 ' + lastResult[0].transcript + '...');
-                    }
+                    const transcript = event.results[0][0].transcript.trim();
+                    console.log('Transcript:', transcript);
+                    this.processTranscript(transcript);
                 }
             };
 
             this.recognition.onerror = (event) => {
                 console.error('Recognition error:', event.error);
                 
-                // Handle no-speech error specifically
+                // Handle no-speech error gracefully
                 if (event.error === 'no-speech') {
-                    console.log('No speech detected, ready to try again');
                     this.isListening = false;
                     this.updateUI('ready');
                     this.updateStatus('🎙️ No speech detected. Tap to try again');
-                    // Clear timeout if exists
-                    if (this.recognitionTimeout) {
-                        clearTimeout(this.recognitionTimeout);
-                        this.recognitionTimeout = null;
-                    }
-                    // Don't show error message for no-speech
                     return;
                 }
                 
-                // Handle other errors
                 this.handleError('Speech recognition error: ' + event.error);
             };
 
             this.recognition.onend = () => {
                 console.log('Recognition ended');
                 this.isListening = false;
-                // Clear timeout if exists
-                if (this.recognitionTimeout) {
-                    clearTimeout(this.recognitionTimeout);
-                    this.recognitionTimeout = null;
-                }
                 if (!this.isProcessing) {
                     this.updateUI('ready');
                     this.updateStatus('🎙️ Tap to talk');
@@ -2060,69 +2029,24 @@ VOICE_HTML_TEMPLATE = '''
         }
 
         async playBrowserTTS(text) {
-            console.log('Playing browser TTS');
-            
+            // Browser TTS fallback - simplified version
             return new Promise((resolve) => {
                 try {
-                    speechSynthesis.cancel();
-                    
-                    if (!window.speechSynthesis) {
-                        console.log('Speech synthesis not available');
-                        this.updateStatus('💬 ' + text.substring(0, 150) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 3000);
-                        return;
-                    }
-                    
                     const utterance = new SpeechSynthesisUtterance(text);
                     utterance.lang = this.currentLanguage;
-                    utterance.rate = 0.9;
-                    utterance.pitch = 1.0;
-                    utterance.volume = 0.8;
-                    
-                    let speechStarted = false;
-                    
-                    const speechTimeout = setTimeout(() => {
-                        if (!speechStarted) {
-                            speechSynthesis.cancel();
-                            this.updateStatus('💬 ' + text.substring(0, 150) + '...');
-                            setTimeout(() => {
-                                this.audioFinished();
-                                resolve();
-                            }, 3000);
-                        }
-                    }, 2000);
-
-                    utterance.onstart = () => {
-                        speechStarted = true;
-                        clearTimeout(speechTimeout);
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        this.updateStatus('🔊 Speaking...');
-                    };
-
                     utterance.onend = () => {
-                        clearTimeout(speechTimeout);
                         this.audioFinished();
                         resolve();
                     };
-
-                    utterance.onerror = (error) => {
-                        clearTimeout(speechTimeout);
-                        console.log('Browser TTS error:', error);
+                    utterance.onerror = () => {
                         this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                         setTimeout(() => {
                             this.audioFinished();
                             resolve();
                         }, 3000);
                     };
-
                     speechSynthesis.speak(utterance);
-                    
                 } catch (error) {
-                    console.log('Browser TTS failed:', error);
                     this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                     setTimeout(() => {
                         this.audioFinished();
@@ -2186,22 +2110,6 @@ VOICE_HTML_TEMPLATE = '''
             try {
                 console.log('Starting speech recognition...');
                 
-                // Request microphone permission explicitly on mobile
-                if (this.isMobile && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    try {
-                        console.log('Requesting microphone permission...');
-                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        console.log('Microphone permission granted');
-                        
-                        // Stop the stream immediately - we just needed permission
-                        stream.getTracks().forEach(track => track.stop());
-                    } catch (err) {
-                        console.error('Microphone permission denied:', err);
-                        this.handleError('Microphone permission denied. Please allow microphone access.');
-                        return;
-                    }
-                }
-                
                 // Ensure audio context is active on mobile
                 if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
                     await this.audioContext.resume();
@@ -2210,21 +2118,8 @@ VOICE_HTML_TEMPLATE = '''
                 
                 this.clearError();
                 speechSynthesis.cancel();
-                
-                // Start recognition
                 this.recognition.start();
                 this.stopBtn.disabled = false;
-                
-                // Add a timeout for mobile to stop if no speech detected
-                if (this.isMobile) {
-                    this.recognitionTimeout = setTimeout(() => {
-                        if (this.isListening && !this.isProcessing) {
-                            console.log('Recognition timeout on mobile');
-                            this.recognition.stop();
-                            this.updateStatus('🎙️ Timeout. Tap to try again');
-                        }
-                    }, 10000); // 10 seconds timeout
-                }
                 
             } catch (error) {
                 console.error('Failed to start:', error);
@@ -2235,12 +2130,6 @@ VOICE_HTML_TEMPLATE = '''
         stopListening() {
             if (this.isListening && this.recognition) {
                 this.recognition.stop();
-            }
-            
-            // Clear recognition timeout if exists
-            if (this.recognitionTimeout) {
-                clearTimeout(this.recognitionTimeout);
-                this.recognitionTimeout = null;
             }
         }
 
@@ -2293,11 +2182,6 @@ VOICE_HTML_TEMPLATE = '''
                 this.processTimeout = null;
             }
             
-            if (this.recognitionTimeout) {
-                clearTimeout(this.recognitionTimeout);
-                this.recognitionTimeout = null;
-            }
-            
             setTimeout(() => {
                 this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to try again');
             }, 3000);
@@ -2340,11 +2224,6 @@ VOICE_HTML_TEMPLATE = '''
                 this.processTimeout = null;
             }
             
-            if (this.recognitionTimeout) {
-                clearTimeout(this.recognitionTimeout);
-                this.recognitionTimeout = null;
-            }
-            
             this.isProcessing = false;
             this.isListening = false;
             this.isPlaying = false;
@@ -2367,6 +2246,12 @@ VOICE_HTML_TEMPLATE = '''
             console.error('Failed to create voice bot:', error);
         }
     });
+
+    // [Keep all the existing booking form functions below - don't change them]
+    // let selectedInlineTimeSlot = null;
+    // function closeBookingForm() { ... }
+    // function loadInlineAvailableSlots() { ... }
+    // etc...
 
     // Keep the rest of your existing functions for the booking form...
     let selectedInlineTimeSlot = null;
