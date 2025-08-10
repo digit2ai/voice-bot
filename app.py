@@ -3685,6 +3685,277 @@ def process_text_enhanced():
         logger.error(f"❌ Processing error: {e}")
         return jsonify({"error": "I had a technical issue. Please try again."}), 500
 
+# ==================== TELEPHONY WEBHOOK ROUTES ====================
+
+@app.route('/phone/webhook', methods=['POST'])
+@validate_twilio_request
+def phone_webhook():
+    """Main entry point for incoming phone calls"""
+    try:
+        logger.info("📞 Incoming phone call received")
+        
+        # Get call details from Twilio
+        from_number = request.form.get('From', 'Unknown')
+        to_number = request.form.get('To', '')
+        call_sid = request.form.get('CallSid', '')
+        
+        logger.info(f"Call from {from_number} to {to_number} (SID: {call_sid})")
+        
+        # Log the call in database
+        try:
+            conn = sqlite3.connect('ringlypro.db')
+            cursor = conn.cursor()
+            cursor.execute('''INSERT INTO inquiries (phone, question, source, notes)
+                             VALUES (?, ?, ?, ?)''',
+                          (from_number, 'Incoming phone call', 'phone', f'Call SID: {call_sid}'))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to log call: {e}")
+        
+        # Create greeting response
+        handler = PhoneCallHandler()
+        response = handler.create_greeting_response()
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Phone webhook error: {e}")
+        response = VoiceResponse()
+        response.say("We're experiencing technical difficulties. Please call back later or visit ringly pro dot com.")
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/process-speech', methods=['POST'])
+@validate_twilio_request
+def process_phone_speech():
+    """Process speech input from phone call"""
+    try:
+        speech_result = request.form.get('SpeechResult', '')
+        confidence = request.form.get('Confidence', '0')
+        
+        logger.info(f"🎤 Speech detected: '{speech_result}' (confidence: {confidence})")
+        
+        if not speech_result:
+            response = VoiceResponse()
+            response.say("I didn't catch that. Please try again.", voice='Polly.Joanna')
+            response.redirect('/phone/webhook')
+            return str(response), 200, {'Content-Type': 'text/xml'}
+        
+        handler = PhoneCallHandler()
+        response = handler.process_speech_input(speech_result)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Speech processing error: {e}")
+        response = VoiceResponse()
+        response.say("I'm having trouble understanding. Let me transfer you to someone who can help.")
+        response.dial('+16566001400')
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/pricing-followup', methods=['POST'])
+@validate_twilio_request
+def pricing_followup():
+    """Handle follow-up after pricing information"""
+    try:
+        speech_result = request.form.get('SpeechResult', '').lower()
+        
+        response = VoiceResponse()
+        
+        if 'yes' in speech_result or 'book' in speech_result or 'demo' in speech_result:
+            handler = PhoneCallHandler()
+            return str(handler.handle_demo_booking()), 200, {'Content-Type': 'text/xml'}
+        elif 'repeat' in speech_result or 'again' in speech_result:
+            handler = PhoneCallHandler()
+            return str(handler.handle_pricing_inquiry()), 200, {'Content-Type': 'text/xml'}
+        else:
+            response.say("Thank you for calling Ringly Pro. Have a great day!", voice='Polly.Joanna')
+            response.hangup()
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Pricing followup error: {e}")
+        response = VoiceResponse()
+        response.say("Thank you for your interest. Please visit ringly pro dot com for more information.")
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/collect-name', methods=['POST'])
+@validate_twilio_request
+def collect_name():
+    """Collect customer name for booking"""
+    try:
+        speech_result = request.form.get('SpeechResult', '')
+        call_sid = request.form.get('CallSid', '')
+        
+        if not speech_result:
+            response = VoiceResponse()
+            response.say("I didn't get your name. Let's try again.", voice='Polly.Joanna')
+            response.redirect('/phone/webhook')
+            return str(response), 200, {'Content-Type': 'text/xml'}
+        
+        # Store name in session or temporary storage
+        session[f'call_{call_sid}_name'] = speech_result
+        
+        handler = PhoneCallHandler()
+        response = handler.collect_booking_info('name', speech_result)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Name collection error: {e}")
+        response = VoiceResponse()
+        response.say("Let me transfer you to schedule your appointment.")
+        response.dial('+16566001400')
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/collect-phone', methods=['POST'])
+@validate_twilio_request
+def collect_phone():
+    """Collect customer phone for booking"""
+    try:
+        # Try speech first, then DTMF
+        phone_number = request.form.get('SpeechResult', '')
+        if not phone_number:
+            phone_number = request.form.get('Digits', '')
+        
+        call_sid = request.form.get('CallSid', '')
+        from_number = request.form.get('From', '')
+        
+        # Clean up phone number
+        phone_digits = re.sub(r'\D', '', phone_number)
+        
+        if len(phone_digits) < 10:
+            # Use caller's number
+            phone_digits = re.sub(r'\D', '', from_number)
+        
+        # Format phone number
+        if len(phone_digits) == 10:
+            formatted_phone = f"+1{phone_digits}"
+        elif len(phone_digits) == 11 and phone_digits[0] == '1':
+            formatted_phone = f"+{phone_digits}"
+        else:
+            formatted_phone = from_number
+        
+        # Get name from session
+        customer_name = session.get(f'call_{call_sid}_name', 'Customer')
+        
+        # Save to database
+        try:
+            conn = sqlite3.connect('ringlypro.db')
+            cursor = conn.cursor()
+            cursor.execute('''INSERT INTO inquiries (phone, question, source, notes)
+                             VALUES (?, ?, ?, ?)''',
+                          (formatted_phone, f'Demo booking request from {customer_name}', 
+                           'phone', f'Call SID: {call_sid}'))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Failed to save booking request: {e}")
+        
+        handler = PhoneCallHandler()
+        response = handler.collect_booking_info('phone', formatted_phone)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Phone collection error: {e}")
+        response = VoiceResponse()
+        response.say("I'll send you information to the number you're calling from.")
+        handler = PhoneCallHandler()
+        handler.send_booking_sms(request.form.get('From', ''))
+        response.say("The information has been sent. Thank you for calling!")
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/call-complete', methods=['POST'])
+@validate_twilio_request
+def call_complete():
+    """Handle call completion and logging"""
+    try:
+        call_sid = request.form.get('CallSid', '')
+        dial_status = request.form.get('DialCallStatus', '')
+        duration = request.form.get('DialCallDuration', '0')
+        
+        logger.info(f"📞 Call completed: {call_sid} - Status: {dial_status}, Duration: {duration}s")
+        
+        response = VoiceResponse()
+        
+        if dial_status != 'completed':
+            response.say(
+                "We couldn't connect your call. Please try again later or visit ringly pro dot com.",
+                voice='Polly.Joanna'
+            )
+        else:
+            response.say("Thank you for calling Ringly Pro. Have a great day!", voice='Polly.Joanna')
+        
+        response.hangup()
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Call completion error: {e}")
+        response = VoiceResponse()
+        response.hangup()
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/voicemail', methods=['POST'])
+@validate_twilio_request
+def handle_voicemail():
+    """Handle voicemail recording"""
+    try:
+        response = VoiceResponse()
+        
+        response.say(
+            "Please leave your message after the beep. Press star when you're finished.",
+            voice='Polly.Joanna'
+        )
+        
+        response.record(
+            action='/phone/voicemail-complete',
+            method='POST',
+            maxLength=120,
+            finishOnKey='*',
+            transcribe=True,
+            transcribeCallback='/phone/transcription-ready'
+        )
+        
+        response.say("I didn't receive a recording. Goodbye.", voice='Polly.Joanna')
+        response.hangup()
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Voicemail error: {e}")
+        response = VoiceResponse()
+        response.say("Unable to record message. Please call back.")
+        response.hangup()
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/test-call', methods=['GET'])
+def test_call():
+    """Test endpoint to initiate an outbound call"""
+    try:
+        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+            return jsonify({'error': 'Twilio not configured'}), 500
+        
+        client = Client(twilio_account_sid, twilio_auth_token)
+        
+        call = client.calls.create(
+            url=f'{TWILIO_WEBHOOK_BASE_URL}/phone/webhook',
+            to='+16566001400',  # Test number
+            from_=TWILIO_PHONE_NUMBER
+        )
+        
+        return jsonify({
+            'success': True,
+            'call_sid': call.sid,
+            'status': 'Call initiated'
+        })
+        
+    except Exception as e:
+        logger.error(f"Test call error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/admin')
 def admin_dashboard():
     """Enhanced admin dashboard with appointments and inquiries"""
