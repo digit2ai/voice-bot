@@ -1034,577 +1034,1339 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     # ==================== EXTENSIVE HTML TEMPLATES ====================
 
 VOICE_HTML_TEMPLATE = '''
-
-# ==================== ROUTES ====================
-
-@app.route('/')
-def serve_index():
-    """Voice interface"""
-    return render_template_string(VOICE_HTML_TEMPLATE)
-
-@app.route('/chat')
-def serve_chat():
-    """Text chat interface"""
-    return render_template_string(CHAT_HTML_TEMPLATE)
-
-@app.route('/chat-enhanced')
-def serve_enhanced_chat():
-    """Enhanced chat interface with appointment booking"""
-    return render_template_string(ENHANCED_CHAT_TEMPLATE)
-
-@app.route('/chat', methods=['POST'])
-def handle_chat():
-    """Handle chat messages with SMS integration"""
-    try:
-        data = request.get_json()
-        user_message = data.get('message', '').strip()
-        
-        if not user_message:
-            return jsonify({'response': 'Please enter a question.', 'needs_phone_collection': False})
-        
-        # Store the question in session for potential phone collection
-        session['last_question'] = user_message
-        
-        logger.info(f"💬 Chat message received: {user_message}")
-        
-        # Get FAQ response with SMS capability
-        response, is_faq_match, needs_phone_collection = get_faq_response_with_sms(user_message)
-        
-        logger.info(f"📋 FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
-        
-        return jsonify({
-            'response': response,
-            'needs_phone_collection': needs_phone_collection,
-            'is_faq_match': is_faq_match
-        })
-        
-    except Exception as e:
-        logger.error(f"❌ Error in chat endpoint: {str(e)}")
-        return jsonify({
-            'response': 'Sorry, there was an error processing your request. Please try again.',
-            'needs_phone_collection': False
-        }), 500
-
-@app.route('/chat-enhanced', methods=['POST'])
-def handle_enhanced_chat():
-    """Enhanced chat handler with appointment booking capabilities"""
-    try:
-        data = request.get_json()
-        user_message = data.get('message', '').strip()
-        booking_step = data.get('booking_step', 'none')
-        booking_data = data.get('booking_data', {})
-        
-        if not user_message:
-            return jsonify({'response': 'Please enter a question.', 'action': 'none'})
-        
-        logger.info(f"💬 Enhanced chat message: {user_message}")
-        logger.info(f"📊 Current booking step: {booking_step}")
-        
-        user_message_lower = user_message.lower().strip()
-        
-        # Handle follow-up responses based on conversation context
-        if booking_step == 'awaiting_confirmation':
-            logger.info("🔄 Processing follow-up response")
-            if user_message_lower in ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'y']:
-                logger.info("✅ User confirmed booking")
-                return jsonify({
-                    'response': 'Perfect! Let me set up the booking form for you.',
-                    'action': 'start_booking',
-                    'booking_step': 'form_ready',
-                    'is_faq_match': True
-                })
-            elif user_message_lower in ['no', 'nope', 'not now', 'maybe later', 'n']:
-                logger.info("❌ User declined booking")
-                return jsonify({
-                    'response': 'No problem! Feel free to ask me any questions about RinglyPro services, or let me know if you change your mind about scheduling.',
-                    'action': 'none',
-                    'booking_step': 'none',
-                    'is_faq_match': True
-                })
-        
-        # Get enhanced FAQ response
-        response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
-        
-        logger.info(f"📤 Response: {response[:50]}...")
-        logger.info(f"🎬 Action needed: {action_needed}")
-        
-        response_data = {
-            'response': response,
-            'is_faq_match': is_faq_match,
-            'action': action_needed,
-            'booking_step': booking_step
-        }
-        
-        # Handle specific booking actions
-        if action_needed == "start_booking":
-            logger.info("🚀 Setting action to start_booking")
-            response_data['action'] = 'start_booking'
-            response_data['booking_step'] = 'form_ready'
-        elif action_needed == "suggest_booking":
-            response_data['response'] += " Type 'yes' if you'd like to schedule a consultation."
-            response_data['booking_step'] = 'awaiting_confirmation'
-        elif action_needed == "offer_booking":
-            response_data['booking_step'] = 'awaiting_confirmation'
-        
-        logger.info(f"📨 Final response data: {response_data}")
-        return jsonify(response_data)
-        
-    except Exception as e:
-        logger.error(f"❌ Error in enhanced chat endpoint: {str(e)}")
-        return jsonify({
-            'response': 'Sorry, there was an error processing your request. Please try again.',
-            'action': 'none'
-        }), 500
-
-@app.route('/get-available-slots', methods=['POST'])
-def get_available_slots():
-    """Get available appointment slots for a date"""
-    try:
-        data = request.get_json()
-        date = data.get('date')
-        
-        if not date:
-            return jsonify({'error': 'Date is required'}), 400
-        
-        slots = AppointmentManager.get_available_slots(date)
-        
-        return jsonify({
-            'success': True,
-            'date': date,
-            'slots': slots
-        })
-        
-    except Exception as e:
-        logger.error(f"Error getting available slots: {e}")
-        return jsonify({'error': 'Failed to get available slots'}), 500
-
-@app.route('/book-appointment', methods=['POST'])
-def book_appointment():
-    """Book a new appointment"""
-    try:
-        data = request.get_json()
-        
-        appointment_manager = AppointmentManager()
-        success, message, appointment = appointment_manager.book_appointment(data)
-        
-        if success:
-            return jsonify({
-                'success': True,
-                'message': message,
-                'appointment': appointment
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': message
-            }), 400
-            
-    except Exception as e:
-        logger.error(f"Error booking appointment: {e}")
-        return jsonify({
-            'success': False,
-            'message': 'Failed to book appointment'
-        }), 500
-
-@app.route('/appointment/<confirmation_code>')
-def get_appointment(confirmation_code):
-    """Get appointment details by confirmation code"""
-    try:
-        appointment = AppointmentManager.get_appointment_by_code(confirmation_code)
-        
-        if appointment:
-            return jsonify({
-                'success': True,
-                'appointment': appointment
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Appointment not found'
-            }), 404
-            
-    except Exception as e:
-        logger.error(f"Error getting appointment: {e}")
-        return jsonify({
-            'success': False,
-            'message': 'Failed to retrieve appointment'
-        }), 500
-
-@app.route('/submit_phone', methods=['POST'])
-def submit_phone():
-    """Handle phone number submission and send SMS notification"""
-    try:
-        data = request.get_json()
-        phone_number = data.get('phone', '').strip()
-        last_question = data.get('last_question', session.get('last_question', 'General inquiry'))
-        
-        if not phone_number:
-            return jsonify({
-                'success': False,
-                'message': 'Please provide a phone number.'
-            })
-        
-        # Validate phone number
-        validated_phone = validate_phone_number(phone_number)
-        if not validated_phone:
-            return jsonify({
-                'success': False,
-                'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
-            })
-        
-        logger.info(f"📞 Phone submitted: {validated_phone}, Question: {last_question}")
-        
-        # Send SMS notification
-        sms_success, sms_result = send_sms_notification(validated_phone, last_question)
-        
-        # Save to database
-        db_saved = save_customer_inquiry(validated_phone, last_question, sms_success, sms_result)
-        
-        if sms_success:
-            success_message = f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
-        else:
-            success_message = f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
-        
-        return jsonify({
-            'success': True,
-            'message': success_message
-        })
-            
-    except Exception as e:
-        logger.error(f"❌ Error in submit_phone endpoint: {str(e)}")
-        return jsonify({
-            'success': False,
-            'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
-        })
-
-@app.route('/process-text-enhanced', methods=['POST'])
-def process_text_enhanced():
-    """Enhanced text processing with premium audio and booking detection"""
-    logger.info("🎤 Enhanced text processing request")
-    
-    try:
-        data = request.get_json()
-        
-        if not data or 'text' not in data:
-            logger.error("❌ Missing text data")
-            return jsonify({"error": "Missing text data"}), 400
-            
-        user_text = data['text'].strip()
-        user_language = data.get('language', 'en-US')
-        is_mobile = data.get('mobile', False)
-        
-        # Backend echo detection
-        echo_phrases = [
-            'ringly pro', 'i can help', 'scheduling', 'perfect', 'wonderful',
-            'how can i help', 'i\'m here to help', 'that\'s great', 'absolutely'
-        ]
-        
-        user_lower = user_text.lower()
-        is_echo = any(phrase in user_lower for phrase in echo_phrases) and len(user_text) > 30
-        
-        if is_echo:
-            logger.warning(f"🔄 Echo detected: {user_text[:50]}...")
-            return jsonify({
-                "response": "I think I heard an echo. Please speak again.",
-                "language": user_language,
-                "context": "clarification",
-                "show_text": is_mobile
-            })
-        
-        if not user_text or len(user_text) < 2:
-            error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
-                        if user_language.startswith('es') 
-                        else "Text too short. Please try again.")
-            return jsonify({"error": error_msg}), 400
-        
-        logger.info(f"📝 Processing: {user_text}")
-        
-        # Check for booking intent in voice
-        booking_keywords = [
-            'book', 'schedule', 'appointment', 'meeting', 'consultation',
-            'want to book', 'book an appointment', 'schedule meeting',
-            'yes i want to book', 'book appointment', 'schedule appointment'
-        ]
-        
-        booking_detected = any(keyword in user_lower for keyword in booking_keywords)
-        
-        if booking_detected:
-            logger.info("🎯 Booking intent detected in voice!")
-            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
-            
-            # Try to generate premium audio with Rachel's voice
-            audio_data = None
-            engine_used = "browser_fallback"
-            
-            if elevenlabs_api_key:
-                try:
-                    # Use Rachel's voice - correct voice ID
-                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # This is Rachel's voice
-                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-                    
-                    headers = {
-                        "Accept": "audio/mpeg",
-                        "Content-Type": "application/json",
-                        "xi-api-key": elevenlabs_api_key
-                    }
-                    
-                    tts_data = {
-                        "text": booking_response,
-                        "model_id": "eleven_monolingual_v1",  # Better for English
-                        "voice_settings": {
-                            "stability": 0.5,
-                            "similarity_boost": 0.75
-                        }
-                    }
-                    
-                    timeout = 10
-                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
-                    
-                    if tts_response.status_code == 200 and len(tts_response.content) > 1000:
-                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
-                        engine_used = "elevenlabs_rachel"
-                        logger.info("✅ Rachel's voice audio generated successfully")
-                    else:
-                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
-                    
-                except Exception as tts_error:
-                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
-            
-            response_payload = {
-                "response": booking_response,
-                "language": user_language,
-                "context": "booking_redirect",
-                "action": "redirect_to_booking",
-                "engine_used": engine_used,
-                "show_text": True  # Always show text
-            }
-            
-            if audio_data:
-                response_payload["audio"] = audio_data
-                logger.info("✅ Booking response with Rachel's voice")
-            else:
-                logger.info("✅ Booking response with browser TTS fallback")
-            
-            return jsonify(response_payload)
-        
-        # Regular FAQ processing for non-booking requests
-        faq_response, is_faq = get_faq_response(user_text)
-        response_text = faq_response
-        context = "professional" if is_faq else "friendly"
-        
-        # Try to generate premium audio with Rachel's voice
-        audio_data = None
-        engine_used = "browser_fallback"
-        
-        if elevenlabs_api_key:
-            try:
-                # Rachel's voice ID
-                voice_id = "21m00Tcm4TlvDq8ikWAM"
-                url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
-                
-                headers = {
-                    "Accept": "audio/mpeg",
-                    "Content-Type": "application/json",
-                    "xi-api-key": elevenlabs_api_key
-                }
-                
-                # Optimize text for speech
-                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
-                speech_text = speech_text.replace("AI", "A.I.")
-                speech_text = speech_text.replace("$", " dollars")
-                
-                tts_data = {
-                    "text": speech_text,
-                    "model_id": "eleven_monolingual_v1",  # Better for English
-                    "voice_settings": {
-                        "stability": 0.5,
-                        "similarity_boost": 0.75
-                    }
-                }
-                
-                timeout = 10
-                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
-                
-                if tts_response.status_code == 200 and len(tts_response.content) > 1000:
-                    audio_data = base64.b64encode(tts_response.content).decode('utf-8')
-                    engine_used = "elevenlabs_rachel"
-                    logger.info(f"✅ Rachel's voice audio generated ({len(tts_response.content)} bytes)")
-                else:
-                    logger.warning(f"⚠️ ElevenLabs failed: Status {tts_response.status_code}")
-                    
-            except Exception as tts_error:
-                logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
-        
-        response_payload = {
-            "response": response_text,
-            "language": user_language,
-            "context": context,
-            "is_faq": is_faq,
-            "engine_used": engine_used,
-            "show_text": True  # Always show text
-        }
-        
-        if audio_data:
-            response_payload["audio"] = audio_data
-            logger.info("✅ Response with Rachel's voice audio")
-        else:
-            logger.info("✅ Response with browser TTS fallback")
-        
-        return jsonify(response_payload)
-        
-    except Exception as e:
-        logger.error(f"❌ Processing error: {e}")
-        return jsonify({"error": "I had a technical issue. Please try again."}), 500
-
-@app.route('/widget')
-def chat_widget():
-    """Embeddable chat widget"""
-    widget_html = """<!DOCTYPE html>
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RinglyPro Chat Widget</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
-            background: #f8f9fa; 
-            height: 100vh; 
-            display: flex; 
-            flex-direction: column;
-        }
-        
-        .header { 
-            background: linear-gradient(135deg, #2196F3, #1976D2); 
-            color: white; 
-            padding: 15px; 
-            text-align: center;
-        }
-        
-        .chat { 
-            flex: 1; 
-            padding: 15px; 
-            overflow-y: auto; 
-            background: white;
-        }
-        
-        .message { 
-            margin-bottom: 12px; 
-            padding: 12px 15px; 
-            border-radius: 18px; 
-            max-width: 85%; 
-            font-size: 14px; 
-        }
-        
-        .bot-message { 
-            background: #f1f3f4; 
-            color: #333; 
-            margin-right: auto;
-        }
-        
-        .user-message { 
-            background: #2196F3; 
-            color: white; 
-            margin-left: auto; 
-            text-align: right;
-        }
-        
-        .input-area { 
-            padding: 15px; 
-            background: white; 
-            border-top: 1px solid #e0e0e0;
-        }
-        
-        .input-container { display: flex; gap: 8px; }
-        
-        .input-container input { 
-            flex: 1; 
-            padding: 12px 15px; 
-            border: 2px solid #e0e0e0; 
-            border-radius: 25px; 
-            outline: none;
-            background: white;
-            color: #333;
-        }
-        
-        .input-container input::placeholder {
-            color: #999;
-        }
-        
-        .input-container input:focus {
-            border-color: #2196F3;
-        }
-        
-        .send-btn { 
-            width: 40px; 
-            height: 40px; 
-            background: #2196F3; 
-            border: none; 
-            border-radius: 50%; 
-            color: white; 
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .send-btn:hover {
-            background: #1976D2;
-            transform: scale(1.05);
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#2c3e50">
+  <meta http-equiv="Permissions-Policy" content="microphone=*">
+  <title>Talk to RinglyPro AI — Your Business Assistant</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { 
+      box-sizing: border-box;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      -khtml-user-select: none;
+      -moz-user-select: none;
+      -ms-user-select: none;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c3e50 0%, #0d1b2a 100%);
+      color: #ffffff;
+      width: 100%;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    /* Mobile-specific background - Navy Blue */
+    @media (max-width: 768px) {
+      html, body {
+        background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
+      }
+    }
+
+    /* Additional mobile detection for touch devices */
+    @media (pointer: coarse) {
+      html, body {
+        background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
+      }
+    }
+
+    .container {
+      max-width: 450px;
+      width: 100%;
+      padding: 2rem;
+      background: rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(15px);
+      border-radius: 25px;
+      box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      position: relative;
+    }
+
+    /* Enhance container for mobile with navy theme */
+    @media (max-width: 768px) {
+      .container {
+        background: rgba(255, 255, 255, 0.12);
+        box-shadow: 0 8px 32px rgba(13, 71, 161, 0.4);
+      }
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(45deg, #4CAF50, #2196F3, #FF6B6B);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: gradientShift 3s ease-in-out infinite;
+    }
+
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .subtitle {
+      font-size: 1.1rem;
+      margin-bottom: 2.5rem;
+      opacity: 0.9;
+      font-weight: 500;
+    }
+
+    .interface-switcher {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 15px;
+      color: white;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.3s ease;
+    }
+
+    .interface-switcher:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .booking-button {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      border: none;
+      border-radius: 15px;
+      color: white;
+      padding: 0.75rem 1.5rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+      animation: bookingPulse 3s ease-in-out infinite;
+    }
+
+    .booking-button:hover {
+      background: linear-gradient(135deg, #45a049, #388e3c);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+      animation: none;
+    }
+
+    .booking-form-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(44, 62, 80, 0.95);
+      backdrop-filter: blur(10px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    
+    .booking-form-container {
+      background: rgba(255, 255, 255, 0.98);
+      border-radius: 20px;
+      padding: 30px;
+      max-width: 500px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+      position: relative;
+    }
+    
+    .booking-form-header {
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+      color: white;
+      padding: 20px;
+      margin: -30px -30px 20px -30px;
+      border-radius: 20px 20px 0 0;
+      text-align: center;
+    }
+    
+    .booking-form-header h2 {
+      margin: 0;
+      font-size: 1.5rem;
+    }
+    
+    .booking-form-header p {
+      margin: 5px 0 0 0;
+      opacity: 0.9;
+      font-size: 0.9rem;
+    }
+    
+    .close-booking-form {
+      position: absolute;
+      top: 15px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 20px;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: #1565c0;
+      font-weight: 600;
+      font-size: 14px;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 12px 15px;
+      border: 2px solid #2196f3;
+      border-radius: 10px;
+      outline: none;
+      font-size: 14px;
+      background: white;
+      color: #333;
+      transition: border-color 0.3s ease;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+      border-color: #1976d2;
+    }
+    
+    .date-time-row {
+      display: flex;
+      gap: 15px;
+    }
+    
+    .date-time-row .form-group {
+      flex: 1;
+    }
+    
+    .available-slots {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    
+    .time-slot {
+      padding: 8px 12px;
+      background: #e3f2fd;
+      border: 2px solid #2196f3;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #1565c0;
+      transition: all 0.3s ease;
+    }
+    
+    .time-slot:hover,
+    .time-slot.selected {
+      background: #2196f3;
+      color: white;
+    }
+    
+    .booking-submit-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #4caf50, #45a049);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      margin-top: 10px;
+    }
+    
+    .booking-submit-btn:hover {
+      background: linear-gradient(135deg, #45a049, #388e3c);
+      transform: translateY(-2px);
+    }
+    
+    .booking-submit-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .mic-button {
+      width: 130px;
+      height: 130px;
+      background: linear-gradient(135deg, #0a192f, #1c2541);
+      border: none;
+      border-radius: 50%;
+      box-shadow: 0 10px 40px rgba(76, 175, 80, 0.3);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      touch-action: manipulation;
+      margin: 0 auto 2rem;
+    }
+
+    .mic-button:hover {
+      transform: scale(1.05);
+      box-shadow: 0 15px 50px rgba(76, 175, 80, 0.4);
+    }
+
+    .mic-button.listening {
+      animation: listening 1.5s infinite;
+      background: linear-gradient(135deg, #f44336, #d32f2f);
+    }
+
+    .mic-button.processing {
+      background: linear-gradient(135deg, #FF9800, #F57C00);
+      animation: processing 2s infinite;
+    }
+
+    .mic-button.speaking {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+      animation: speaking 2s infinite;
+    }
+
+    @keyframes listening {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+
+    @keyframes processing {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(90deg); }
+      50% { transform: rotate(180deg); }
+      75% { transform: rotate(270deg); }
+    }
+
+    @keyframes speaking {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.02); }
+    }
+
+    .mic-button svg {
+      width: 60px;
+      height: 60px;
+      fill: #ffffff;
+    }
+
+    #status {
+      font-size: 1.2rem;
+      font-weight: 600;
+      margin-bottom: 2rem;
+      min-height: 3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .controls {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-bottom: 2rem;
+    }
+
+    .control-btn {
+      padding: 0.75rem 1.5rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 25px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 500;
+      touch-action: manipulation;
+      min-height: 44px;
+    }
+
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .control-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .language-selector {
+      margin-bottom: 1.5rem;
+    }
+
+    .lang-btn {
+      padding: 0.5rem 1rem;
+      margin: 0 0.25rem;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      border-radius: 15px;
+      color: white;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+      touch-action: manipulation;
+      min-height: 44px;
+    }
+
+    .lang-btn.active {
+      background: rgba(76, 175, 80, 0.8);
+      transform: scale(1.05);
+    }
+
+    .powered-by {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      opacity: 0.8;
+    }
+
+    .claude-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 0.75rem 1.25rem;
+      border-radius: 25px;
+      margin-top: 0.75rem;
+      transition: all 0.3s ease;
+    }
+
+    .claude-badge:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .ai-indicator {
+      width: 8px;
+      height: 8px;
+      background: #4CAF50;
+      border-radius: 50%;
+      animation: aiPulse 2s infinite;
+    }
+
+    @keyframes aiPulse {
+      0%, 100% { opacity: 0.3; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.2); }
+    }
+
+    .error-message {
+      background: rgba(244, 67, 54, 0.2);
+      border: 1px solid rgba(244, 67, 54, 0.3);
+      border-radius: 15px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: all 0.3s ease;
+    }
+
+    .error-message.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 480px) {
+      .container {
+        margin: 1rem;
+        padding: 1.5rem;
+      }
+      
+      h1 {
+        font-size: 2rem;
+      }
+      
+      .mic-button {
+        width: 110px;
+        height: 110px;
+      }
+      
+      .mic-button svg {
+        width: 50px;
+        height: 50px;
+      }
+
+      .controls {
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .interface-switcher {
+        top: 10px;
+        right: 10px;
+        font-size: 0.7rem;
+        padding: 0.4rem 0.8rem;
+      }
+
+      .booking-button {
+        top: 10px;
+        left: 10px;
+        font-size: 0.7rem;
+        padding: 0.5rem 1rem;
+      }
+      
+      .booking-form-container {
+        margin: 10px;
+        max-width: calc(100vw - 20px);
+        max-height: calc(100vh - 20px);
+        padding: 20px;
+      }
+      
+      .booking-form-header {
+        margin: -20px -20px 15px -20px;
+        padding: 15px;
+      }
+      
+      .date-time-row {
+        flex-direction: column;
+        gap: 10px;
+      }
+    }
+  </style>
 </head>
 <body>
-    <div class="header">
-        <h3>💬 RinglyPro Widget</h3>
-        <p>Ask about our services!</p>
-    </div>
+  <div class="container">
+    <button class="booking-button" onclick="window.location.href='/chat-enhanced'">📅 Book Appointment</button>
+    <button class="interface-switcher" onclick="window.location.href='/chat'">💬 Try Text Chat</button>
     
-    <div class="chat" id="chat">
-        <div class="message bot-message">
-            👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?
-        </div>
-    </div>
+    <h1>RinglyPro AI</h1>
+    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" for instant inline booking • Ask questions • Click "📅 Book"</small></div>
     
-    <div class="input-area">
-        <div class="input-container">
-            <input type="text" id="input" placeholder="Ask about services..." onkeypress="if(event.key==='Enter') sendMessage()">
-            <button class="send-btn" onclick="sendMessage()">→</button>
-        </div>
+    <div class="language-selector">
+      <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
+      <button class="lang-btn" data-lang="es-ES">🇪🇸 Español</button>
     </div>
 
-    <script>
-        function sendMessage() {
-            var input = document.getElementById('input');
-            var message = input.value.trim();
-            if (!message) return;
+    <button id="micBtn" class="mic-button" aria-label="Talk to RinglyPro AI">
+      <svg xmlns="http://www.w3.org/2000/svg" height="60" viewBox="0 0 24 24" width="60" fill="#ffffff">
+        <path d="M0 0h24v24H0V0z" fill="none"/>
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5-3c0 2.76-2.24 5-5 5s-5-2.24-5-5H6c0 3.31 2.69 6 6 6s6-2.69 6-6h-1zm-5 9c-3.87 0-7-3.13-7-7H3c0 5 4 9 9 9s9-4 9-9h-2c0 3.87-3.13 7-7 7z"/>
+      </svg>
+    </button>
+    
+    <div id="status">🎙️ Say "book appointment" for instant booking or tap to talk</div>
+    
+    <div class="controls">
+      <button id="stopBtn" class="control-btn" disabled>⏹️ Stop</button>
+      <button id="clearBtn" class="control-btn">🗑️ Clear</button>
+    </div>
+
+    <div id="errorMessage" class="error-message"></div>
+    
+    <div class="powered-by">
+      Powered by
+      <div class="claude-badge">
+        <div class="ai-indicator"></div>
+        Enhanced Claude AI + Premium TTS
+      </div>
+    </div>
+  </div>
+
+  <!-- Inline Booking Form Overlay -->
+  <div id="bookingFormOverlay" class="booking-form-overlay">
+    <div class="booking-form-container">
+      <div class="booking-form-header">
+        <button class="close-booking-form" onclick="closeBookingForm()">×</button>
+        <h2>📅 Schedule Your Appointment</h2>
+        <p>Fill out the details below to book your consultation</p>
+      </div>
+      
+      <form id="inlineBookingForm">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input type="text" id="inlineCustomerName" placeholder="Your full name" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Email Address *</label>
+          <input type="email" id="inlineCustomerEmail" placeholder="your@email.com" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Phone Number *</label>
+          <input type="tel" id="inlineCustomerPhone" placeholder="(555) 123-4567" required>
+        </div>
+        
+        <div class="form-group">
+          <label>Preferred Date *</label>
+          <input type="date" id="inlineAppointmentDate" min="" onchange="loadInlineAvailableSlots()" required>
+        </div>
+        
+        <div class="form-group">
+          <label>What would you like to discuss?</label>
+          <textarea id="inlineAppointmentPurpose" placeholder="Brief description of your needs..." rows="3"></textarea>
+        </div>
+        
+        <div id="inlineTimeSlotsContainer" style="display: none;">
+          <label>Available Times *</label>
+          <div id="inlineAvailableSlots" class="available-slots"></div>
+        </div>
+        
+        <button type="button" class="booking-submit-btn" onclick="submitInlineBooking()">Book Appointment</button>
+      </form>
+    </div>
+  </div>
+
+<script>
+    // Enhanced Voice Interface JavaScript with Mobile Text-Only Mode
+    class EnhancedVoiceBot {
+        constructor() {
+            this.micBtn = document.getElementById('micBtn');
+            this.status = document.getElementById('status');
+            this.stopBtn = document.getElementById('stopBtn');
+            this.clearBtn = document.getElementById('clearBtn');
+            this.errorMessage = document.getElementById('errorMessage');
+            this.langBtns = document.querySelectorAll('.lang-btn');
             
-            addMessage(message, 'user');
-            input.value = '';
+            this.isListening = false;
+            this.isProcessing = false;
+            this.isPlaying = false;
+            this.currentLanguage = 'en-US';
+            this.recognition = null;
+            this.currentAudio = null;
+            this.userInteracted = false;
+            this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            this.processTimeout = null;
+            this.audioContext = null;
+            this.recognitionTimeout = null;
             
-            fetch('/chat', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({message: message})
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                addMessage(data.response, 'bot');
-            })
-            .catch(function() {
-                addMessage('Sorry, there was an error. Please try again.', 'bot');
+            // Initialize audio context on first user interaction (mobile)
+            if (this.isMobile) {
+                const initAudioContext = () => {
+                    if (!this.audioContext) {
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        if (AudioContext) {
+                            this.audioContext = new AudioContext();
+                            if (this.audioContext.state === 'suspended') {
+                                this.audioContext.resume().then(() => {
+                                    console.log('Mobile audio context initialized and resumed');
+                                });
+                            }
+                        }
+                    }
+                    // Remove listener after first interaction
+                    document.removeEventListener('touchstart', initAudioContext);
+                    document.removeEventListener('click', initAudioContext);
+                };
+                
+                // Add listeners for first user interaction
+                document.addEventListener('touchstart', initAudioContext, { once: true });
+                document.addEventListener('click', initAudioContext, { once: true });
+            }
+            
+            this.init();
+        }
+
+        async init() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                this.showError('Speech recognition not supported. Please use Chrome or Edge.');
+                return;
+            }
+
+            this.setupEventListeners();
+            this.initSpeechRecognition();
+        }
+
+        initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = this.currentLanguage;
+
+            this.recognition.onstart = () => {
+                console.log('Recognition started');
+                this.isListening = true;
+                this.updateUI('listening');
+                this.updateStatus('🎙️ Listening... Speak now');
+            };
+
+            this.recognition.onresult = (event) => {
+                console.log('Recognition result received');
+                if (event.results && event.results.length > 0) {
+                    const transcript = event.results[0][0].transcript.trim();
+                    console.log('Transcript:', transcript);
+                    this.processTranscript(transcript);
+                }
+            };
+
+            this.recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
+                
+                // Handle no-speech error gracefully
+                if (event.error === 'no-speech') {
+                    this.isListening = false;
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ No speech detected. Tap to try again');
+                    return;
+                }
+                
+                this.handleError('Speech recognition error: ' + event.error);
+            };
+
+            this.recognition.onend = () => {
+                console.log('Recognition ended');
+                this.isListening = false;
+                if (!this.isProcessing) {
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ Tap to talk');
+                }
+            };
+        }
+
+        async processTranscript(transcript) {
+            if (!transcript || transcript.length < 2) {
+                this.handleError('No speech detected');
+                return;
+            }
+
+            console.log('Processing transcript:', transcript);
+            this.isProcessing = true;
+            this.updateUI('processing');
+            this.updateStatus('🤖 Processing...');
+            
+            // Clear any existing timeout
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+            }
+            
+            // Add timeout for the entire processing
+            this.processTimeout = setTimeout(() => {
+                if (this.isProcessing) {
+                    console.log('Processing timeout - resetting UI');
+                    this.handleError('Processing took too long. Please try again.');
+                }
+            }, 15000);
+
+            try {
+                const response = await fetch('/process-text-enhanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: transcript,
+                        language: this.currentLanguage,
+                        mobile: this.isMobile
+                    })
+                });
+
+                clearTimeout(this.processTimeout);
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                console.log('Received data:', data);
+
+                // Always show text if available
+                if (data.show_text && data.response) {
+                    this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
+                }
+
+                // Check for booking redirect action
+                if (data.action === 'redirect_to_booking') {
+                    console.log('🎯 Booking redirect detected');
+                    
+                    // Play audio if available
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
+                    }
+                    
+                    // Show booking form
+                    setTimeout(() => {
+                        this.showInlineBookingForm();
+                    }, 500);
+                    return;
+                }
+
+                // Regular responses
+                if (data.audio) {
+                    console.log('Playing Rachel audio response');
+                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                } else if (data.response) {
+                    console.log('Using browser TTS');
+                    await this.playBrowserTTS(data.response);
+                } else {
+                    this.audioFinished();
+                }
+
+            } catch (error) {
+                clearTimeout(this.processTimeout);
+                this.handleError('Processing error: ' + error.message);
+            }
+        }
+
+        async playPremiumAudio(audioBase64, responseText, showText = false) {
+            console.log('Playing premium audio, showText:', showText, 'isMobile:', this.isMobile);
+            
+            // MOBILE: Skip audio entirely and show text with good UX
+            if (this.isMobile) {
+                console.log('Mobile detected - using text-only mode');
+                
+                // Show the full response text clearly
+                this.updateStatus('💬 ' + responseText);
+                
+                // Update UI to show we're "speaking" (even though it's text)
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                
+                // INCREASED READING TIME: ~100ms per character, minimum 5 seconds, maximum 15 seconds
+                const readingTime = Math.min(Math.max(responseText.length * 100, 5000), 15000);
+                console.log(`Mobile reading time: ${readingTime}ms for ${responseText.length} characters`);
+                
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, readingTime);
+                });
+            }
+            
+            // DESKTOP: Original working code
+            try {
+                // Keep text visible while audio plays
+                if (showText) {
+                    this.updateStatus('🔊 ' + responseText.substring(0, 150) + (responseText.length > 150 ? '...' : ''));
+                }
+
+                const audioData = atob(audioBase64);
+                const arrayBuffer = new ArrayBuffer(audioData.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < audioData.length; i++) {
+                    uint8Array[i] = audioData.charCodeAt(i);
+                }
+
+                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                this.currentAudio = new Audio(audioUrl);
+                
+                return new Promise((resolve) => {
+                    let audioStarted = false;
+                    
+                    const playTimeout = setTimeout(() => {
+                        if (!audioStarted) {
+                            console.log('Audio timeout - fallback to text');
+                            this.currentAudio = null;
+                            URL.revokeObjectURL(audioUrl);
+                            if (!showText) {
+                                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                            }
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, 3000);
+                        }
+                    }, 5000);
+                    
+                    this.currentAudio.onplay = () => {
+                        console.log('Audio started playing');
+                        audioStarted = true;
+                        clearTimeout(playTimeout);
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        if (!showText) {
+                            this.updateStatus('🔊 Rachel is speaking...');
+                        }
+                    };
+                    
+                    this.currentAudio.onended = () => {
+                        console.log('Audio ended');
+                        clearTimeout(playTimeout);
+                        URL.revokeObjectURL(audioUrl);
+                        this.audioFinished();
+                        resolve();
+                    };
+                    
+                    this.currentAudio.onerror = (error) => {
+                        console.error('Audio error:', error);
+                        clearTimeout(playTimeout);
+                        this.currentAudio = null;
+                        URL.revokeObjectURL(audioUrl);
+                        if (!showText) {
+                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                        }
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 3000);
+                    };
+                    
+                    // Play audio (works on desktop)
+                    this.currentAudio.play().catch((error) => {
+                        console.log('Audio play failed:', error);
+                        clearTimeout(playTimeout);
+                        if (!showText) {
+                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                        }
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 3000);
+                    });
+                });
+                
+            } catch (error) {
+                console.error('Premium audio processing failed:', error);
+                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                setTimeout(() => {
+                    this.audioFinished();
+                }, 3000);
+                return Promise.resolve();
+            }
+        }
+
+        async playBrowserTTS(text) {
+            // Skip browser TTS on mobile too
+            if (this.isMobile) {
+                console.log('Mobile: Skipping browser TTS, showing text');
+                this.updateStatus('💬 ' + text);
+                
+                // INCREASED READING TIME: ~100ms per character, minimum 5 seconds, maximum 15 seconds
+                const readingTime = Math.min(Math.max(text.length * 100, 5000), 15000);
+                console.log(`Mobile reading time: ${readingTime}ms for ${text.length} characters`);
+                
+                return new Promise((resolve) => {
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, readingTime);
+                });
+            }
+            
+            // Original browser TTS for desktop
+            return new Promise((resolve) => {
+                try {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = this.currentLanguage;
+                    utterance.onend = () => {
+                        this.audioFinished();
+                        resolve();
+                    };
+                    utterance.onerror = () => {
+                        this.updateStatus('💬 ' + text.substring(0, 150) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 3000);
+                    };
+                    speechSynthesis.speak(utterance);
+                } catch (error) {
+                    this.updateStatus('💬 ' + text.substring(0, 150) + '...');
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 3000);
+                }
             });
         }
-        
-        function addMessage(text, type) {
-            var div = document.createElement('div');
-            div.className = 'message ' + type + '-message';
-            div.textContent = text;
-            document.getElementById('chat').appendChild(div);
-            document.getElementById('chat').scrollTop = 999999;
+
+        audioFinished() {
+            console.log('Audio finished');
+            this.isPlaying = false;
+            this.isProcessing = false;
+            this.updateUI('ready');
+            this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to continue');
         }
-    </script>
+
+        setupEventListeners() {
+            this.micBtn.addEventListener('click', () => {
+                console.log('Mic button clicked');
+                this.toggleListening();
+            });
+            
+            this.stopBtn.addEventListener('click', () => {
+                if (this.isListening) this.stopListening();
+                if (this.isPlaying) this.stopAudio();
+            });
+            
+            this.clearBtn.addEventListener('click', () => this.clearAll());
+            
+            this.langBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    this.changeLanguage(e.target.dataset.lang);
+                });
+            });
+        }
+
+        changeLanguage(lang) {
+            this.currentLanguage = lang;
+            if (this.recognition) this.recognition.lang = lang;
+            
+            this.langBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+        }
+
+        toggleListening() {
+            if (this.isListening) {
+                this.stopListening();
+            } else {
+                this.startListening();
+            }
+        }
+
+        async startListening() {
+            if (this.isProcessing || !this.recognition) {
+                console.log('Cannot start: processing or no recognition');
+                return;
+            }
+            
+            try {
+                console.log('Starting speech recognition...');
+                
+                // Ensure audio context is active on mobile
+                if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                    console.log('Audio context resumed before listening');
+                }
+                
+                this.clearError();
+                speechSynthesis.cancel();
+                this.recognition.start();
+                this.stopBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('Failed to start:', error);
+                this.handleError('Failed to start listening: ' + error.message);
+            }
+        }
+
+        stopListening() {
+            if (this.isListening && this.recognition) {
+                this.recognition.stop();
+            }
+        }
+
+        stopAudio() {
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+            }
+            speechSynthesis.cancel();
+            this.audioFinished();
+        }
+
+        updateUI(state) {
+            this.micBtn.className = 'mic-button';
+            
+            switch (state) {
+                case 'listening':
+                    this.micBtn.classList.add('listening');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'processing':
+                    this.micBtn.classList.add('processing');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'speaking':
+                    this.micBtn.classList.add('speaking');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'ready':
+                default:
+                    this.stopBtn.disabled = true;
+                    break;
+            }
+        }
+
+        updateStatus(message) {
+            this.status.textContent = message;
+        }
+
+        handleError(message) {
+            console.error('Error:', message);
+            this.showError(message);
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            this.updateUI('ready');
+            
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
+            
+            setTimeout(() => {
+                this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to try again');
+            }, 3000);
+        }
+
+        showError(message) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.add('show');
+            setTimeout(() => this.clearError(), 8000);
+        }
+
+        clearError() {
+            this.errorMessage.classList.remove('show');
+        }
+
+        showInlineBookingForm() {
+            const overlay = document.getElementById('bookingFormOverlay');
+            const dateInput = document.getElementById('inlineAppointmentDate');
+            
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.min = today;
+            
+            overlay.style.display = 'flex';
+            
+            if (!this.isMobile) {
+                setTimeout(() => {
+                    document.getElementById('inlineCustomerName').focus();
+                }, 100);
+            }
+            
+            this.updateStatus('📅 Fill out the booking form above');
+        }
+
+        clearAll() {
+            this.stopAudio();
+            if (this.isListening) this.stopListening();
+            
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
+            
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            this.updateUI('ready');
+            this.clearError();
+            
+            const overlay = document.getElementById('bookingFormOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            this.updateStatus('🎙️ Ready! Say "book appointment" for instant booking');
+        }
+    }
+
+    // Initialize when page loads
+    document.addEventListener('DOMContentLoaded', () => {
+        try {
+            window.voiceBot = new EnhancedVoiceBot();
+            console.log('Voice bot initialized successfully');
+        } catch (error) {
+            console.error('Failed to create voice bot:', error);
+        }
+    });
+
+    // Booking form functions remain the same
+    let selectedInlineTimeSlot = null;
+
+    function closeBookingForm() {
+        const overlay = document.getElementById('bookingFormOverlay');
+        overlay.style.display = 'none';
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('🎙️ Ready! Say "book appointment" for instant booking');
+        }
+    }
+
+    function loadInlineAvailableSlots() {
+        const date = document.getElementById('inlineAppointmentDate').value;
+        if (!date) return;
+        
+        fetch('/get-available-slots', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: date })
+        })
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('inlineTimeSlotsContainer');
+            const slotsDiv = document.getElementById('inlineAvailableSlots');
+            
+            if (data.slots && data.slots.length > 0) {
+                slotsDiv.innerHTML = '';
+                data.slots.forEach(slot => {
+                    const slotBtn = document.createElement('div');
+                    slotBtn.className = 'time-slot';
+                    slotBtn.textContent = formatTimeSlot(slot);
+                    slotBtn.onclick = () => selectInlineTimeSlot(slot, slotBtn);
+                    slotsDiv.appendChild(slotBtn);
+                });
+                container.style.display = 'block';
+            } else {
+                slotsDiv.innerHTML = '<p style="color: #f44336; margin: 10px 0;">No available slots for this date. Please choose another date.</p>';
+                container.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            console.error('Error loading slots:', error);
+        });
+    }
+
+    function selectInlineTimeSlot(time, element) {
+        document.querySelectorAll('#inlineAvailableSlots .time-slot').forEach(slot => 
+            slot.classList.remove('selected')
+        );
+        element.classList.add('selected');
+        selectedInlineTimeSlot = time;
+    }
+
+    function formatTimeSlot(time) {
+        const [hours, minutes] = time.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour > 12 ? hour - 12 : (hour === 0 ? 12 : hour);
+        return `${displayHour}:${minutes} ${ampm}`;
+    }
+
+    function submitInlineBooking() {
+        const name = document.getElementById('inlineCustomerName').value.trim();
+        const email = document.getElementById('inlineCustomerEmail').value.trim();
+        const phone = document.getElementById('inlineCustomerPhone').value.trim();
+        const date = document.getElementById('inlineAppointmentDate').value;
+        const purpose = document.getElementById('inlineAppointmentPurpose').value.trim();
+        
+        if (!name || !email || !phone || !date || !selectedInlineTimeSlot) {
+            alert('Please fill in all required fields and select a time slot.');
+            return;
+        }
+        
+        const submitBtn = document.querySelector('.booking-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Booking...';
+        
+        const bookingData = {
+            name: name,
+            email: email,
+            phone: phone,
+            date: date,
+            time: selectedInlineTimeSlot,
+            purpose: purpose || 'General consultation'
+        };
+        
+        fetch('/book-appointment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bookingData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showInlineBookingConfirmation(data.appointment);
+            } else {
+                showInlineBookingError(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Booking error:', error);
+            showInlineBookingError('There was an error booking your appointment. Please try again.');
+        })
+        .finally(() => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Book Appointment';
+        });
+    }
+
+    function showInlineBookingConfirmation(appointment) {
+        const container = document.querySelector('.booking-form-container');
+        
+        const date = new Date(appointment.date + 'T' + appointment.time);
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+        const formattedDate = date.toLocaleDateString('en-US', options);
+        const formattedTime = formatTimeSlot(appointment.time);
+        
+        container.innerHTML = `
+            <div class="booking-form-header">
+                <button class="close-booking-form" onclick="closeBookingForm()">×</button>
+                <h2>✅ Appointment Confirmed!</h2>
+                <p>Your appointment has been successfully scheduled</p>
+            </div>
+            
+            <div style="background: linear-gradient(135deg, #e8f5e8, #c8e6c9); color: #2e7d32; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                <div style="background: white; padding: 15px; border-radius: 8px;">
+                    <strong>📅 Date:</strong> ${formattedDate}<br>
+                    <strong>🕐 Time:</strong> ${formattedTime} EST<br>
+                    <strong>👤 Name:</strong> ${appointment.customer_name}<br>
+                    <strong>📧 Email:</strong> ${appointment.customer_email}<br>
+                    <strong>📞 Phone:</strong> ${appointment.customer_phone}<br>
+                    <strong>🔗 Zoom:</strong> <a href="${appointment.zoom_url}" target="_blank" style="color: #2196F3;">Join Meeting</a><br>
+                    <strong>📋 Confirmation:</strong> <span style="font-family: monospace; background: #f0f0f0; padding: 4px 8px; border-radius: 4px;">${appointment.confirmation_code}</span><br>
+                    <strong>💬 Purpose:</strong> ${appointment.purpose}
+                </div>
+                <p style="margin-top: 15px; font-size: 14px;">
+                    You'll receive email and SMS confirmations shortly. Save your confirmation code for any changes needed.
+                </p>
+            </div>
+            
+            <button type="button" class="booking-submit-btn" onclick="closeBookingForm()" style="background: linear-gradient(135deg, #2196F3, #1976D2);">
+                Close & Continue
+            </button>
+        `;
+        
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('✅ Appointment booked successfully!');
+        }
+    }
+
+    function showInlineBookingError(message) {
+        const form = document.getElementById('inlineBookingForm');
+        
+        const existingError = form.querySelector('.error-message');
+        if (existingError) existingError.remove();
+        
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.style.cssText = 'background: linear-gradient(135deg, #ffebee, #ffcdd2); border: 2px solid #f44336; color: #c62828; padding: 15px; border-radius: 12px; margin: 15px 0;';
+        errorDiv.innerHTML = `<strong>❌ Error:</strong><br>${message}`;
+        
+        form.insertBefore(errorDiv, form.firstChild);
+        errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+</script>
 </body>
-</html>"""
+</html>
+'''
     
     return widget_html
 
