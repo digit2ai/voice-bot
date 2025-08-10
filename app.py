@@ -1842,192 +1842,101 @@ async playPremiumAudio(audioBase64, responseText, showText = false) {
         
         this.currentAudio = new Audio(audioUrl);
         this.currentAudio.volume = 1.0;
+        this.currentAudio.preload = 'auto';
         
-        // MOBILE: Immediately show tap prompt and wait for user interaction
+        // Mobile-specific: ensure audio context is ready
         if (this.isMobile) {
-            return new Promise((resolve) => {
-                let audioPlayed = false;
-                
-                // Show tap prompt immediately on mobile
-                this.updateStatus('📱 Tap anywhere to hear Rachel\'s response...');
-                
-                // Create a full-screen tap target
-                const tapOverlay = document.createElement('div');
-                tapOverlay.style.cssText = `
-                    position: fixed;
-                    top: 0;
-                    left: 0;
-                    width: 100%;
-                    height: 100%;
-                    z-index: 9999;
-                    background: rgba(0,0,0,0.3);
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                `;
-                
-                const tapMessage = document.createElement('div');
-                tapMessage.style.cssText = `
-                    background: white;
-                    padding: 20px;
-                    border-radius: 15px;
-                    text-align: center;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-                `;
-                tapMessage.innerHTML = `
-                    <div style="font-size: 48px; margin-bottom: 10px;">🔊</div>
-                    <div style="color: #333; font-weight: bold;">Tap to hear Rachel speak</div>
-                    <div style="color: #666; font-size: 14px; margin-top: 5px;">Mobile requires tap for audio</div>
-                `;
-                
-                tapOverlay.appendChild(tapMessage);
-                document.body.appendChild(tapOverlay);
-                
-                const playAudioOnTap = async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    
-                    // Remove overlay
-                    document.body.removeChild(tapOverlay);
-                    
-                    try {
-                        // Initialize audio context if needed
-                        if (!this.audioContext) {
-                            const AudioContext = window.AudioContext || window.webkitAudioContext;
-                            this.audioContext = new AudioContext();
-                        }
-                        
-                        // Resume audio context
-                        if (this.audioContext.state === 'suspended') {
-                            await this.audioContext.resume();
-                        }
-                        
-                        // Play the audio
-                        await this.currentAudio.play();
-                        audioPlayed = true;
-                        
-                        console.log('Mobile audio playing after tap');
-                        
-                        // Update status
-                        if (showText) {
-                            this.updateStatus('🔊 ' + responseText.substring(0, 150) + '...');
-                        } else {
-                            this.updateStatus('🔊 Rachel is speaking...');
-                        }
-                        
-                        this.isPlaying = true;
-                        this.updateUI('speaking');
-                        
-                    } catch (error) {
-                        console.error('Failed to play audio after tap:', error);
-                        
-                        // Fallback to showing text
+            if (!this.audioContext) {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    this.audioContext = new AudioContext();
+                }
+            }
+            
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                try {
+                    await this.audioContext.resume();
+                    console.log('Audio context resumed for mobile');
+                } catch (e) {
+                    console.log('Could not resume audio context:', e);
+                }
+            }
+        }
+        
+        return new Promise((resolve) => {
+            let audioStarted = false;
+            
+            const playTimeout = setTimeout(() => {
+                if (!audioStarted) {
+                    console.log('Audio timeout - fallback to text');
+                    this.currentAudio = null;
+                    URL.revokeObjectURL(audioUrl);
+                    if (!showText) {
                         this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 3000);
                     }
-                };
-                
-                // Add tap listener to overlay
-                tapOverlay.addEventListener('click', playAudioOnTap);
-                tapOverlay.addEventListener('touchstart', playAudioOnTap);
-                
-                // Audio event handlers
-                this.currentAudio.onended = () => {
-                    console.log('Mobile audio ended');
-                    URL.revokeObjectURL(audioUrl);
-                    if (!audioPlayed) {
-                        document.body.removeChild(tapOverlay);
-                    }
-                    this.audioFinished();
-                    resolve();
-                };
-                
-                this.currentAudio.onerror = (error) => {
-                    console.error('Mobile audio error:', error);
-                    if (!audioPlayed && document.body.contains(tapOverlay)) {
-                        document.body.removeChild(tapOverlay);
-                    }
-                    URL.revokeObjectURL(audioUrl);
-                    this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
                     setTimeout(() => {
                         this.audioFinished();
                         resolve();
                     }, 3000);
-                };
-                
-                // Timeout fallback (if user doesn't tap within 10 seconds)
+                }
+            }, 5000); // 5 second timeout
+            
+            this.currentAudio.onplay = () => {
+                console.log('Audio started playing');
+                audioStarted = true;
+                clearTimeout(playTimeout);
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                if (!showText) {
+                    this.updateStatus('🔊 Rachel is speaking...');
+                }
+            };
+            
+            this.currentAudio.onended = () => {
+                console.log('Audio ended');
+                clearTimeout(playTimeout);
+                URL.revokeObjectURL(audioUrl);
+                this.audioFinished();
+                resolve();
+            };
+            
+            this.currentAudio.onerror = (error) => {
+                console.error('Audio error:', error);
+                clearTimeout(playTimeout);
+                this.currentAudio = null;
+                URL.revokeObjectURL(audioUrl);
+                if (!showText) {
+                    this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                }
                 setTimeout(() => {
-                    if (!audioPlayed && document.body.contains(tapOverlay)) {
-                        document.body.removeChild(tapOverlay);
-                        console.log('Mobile audio timeout - showing text only');
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 3000);
-                    }
-                }, 10000);
-            });
-        }
-        
-        // DESKTOP: Try to play automatically
-        else {
-            return new Promise((resolve) => {
-                let audioStarted = false;
-                
-                const playDesktopAudio = async () => {
-                    try {
-                        await this.currentAudio.play();
-                        audioStarted = true;
-                        console.log('Desktop audio playing');
-                    } catch (error) {
-                        console.error('Desktop audio play failed:', error);
-                        // Show text fallback
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 3000);
-                    }
-                };
-                
-                this.currentAudio.onplay = () => {
-                    console.log('Audio started playing');
-                    audioStarted = true;
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    if (!showText) {
-                        this.updateStatus('🔊 Rachel is speaking...');
-                    }
-                };
-                
-                this.currentAudio.onended = () => {
-                    console.log('Audio ended');
-                    URL.revokeObjectURL(audioUrl);
                     this.audioFinished();
                     resolve();
-                };
+                }, 3000);
+            };
+            
+            // Try to play - this will work on desktop, may fail silently on mobile
+            this.currentAudio.play().then(() => {
+                console.log('Audio playing successfully');
+            }).catch((error) => {
+                console.log('Audio play failed (expected on mobile):', error);
                 
-                this.currentAudio.onerror = (error) => {
-                    console.error('Audio error:', error);
+                // On mobile, show text immediately since audio won't play
+                if (this.isMobile) {
+                    clearTimeout(playTimeout);
+                    this.currentAudio = null;
                     URL.revokeObjectURL(audioUrl);
-                    if (!audioStarted) {
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 3000);
-                    }
-                };
-                
-                // Start playing on desktop
-                playDesktopAudio();
+                    
+                    // Show the full response text for mobile users
+                    this.updateStatus('💬 ' + responseText.substring(0, 150) + (responseText.length > 150 ? '...' : ''));
+                    
+                    // Keep text visible longer on mobile
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 5000); // 5 seconds to read
+                }
             });
-        }
+        });
         
     } catch (error) {
         console.error('Premium audio processing failed:', error);
