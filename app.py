@@ -2367,7 +2367,426 @@ VOICE_HTML_TEMPLATE = '''
 </body>
 </html>
 '''
+# ==================== ROUTES ====================
+
+@app.route('/')
+def serve_index():
+    """Voice interface"""
+    return render_template_string(VOICE_HTML_TEMPLATE)
+
+@app.route('/chat')
+def serve_chat():
+    """Text chat interface"""
+    return render_template_string(CHAT_HTML_TEMPLATE)
+
+@app.route('/chat-enhanced')
+def serve_enhanced_chat():
+    """Enhanced chat interface with appointment booking"""
+    return render_template_string(ENHANCED_CHAT_TEMPLATE)
+
+@app.route('/chat', methods=['POST'])
+def handle_chat():
+    """Handle chat messages with SMS integration"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        
+        if not user_message:
+            return jsonify({'response': 'Please enter a question.', 'needs_phone_collection': False})
+        
+        # Store the question in session for potential phone collection
+        session['last_question'] = user_message
+        
+        logger.info(f"💬 Chat message received: {user_message}")
+        
+        # Get FAQ response with SMS capability
+        response, is_faq_match, needs_phone_collection = get_faq_response_with_sms(user_message)
+        
+        logger.info(f"📋 FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
+        
+        return jsonify({
+            'response': response,
+            'needs_phone_collection': needs_phone_collection,
+            'is_faq_match': is_faq_match
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Error in chat endpoint: {str(e)}")
+        return jsonify({
+            'response': 'Sorry, there was an error processing your request. Please try again.',
+            'needs_phone_collection': False
+        }), 500
+
+@app.route('/chat-enhanced', methods=['POST'])
+def handle_enhanced_chat():
+    """Enhanced chat handler with appointment booking capabilities"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        booking_step = data.get('booking_step', 'none')
+        booking_data = data.get('booking_data', {})
+        
+        if not user_message:
+            return jsonify({'response': 'Please enter a question.', 'action': 'none'})
+        
+        logger.info(f"💬 Enhanced chat message: {user_message}")
+        logger.info(f"📊 Current booking step: {booking_step}")
+        
+        user_message_lower = user_message.lower().strip()
+        
+        # Handle follow-up responses based on conversation context
+        if booking_step == 'awaiting_confirmation':
+            logger.info("🔄 Processing follow-up response")
+            if user_message_lower in ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'y']:
+                logger.info("✅ User confirmed booking")
+                return jsonify({
+                    'response': 'Perfect! Let me set up the booking form for you.',
+                    'action': 'start_booking',
+                    'booking_step': 'form_ready',
+                    'is_faq_match': True
+                })
+            elif user_message_lower in ['no', 'nope', 'not now', 'maybe later', 'n']:
+                logger.info("❌ User declined booking")
+                return jsonify({
+                    'response': 'No problem! Feel free to ask me any questions about RinglyPro services, or let me know if you change your mind about scheduling.',
+                    'action': 'none',
+                    'booking_step': 'none',
+                    'is_faq_match': True
+                })
+        
+        # Get enhanced FAQ response
+        response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
+        
+        logger.info(f"📤 Response: {response[:50]}...")
+        logger.info(f"🎬 Action needed: {action_needed}")
+        
+        response_data = {
+            'response': response,
+            'is_faq_match': is_faq_match,
+            'action': action_needed,
+            'booking_step': booking_step
+        }
+        
+        # Handle specific booking actions
+        if action_needed == "start_booking":
+            logger.info("🚀 Setting action to start_booking")
+            response_data['action'] = 'start_booking'
+            response_data['booking_step'] = 'form_ready'
+        elif action_needed == "suggest_booking":
+            response_data['response'] += " Type 'yes' if you'd like to schedule a consultation."
+            response_data['booking_step'] = 'awaiting_confirmation'
+        elif action_needed == "offer_booking":
+            response_data['booking_step'] = 'awaiting_confirmation'
+        
+        logger.info(f"📨 Final response data: {response_data}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"❌ Error in enhanced chat endpoint: {str(e)}")
+        return jsonify({
+            'response': 'Sorry, there was an error processing your request. Please try again.',
+            'action': 'none'
+        }), 500
+
+@app.route('/get-available-slots', methods=['POST'])
+def get_available_slots():
+    """Get available appointment slots for a date"""
+    try:
+        data = request.get_json()
+        date = data.get('date')
+        
+        if not date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        slots = AppointmentManager.get_available_slots(date)
+        
+        return jsonify({
+            'success': True,
+            'date': date,
+            'slots': slots
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting available slots: {e}")
+        return jsonify({'error': 'Failed to get available slots'}), 500
+
+@app.route('/book-appointment', methods=['POST'])
+def book_appointment():
+    """Book a new appointment"""
+    try:
+        data = request.get_json()
+        
+        appointment_manager = AppointmentManager()
+        success, message, appointment = appointment_manager.book_appointment(data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'appointment': appointment
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': message
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"Error booking appointment: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to book appointment'
+        }), 500
+
+@app.route('/appointment/<confirmation_code>')
+def get_appointment(confirmation_code):
+    """Get appointment details by confirmation code"""
+    try:
+        appointment = AppointmentManager.get_appointment_by_code(confirmation_code)
+        
+        if appointment:
+            return jsonify({
+                'success': True,
+                'appointment': appointment
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Appointment not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting appointment: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to retrieve appointment'
+        }), 500
+
+@app.route('/submit_phone', methods=['POST'])
+def submit_phone():
+    """Handle phone number submission and send SMS notification"""
+    try:
+        data = request.get_json()
+        phone_number = data.get('phone', '').strip()
+        last_question = data.get('last_question', session.get('last_question', 'General inquiry'))
+        
+        if not phone_number:
+            return jsonify({
+                'success': False,
+                'message': 'Please provide a phone number.'
+            })
+        
+        # Validate phone number
+        validated_phone = validate_phone_number(phone_number)
+        if not validated_phone:
+            return jsonify({
+                'success': False,
+                'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
+            })
+        
+        logger.info(f"📞 Phone submitted: {validated_phone}, Question: {last_question}")
+        
+        # Send SMS notification
+        sms_success, sms_result = send_sms_notification(validated_phone, last_question)
+        
+        # Save to database
+        db_saved = save_customer_inquiry(validated_phone, last_question, sms_success, sms_result)
+        
+        if sms_success:
+            success_message = f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
+        else:
+            success_message = f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
+        
+        return jsonify({
+            'success': True,
+            'message': success_message
+        })
+            
+    except Exception as e:
+        logger.error(f"❌ Error in submit_phone endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
+        })
+
+@app.route('/process-text-enhanced', methods=['POST'])
+def process_text_enhanced():
+    """Enhanced text processing with premium audio and booking detection"""
+    logger.info("🎤 Enhanced text processing request")
     
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            logger.error("❌ Missing text data")
+            return jsonify({"error": "Missing text data"}), 400
+            
+        user_text = data['text'].strip()
+        user_language = data.get('language', 'en-US')
+        is_mobile = data.get('mobile', False)
+        
+        # Backend echo detection
+        echo_phrases = [
+            'ringly pro', 'i can help', 'scheduling', 'perfect', 'wonderful',
+            'how can i help', 'i\'m here to help', 'that\'s great', 'absolutely'
+        ]
+        
+        user_lower = user_text.lower()
+        is_echo = any(phrase in user_lower for phrase in echo_phrases) and len(user_text) > 30
+        
+        if is_echo:
+            logger.warning(f"🔄 Echo detected: {user_text[:50]}...")
+            return jsonify({
+                "response": "I think I heard an echo. Please speak again.",
+                "language": user_language,
+                "context": "clarification",
+                "show_text": is_mobile
+            })
+        
+        if not user_text or len(user_text) < 2:
+            error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
+                        if user_language.startswith('es') 
+                        else "Text too short. Please try again.")
+            return jsonify({"error": error_msg}), 400
+        
+        logger.info(f"📝 Processing: {user_text}")
+        
+        # Check for booking intent in voice
+        booking_keywords = [
+            'book', 'schedule', 'appointment', 'meeting', 'consultation',
+            'want to book', 'book an appointment', 'schedule meeting',
+            'yes i want to book', 'book appointment', 'schedule appointment'
+        ]
+        
+        booking_detected = any(keyword in user_lower for keyword in booking_keywords)
+        
+        if booking_detected:
+            logger.info("🎯 Booking intent detected in voice!")
+            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
+            
+            # Try to generate premium audio with Rachel's voice
+            audio_data = None
+            engine_used = "browser_fallback"
+            
+            if elevenlabs_api_key:
+                try:
+                    # Use Rachel's voice - correct voice ID
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # This is Rachel's voice
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                    
+                    headers = {
+                        "Accept": "audio/mpeg",
+                        "Content-Type": "application/json",
+                        "xi-api-key": elevenlabs_api_key
+                    }
+                    
+                    tts_data = {
+                        "text": booking_response,
+                        "model_id": "eleven_monolingual_v1",  # Better for English
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75
+                        }
+                    }
+                    
+                    timeout = 10
+                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                    
+                    if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                        engine_used = "elevenlabs_rachel"
+                        logger.info("✅ Rachel's voice audio generated successfully")
+                    else:
+                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                    
+                except Exception as tts_error:
+                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+            
+            response_payload = {
+                "response": booking_response,
+                "language": user_language,
+                "context": "booking_redirect",
+                "action": "redirect_to_booking",
+                "engine_used": engine_used,
+                "show_text": True  # Always show text
+            }
+            
+            if audio_data:
+                response_payload["audio"] = audio_data
+                logger.info("✅ Booking response with Rachel's voice")
+            else:
+                logger.info("✅ Booking response with browser TTS fallback")
+            
+            return jsonify(response_payload)
+        
+        # Regular FAQ processing for non-booking requests
+        faq_response, is_faq = get_faq_response(user_text)
+        response_text = faq_response
+        context = "professional" if is_faq else "friendly"
+        
+        # Try to generate premium audio with Rachel's voice
+        audio_data = None
+        engine_used = "browser_fallback"
+        
+        if elevenlabs_api_key:
+            try:
+                # Rachel's voice ID
+                voice_id = "21m00Tcm4TlvDq8ikWAM"
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                
+                headers = {
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "xi-api-key": elevenlabs_api_key
+                }
+                
+                # Optimize text for speech
+                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
+                speech_text = speech_text.replace("AI", "A.I.")
+                speech_text = speech_text.replace("$", " dollars")
+                
+                tts_data = {
+                    "text": speech_text,
+                    "model_id": "eleven_monolingual_v1",  # Better for English
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    }
+                }
+                
+                timeout = 10
+                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                
+                if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                    audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                    engine_used = "elevenlabs_rachel"
+                    logger.info(f"✅ Rachel's voice audio generated ({len(tts_response.content)} bytes)")
+                else:
+                    logger.warning(f"⚠️ ElevenLabs failed: Status {tts_response.status_code}")
+                    
+            except Exception as tts_error:
+                logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+        
+        response_payload = {
+            "response": response_text,
+            "language": user_language,
+            "context": context,
+            "is_faq": is_faq,
+            "engine_used": engine_used,
+            "show_text": True  # Always show text
+        }
+        
+        if audio_data:
+            response_payload["audio"] = audio_data
+            logger.info("✅ Response with Rachel's voice audio")
+        else:
+            logger.info("✅ Response with browser TTS fallback")
+        
+        return jsonify(response_payload)
+        
+    except Exception as e:
+        logger.error(f"❌ Processing error: {e}")
+        return jsonify({"error": "I had a technical issue. Please try again."}), 500
 
 @app.route('/admin')
 def admin_dashboard():
