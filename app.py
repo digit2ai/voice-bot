@@ -1,3 +1,8 @@
+from twilio.twiml.voice_response import VoiceResponse, Gather, Say, Play, Record, Dial, Pause
+from twilio.rest import Client
+from functools import wraps
+import re
+from urllib.parse import urlencode
 from flask import Flask, request, jsonify, render_template_string, session
 from flask_cors import CORS
 import requests
@@ -373,6 +378,18 @@ class HubSpotService:
                 
         except Exception as e:
             return {"success": False, "error": f"Error associating meeting: {str(e)}"}
+
+
+# ==================== TELEPHONY CALL HANDLER ====================
+
+class PhoneCallHandler:
+    """Handle incoming phone calls with IVR and Rachel's voice"""
+    
+    def __init__(self):
+        self.elevenlabs_api_key = elevenlabs_api_key
+        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
+    
+    # ... rest of the class methods
 
 # ==================== APPOINTMENT MANAGEMENT CLASS ====================
 
