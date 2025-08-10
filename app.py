@@ -3725,7 +3725,6 @@ def phone_webhook():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/process-speech', methods=['POST'])
-@validate_twilio_request
 def process_phone_speech():
     """Process speech input from phone call"""
     try:
@@ -3753,7 +3752,6 @@ def process_phone_speech():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/pricing-followup', methods=['POST'])
-@validate_twilio_request
 def pricing_followup():
     """Handle follow-up after pricing information"""
     try:
@@ -3780,7 +3778,6 @@ def pricing_followup():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/collect-name', methods=['POST'])
-@validate_twilio_request
 def collect_name():
     """Collect customer name for booking"""
     try:
@@ -3809,7 +3806,6 @@ def collect_name():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/collect-phone', methods=['POST'])
-@validate_twilio_request
 def collect_phone():
     """Collect customer phone for booking"""
     try:
@@ -3867,7 +3863,6 @@ def collect_phone():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/call-complete', methods=['POST'])
-@validate_twilio_request
 def call_complete():
     """Handle call completion and logging"""
     try:
@@ -3897,7 +3892,6 @@ def call_complete():
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/voicemail', methods=['POST'])
-@validate_twilio_request
 def handle_voicemail():
     """Handle voicemail recording"""
     try:
