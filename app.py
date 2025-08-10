@@ -3338,3 +3338,13 @@ def serve_enhanced_chat():
 # ... [REST OF THE FILE CONTINUES WITH ALL THE ROUTES AND FUNCTIONS AS IN ORIGINAL] ...
 # The rest of the file continues exactly as in your original, including all routes,
 # helper functions, and the main application startup code at the bottom
+# Add this at the VERY END of your app.py file
+print("=== FILE LOADING CHECK ===")
+print(f"Flask app created: {app is not None}")
+print(f"Total routes defined: {len(app.url_map._rules)}")
+print("=== STARTING APP ===")
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting on port {port}")
+    app.run(debug=False, host='0.0.0.0', port=port)
