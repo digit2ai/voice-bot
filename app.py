@@ -1627,10 +1627,8 @@ VOICE_HTML_TEMPLATE = '''
 
   <script>
     // Enhanced Voice Interface JavaScript
-    class EnhancedVoiceBot {
+class EnhancedVoiceBot {
         constructor() {
-            this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            this.processTimeout = null;            
             this.micBtn = document.getElementById('micBtn');
             this.status = document.getElementById('status');
             this.stopBtn = document.getElementById('stopBtn');
@@ -1645,6 +1643,8 @@ VOICE_HTML_TEMPLATE = '''
             this.recognition = null;
             this.currentAudio = null;
             this.userInteracted = false;
+            this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            this.processTimeout = null;
             
             this.init();
         }
@@ -1659,6 +1659,18 @@ VOICE_HTML_TEMPLATE = '''
 
             this.setupEventListeners();
             this.initSpeechRecognition();
+            
+            // Request audio permissions on mobile
+            if (this.isMobile) {
+                document.addEventListener('click', () => {
+                    if (window.AudioContext || window.webkitAudioContext) {
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        if (audioContext.state === 'suspended') {
+                            audioContext.resume();
+                        }
+                    }
+                }, { once: true });
+            }
         }
 
         initSpeechRecognition() {
@@ -1704,6 +1716,19 @@ VOICE_HTML_TEMPLATE = '''
             this.isProcessing = true;
             this.updateUI('processing');
             this.updateStatus('🤖 Processing...');
+            
+            // Clear any existing timeout
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+            }
+            
+            // Add timeout for the entire processing
+            this.processTimeout = setTimeout(() => {
+                if (this.isProcessing) {
+                    console.log('Processing timeout - resetting UI');
+                    this.handleError('Processing took too long. Please try again.');
+                }
+            }, 15000); // 15 second overall timeout
 
             try {
                 const response = await fetch('/process-text-enhanced', {
@@ -1712,50 +1737,89 @@ VOICE_HTML_TEMPLATE = '''
                     body: JSON.stringify({
                         text: transcript,
                         language: this.currentLanguage,
-                        mobile: /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+                        mobile: this.isMobile
                     })
                 });
+
+                clearTimeout(this.processTimeout);
 
                 if (!response.ok) throw new Error('Server error: ' + response.status);
 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
 
+                console.log('Received data:', data);
+
                 // Check for booking redirect action
                 if (data.action === 'redirect_to_booking') {
-                    console.log('🎯 Booking redirect detected - showing inline form');
-                    this.updateStatus('📅 Opening booking form...');
+                    console.log('🎯 Booking redirect detected');
                     
-                    // Play audio first, then show form
+                    // On mobile with text_only, skip audio completely
+                    if (data.engine_used === 'text_only' || this.isMobile) {
+                        console.log('📱 Mobile or text-only mode - skipping audio');
+                        this.updateStatus('📅 Opening booking form...');
+                        
+                        // Reset processing state immediately
+                        this.isProcessing = false;
+                        this.updateUI('ready');
+                        
+                        // Show the booking form directly
+                        setTimeout(() => {
+                            this.showInlineBookingForm();
+                        }, 500);
+                        return;
+                    }
+                    
+                    // Desktop with audio
                     if (data.audio) {
                         await this.playPremiumAudio(data.audio, data.response);
-                        // Show inline booking form after audio
-                        setTimeout(() => {
-                            this.showInlineBookingForm();
-                        }, 500);
                     } else {
                         await this.playBrowserTTS(data.response);
-                        // Show inline booking form after audio
-                        setTimeout(() => {
-                            this.showInlineBookingForm();
-                        }, 500);
                     }
+                    
+                    // Show booking form after audio
+                    setTimeout(() => {
+                        this.showInlineBookingForm();
+                    }, 500);
                     return;
                 }
 
-                // Regular audio playback for non-booking responses
-                if (data.audio) {
+                // Regular responses (non-booking)
+                if (data.engine_used === 'text_only' || this.isMobile) {
+                    console.log('📱 Text-only response for mobile');
+                    // Display the response text for a few seconds
+                    this.updateStatus('💬 ' + (data.response || 'Response received').substring(0, 100) + '...');
+                    
+                    // Reset after showing the text
+                    setTimeout(() => {
+                        this.audioFinished();
+                    }, 3000);
+                } else if (data.audio) {
                     await this.playPremiumAudio(data.audio, data.response);
-                } else {
+                } else if (data.response) {
                     await this.playBrowserTTS(data.response);
+                } else {
+                    // No response received
+                    this.audioFinished();
                 }
 
             } catch (error) {
+                clearTimeout(this.processTimeout);
                 this.handleError('Processing error: ' + error.message);
             }
         }
 
         async playPremiumAudio(audioBase64, responseText) {
+            // Skip audio on mobile
+            if (this.isMobile) {
+                console.log('📱 Skipping audio playback on mobile');
+                this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                setTimeout(() => {
+                    this.audioFinished();
+                }, 2000);
+                return Promise.resolve();
+            }
+
             try {
                 const audioData = atob(audioBase64);
                 const arrayBuffer = new ArrayBuffer(audioData.length);
@@ -1771,62 +1835,153 @@ VOICE_HTML_TEMPLATE = '''
                 this.currentAudio = new Audio(audioUrl);
                 
                 return new Promise((resolve) => {
+                    let audioStarted = false;
+                    
+                    const playTimeout = setTimeout(() => {
+                        if (!audioStarted) {
+                            console.log('Audio timeout - showing text instead');
+                            this.currentAudio = null;
+                            URL.revokeObjectURL(audioUrl);
+                            this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, 2000);
+                        }
+                    }, 3000);
+                    
                     this.currentAudio.onplay = () => {
+                        audioStarted = true;
+                        clearTimeout(playTimeout);
                         this.isPlaying = true;
                         this.updateUI('speaking');
                         this.updateStatus('🔊 Speaking...');
                     };
                     
                     this.currentAudio.onended = () => {
+                        clearTimeout(playTimeout);
                         this.audioFinished();
                         URL.revokeObjectURL(audioUrl);
                         resolve();
                     };
                     
-                    this.currentAudio.onerror = () => {
-                        console.log('Premium audio failed, falling back to browser TTS');
-                        this.playBrowserTTS(responseText).then(resolve);
+                    this.currentAudio.onerror = (error) => {
+                        clearTimeout(playTimeout);
+                        console.log('Premium audio failed:', error);
+                        this.currentAudio = null;
+                        URL.revokeObjectURL(audioUrl);
+                        
+                        // Show text instead
+                        this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 2000);
                     };
                     
-                    this.currentAudio.play().catch(() => {
-                        console.log('Premium audio play failed, falling back to browser TTS');
-                        this.playBrowserTTS(responseText).then(resolve);
+                    this.currentAudio.play().catch((error) => {
+                        clearTimeout(playTimeout);
+                        console.log('Audio play failed:', error);
+                        this.currentAudio = null;
+                        URL.revokeObjectURL(audioUrl);
+                        
+                        // Show text instead
+                        this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 2000);
                     });
                 });
                 
             } catch (error) {
-                console.log('Premium audio processing failed, falling back to browser TTS');
-                return this.playBrowserTTS(responseText);
+                console.log('Premium audio processing failed:', error);
+                this.updateStatus('💬 ' + responseText.substring(0, 100) + '...');
+                setTimeout(() => {
+                    this.audioFinished();
+                }, 2000);
+                return Promise.resolve();
             }
         }
 
         async playBrowserTTS(text) {
+            // Skip TTS on mobile
+            if (this.isMobile) {
+                console.log('📱 Skipping TTS on mobile');
+                this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                setTimeout(() => {
+                    this.audioFinished();
+                }, 2000);
+                return Promise.resolve();
+            }
+
             return new Promise((resolve) => {
-                speechSynthesis.cancel();
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = this.currentLanguage;
-                utterance.rate = 0.9;
-                utterance.pitch = 1.0;
-                utterance.volume = 0.8;
+                try {
+                    speechSynthesis.cancel();
+                    
+                    if (!window.speechSynthesis) {
+                        console.log('Speech synthesis not available');
+                        this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 2000);
+                        return;
+                    }
+                    
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = this.currentLanguage;
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 0.8;
+                    
+                    let speechStarted = false;
+                    
+                    const speechTimeout = setTimeout(() => {
+                        if (!speechStarted) {
+                            speechSynthesis.cancel();
+                            this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, 2000);
+                        }
+                    }, 2000);
 
-                utterance.onstart = () => {
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    this.updateStatus('🔊 Speaking...');
-                };
+                    utterance.onstart = () => {
+                        speechStarted = true;
+                        clearTimeout(speechTimeout);
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        this.updateStatus('🔊 Speaking...');
+                    };
 
-                utterance.onend = () => {
-                    this.audioFinished();
-                    resolve();
-                };
+                    utterance.onend = () => {
+                        clearTimeout(speechTimeout);
+                        this.audioFinished();
+                        resolve();
+                    };
 
-                utterance.onerror = () => {
-                    this.audioFinished();
-                    resolve();
-                };
+                    utterance.onerror = (error) => {
+                        clearTimeout(speechTimeout);
+                        console.log('Browser TTS error:', error);
+                        this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, 2000);
+                    };
 
-                speechSynthesis.speak(utterance);
+                    speechSynthesis.speak(utterance);
+                    
+                } catch (error) {
+                    console.log('Browser TTS failed:', error);
+                    this.updateStatus('💬 ' + text.substring(0, 100) + '...');
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 2000);
+                }
             });
         }
 
@@ -1834,7 +1989,7 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-                            this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to continue');
+            this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to continue');
         }
 
         setupEventListeners() {
@@ -1940,6 +2095,12 @@ VOICE_HTML_TEMPLATE = '''
             this.isPlaying = false;
             this.updateUI('ready');
             
+            // Clear any pending timeouts
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
+            
             setTimeout(() => {
                 this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to try again');
             }, 3000);
@@ -1966,10 +2127,12 @@ VOICE_HTML_TEMPLATE = '''
             // Show the overlay
             overlay.style.display = 'flex';
             
-            // Focus on first input
-            setTimeout(() => {
-                document.getElementById('inlineCustomerName').focus();
-            }, 100);
+            // Focus on first input (desktop only)
+            if (!this.isMobile) {
+                setTimeout(() => {
+                    document.getElementById('inlineCustomerName').focus();
+                }, 100);
+            }
             
             this.updateStatus('📅 Fill out the booking form above');
         }
@@ -1977,6 +2140,12 @@ VOICE_HTML_TEMPLATE = '''
         clearAll() {
             this.stopAudio();
             if (this.isListening) this.stopListening();
+            
+            // Clear any pending timeouts
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
             
             this.isProcessing = false;
             this.isListening = false;
@@ -2001,7 +2170,7 @@ VOICE_HTML_TEMPLATE = '''
         }
     });
 
-    // Global functions for inline booking form
+    // Rest of your existing global functions remain the same...
     let selectedInlineTimeSlot = null;
 
     function closeBookingForm() {
@@ -2169,7 +2338,7 @@ VOICE_HTML_TEMPLATE = '''
         // Scroll error into view
         errorDiv.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  </script>
+</script>
 </body>
 </html>
 '''
