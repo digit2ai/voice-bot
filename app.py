@@ -2368,7 +2368,6 @@ VOICE_HTML_TEMPLATE = '''
 </html>
 '''
     
-    return widget_html
 
 @app.route('/admin')
 def admin_dashboard():
