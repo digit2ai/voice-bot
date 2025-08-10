@@ -1031,8 +1031,7 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     logger.info("❌ No FAQ match, offering booking")
     return ("I don't have a specific answer to that question, but I'd be happy to connect you with our team. Would you like to schedule a consultation or provide your phone number for a callback?", 
             False, "offer_booking")
-
-# ==================== EXTENSIVE HTML TEMPLATES ====================
+    # ==================== EXTENSIVE HTML TEMPLATES ====================
 
 VOICE_HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -1626,8 +1625,7 @@ VOICE_HTML_TEMPLATE = '''
   </div>
 
 <script>
-    // Enhanced Voice Interface JavaScript
-// Enhanced Voice Interface JavaScript
+    // Enhanced Voice Interface JavaScript (FIXED FOR MOBILE)
     class EnhancedVoiceBot {
         constructor() {
             this.micBtn = document.getElementById('micBtn');
@@ -1647,7 +1645,7 @@ VOICE_HTML_TEMPLATE = '''
             this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
             this.processTimeout = null;
             this.audioContext = null;
-            this.recognitionTimeout = null; // Add this
+            this.recognitionTimeout = null;
             
             // Initialize audio context on first user interaction (mobile)
             if (this.isMobile) {
@@ -1879,60 +1877,9 @@ VOICE_HTML_TEMPLATE = '''
                         console.log(`Audio play attempt ${playAttempts} of ${maxAttempts}`);
                         
                         try {
-                            // On mobile, we might need to wait for user interaction
-                            if (this.isMobile && playAttempts === 1) {
-                                // First attempt - try to play directly
-                                await this.currentAudio.play();
-                                console.log('Mobile audio playing successfully on first attempt');
-                                audioStarted = true;
-                            } else if (this.isMobile && playAttempts === 2) {
-                                // Second attempt - show tap prompt
-                                this.updateStatus('📱 Tap anywhere to hear Rachel speak...');
-                                
-                                // Wait for user tap
-                                const playOnTap = async (e) => {
-                                    e.preventDefault();
-                                    document.removeEventListener('touchstart', playOnTap);
-                                    document.removeEventListener('click', playOnTap);
-                                    
-                                    try {
-                                        await this.currentAudio.play();
-                                        console.log('Mobile audio playing after user tap');
-                                        audioStarted = true;
-                                        
-                                        // Restore the text display
-                                        if (showText) {
-                                            this.updateStatus('🔊 ' + responseText.substring(0, 150) + '...');
-                                        }
-                                    } catch (err) {
-                                        console.log('Still cannot play audio after tap:', err);
-                                        if (playAttempts < maxAttempts) {
-                                            setTimeout(attemptPlay, 500);
-                                        }
-                                    }
-                                };
-                                
-                                document.addEventListener('touchstart', playOnTap, { once: true });
-                                document.addEventListener('click', playOnTap, { once: true });
-                                
-                                // Timeout if no tap within 5 seconds
-                                setTimeout(() => {
-                                    document.removeEventListener('touchstart', playOnTap);
-                                    document.removeEventListener('click', playOnTap);
-                                    if (!audioStarted && playAttempts < maxAttempts) {
-                                        attemptPlay();
-                                    } else if (!audioStarted) {
-                                        console.log('No user interaction, keeping text only');
-                                        this.audioFinished();
-                                        resolve();
-                                    }
-                                }, 5000);
-                            } else {
-                                // Desktop or final attempt
-                                await this.currentAudio.play();
-                                console.log('Audio playing successfully');
-                                audioStarted = true;
-                            }
+                            await this.currentAudio.play();
+                            console.log('Audio playing successfully');
+                            audioStarted = true;
                         } catch (error) {
                             console.log(`Play attempt ${playAttempts} failed:`, error);
                             
@@ -1966,7 +1913,7 @@ VOICE_HTML_TEMPLATE = '''
                                 resolve();
                             }, 3000);
                         }
-                    }, 10000); // Longer timeout for mobile
+                    }, 10000);
                     
                     this.currentAudio.onplay = () => {
                         console.log('Audio started playing');
@@ -2247,13 +2194,7 @@ VOICE_HTML_TEMPLATE = '''
         }
     });
 
-    // [Keep all the existing booking form functions below - don't change them]
-    // let selectedInlineTimeSlot = null;
-    // function closeBookingForm() { ... }
-    // function loadInlineAvailableSlots() { ... }
-    // etc...
-
-    // Keep the rest of your existing functions for the booking form...
+    // Booking form functions
     let selectedInlineTimeSlot = null;
 
     function closeBookingForm() {
@@ -2421,7 +2362,6 @@ VOICE_HTML_TEMPLATE = '''
 </body>
 </html>
 '''
-
 CHAT_HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -2940,7 +2880,6 @@ ENHANCED_CHAT_TEMPLATE = '''
         }
         
         .time-slot {
-            padding: 8px 12px; background: #e3f2fd; border
             padding: 8px 12px; background: #e3f2fd; border: 2px solid #2196f3;
             border-radius: 8px; cursor: pointer; font-size: 12px; color: #1565c0;
             transition: all 0.3s ease;
@@ -3335,16 +3274,753 @@ def serve_enhanced_chat():
     """Enhanced chat interface with appointment booking"""
     return render_template_string(ENHANCED_CHAT_TEMPLATE)
 
-# ... [REST OF THE FILE CONTINUES WITH ALL THE ROUTES AND FUNCTIONS AS IN ORIGINAL] ...
-# The rest of the file continues exactly as in your original, including all routes,
-# helper functions, and the main application startup code at the bottom
-# Add this at the VERY END of your app.py file
-print("=== FILE LOADING CHECK ===")
-print(f"Flask app created: {app is not None}")
-print(f"Total routes defined: {len(app.url_map._rules)}")
-print("=== STARTING APP ===")
+@app.route('/chat', methods=['POST'])
+def handle_chat():
+    """Handle chat messages with SMS integration"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        
+        if not user_message:
+            return jsonify({'response': 'Please enter a question.', 'needs_phone_collection': False})
+        
+        # Store the question in session for potential phone collection
+        session['last_question'] = user_message
+        
+        logger.info(f"💬 Chat message received: {user_message}")
+        
+        # Get FAQ response with SMS capability
+        response, is_faq_match, needs_phone_collection = get_faq_response_with_sms(user_message)
+        
+        logger.info(f"📋 FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
+        
+        return jsonify({
+            'response': response,
+            'needs_phone_collection': needs_phone_collection,
+            'is_faq_match': is_faq_match
+        })
+        
+    except Exception as e:
+        logger.error(f"❌ Error in chat endpoint: {str(e)}")
+        return jsonify({
+            'response': 'Sorry, there was an error processing your request. Please try again.',
+            'needs_phone_collection': False
+        }), 500
+
+@app.route('/chat-enhanced', methods=['POST'])
+def handle_enhanced_chat():
+    """Enhanced chat handler with appointment booking capabilities"""
+    try:
+        data = request.get_json()
+        user_message = data.get('message', '').strip()
+        booking_step = data.get('booking_step', 'none')
+        booking_data = data.get('booking_data', {})
+        
+        if not user_message:
+            return jsonify({'response': 'Please enter a question.', 'action': 'none'})
+        
+        logger.info(f"💬 Enhanced chat message: {user_message}")
+        logger.info(f"📊 Current booking step: {booking_step}")
+        
+        user_message_lower = user_message.lower().strip()
+        
+        # Handle follow-up responses based on conversation context
+        if booking_step == 'awaiting_confirmation':
+            logger.info("🔄 Processing follow-up response")
+            if user_message_lower in ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'y']:
+                logger.info("✅ User confirmed booking")
+                return jsonify({
+                    'response': 'Perfect! Let me set up the booking form for you.',
+                    'action': 'start_booking',
+                    'booking_step': 'form_ready',
+                    'is_faq_match': True
+                })
+            elif user_message_lower in ['no', 'nope', 'not now', 'maybe later', 'n']:
+                logger.info("❌ User declined booking")
+                return jsonify({
+                    'response': 'No problem! Feel free to ask me any questions about RinglyPro services, or let me know if you change your mind about scheduling.',
+                    'action': 'none',
+                    'booking_step': 'none',
+                    'is_faq_match': True
+                })
+        
+        # Get enhanced FAQ response
+        response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
+        
+        logger.info(f"📤 Response: {response[:50]}...")
+        logger.info(f"🎬 Action needed: {action_needed}")
+        
+        response_data = {
+            'response': response,
+            'is_faq_match': is_faq_match,
+            'action': action_needed,
+            'booking_step': booking_step
+        }
+        
+        # Handle specific booking actions
+        if action_needed == "start_booking":
+            logger.info("🚀 Setting action to start_booking")
+            response_data['action'] = 'start_booking'
+            response_data['booking_step'] = 'form_ready'
+        elif action_needed == "suggest_booking":
+            response_data['response'] += " Type 'yes' if you'd like to schedule a consultation."
+            response_data['booking_step'] = 'awaiting_confirmation'
+        elif action_needed == "offer_booking":
+            response_data['booking_step'] = 'awaiting_confirmation'
+        
+        logger.info(f"📨 Final response data: {response_data}")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"❌ Error in enhanced chat endpoint: {str(e)}")
+        return jsonify({
+            'response': 'Sorry, there was an error processing your request. Please try again.',
+            'action': 'none'
+        }), 500
+
+@app.route('/get-available-slots', methods=['POST'])
+def get_available_slots():
+    """Get available appointment slots for a date"""
+    try:
+        data = request.get_json()
+        date = data.get('date')
+        
+        if not date:
+            return jsonify({'error': 'Date is required'}), 400
+        
+        slots = AppointmentManager.get_available_slots(date)
+        
+        return jsonify({
+            'success': True,
+            'date': date,
+            'slots': slots
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting available slots: {e}")
+        return jsonify({'error': 'Failed to get available slots'}), 500
+
+@app.route('/book-appointment', methods=['POST'])
+def book_appointment():
+    """Book a new appointment"""
+    try:
+        data = request.get_json()
+        
+        appointment_manager = AppointmentManager()
+        success, message, appointment = appointment_manager.book_appointment(data)
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'message': message,
+                'appointment': appointment
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': message
+            }), 400
+            
+    except Exception as e:
+        logger.error(f"Error booking appointment: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to book appointment'
+        }), 500
+
+@app.route('/appointment/<confirmation_code>')
+def get_appointment(confirmation_code):
+    """Get appointment details by confirmation code"""
+    try:
+        appointment = AppointmentManager.get_appointment_by_code(confirmation_code)
+        
+        if appointment:
+            return jsonify({
+                'success': True,
+                'appointment': appointment
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Appointment not found'
+            }), 404
+            
+    except Exception as e:
+        logger.error(f"Error getting appointment: {e}")
+        return jsonify({
+            'success': False,
+            'message': 'Failed to retrieve appointment'
+        }), 500
+
+@app.route('/submit_phone', methods=['POST'])
+def submit_phone():
+    """Handle phone number submission and send SMS notification"""
+    try:
+        data = request.get_json()
+        phone_number = data.get('phone', '').strip()
+        last_question = data.get('last_question', session.get('last_question', 'General inquiry'))
+        
+        if not phone_number:
+            return jsonify({
+                'success': False,
+                'message': 'Please provide a phone number.'
+            })
+        
+        # Validate phone number
+        validated_phone = validate_phone_number(phone_number)
+        if not validated_phone:
+            return jsonify({
+                'success': False,
+                'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
+            })
+        
+        logger.info(f"📞 Phone submitted: {validated_phone}, Question: {last_question}")
+        
+        # Send SMS notification
+        sms_success, sms_result = send_sms_notification(validated_phone, last_question)
+        
+        # Save to database
+        db_saved = save_customer_inquiry(validated_phone, last_question, sms_success, sms_result)
+        
+        if sms_success:
+            success_message = f'Perfect! We\'ve received your phone number ({validated_phone}) and notified our customer service team about your question: "{last_question}". They\'ll reach out to you shortly to provide personalized assistance.'
+        else:
+            success_message = f'Thank you for providing your phone number ({validated_phone}). We\'ve recorded your inquiry about "{last_question}" and our customer service team will contact you soon.'
+        
+        return jsonify({
+            'success': True,
+            'message': success_message
+        })
+            
+    except Exception as e:
+        logger.error(f"❌ Error in submit_phone endpoint: {str(e)}")
+        return jsonify({
+            'success': False,
+            'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
+        })
+
+@app.route('/process-text-enhanced', methods=['POST'])
+def process_text_enhanced():
+    """Enhanced text processing with premium audio and booking detection"""
+    logger.info("🎤 Enhanced text processing request")
+    
+    try:
+        data = request.get_json()
+        
+        if not data or 'text' not in data:
+            logger.error("❌ Missing text data")
+            return jsonify({"error": "Missing text data"}), 400
+            
+        user_text = data['text'].strip()
+        user_language = data.get('language', 'en-US')
+        is_mobile = data.get('mobile', False)
+        
+        # Backend echo detection
+        echo_phrases = [
+            'ringly pro', 'i can help', 'scheduling', 'perfect', 'wonderful',
+            'how can i help', 'i\'m here to help', 'that\'s great', 'absolutely'
+        ]
+        
+        user_lower = user_text.lower()
+        is_echo = any(phrase in user_lower for phrase in echo_phrases) and len(user_text) > 30
+        
+        if is_echo:
+            logger.warning(f"🔄 Echo detected: {user_text[:50]}...")
+            return jsonify({
+                "response": "I think I heard an echo. Please speak again.",
+                "language": user_language,
+                "context": "clarification",
+                "show_text": is_mobile
+            })
+        
+        if not user_text or len(user_text) < 2:
+            error_msg = ("Texto muy corto. Por favor intenta de nuevo." 
+                        if user_language.startswith('es') 
+                        else "Text too short. Please try again.")
+            return jsonify({"error": error_msg}), 400
+        
+        logger.info(f"📝 Processing: {user_text}")
+        
+        # Check for booking intent in voice
+        booking_keywords = [
+            'book', 'schedule', 'appointment', 'meeting', 'consultation',
+            'want to book', 'book an appointment', 'schedule meeting',
+            'yes i want to book', 'book appointment', 'schedule appointment'
+        ]
+        
+        booking_detected = any(keyword in user_lower for keyword in booking_keywords)
+        
+        if booking_detected:
+            logger.info("🎯 Booking intent detected in voice!")
+            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
+            
+            # Try to generate premium audio with Rachel's voice
+            audio_data = None
+            engine_used = "browser_fallback"
+            
+            if elevenlabs_api_key:
+                try:
+                    # Use Rachel's voice - correct voice ID
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # This is Rachel's voice
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                    
+                    headers = {
+                        "Accept": "audio/mpeg",
+                        "Content-Type": "application/json",
+                        "xi-api-key": elevenlabs_api_key
+                    }
+                    
+                    tts_data = {
+                        "text": booking_response,
+                        "model_id": "eleven_monolingual_v1",  # Better for English
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75
+                        }
+                    }
+                    
+                    timeout = 10
+                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                    
+                    if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                        engine_used = "elevenlabs_rachel"
+                        logger.info("✅ Rachel's voice audio generated successfully")
+                    else:
+                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                    
+                except Exception as tts_error:
+                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+            
+            response_payload = {
+                "response": booking_response,
+                "language": user_language,
+                "context": "booking_redirect",
+                "action": "redirect_to_booking",
+                "engine_used": engine_used,
+                "show_text": True  # Always show text
+            }
+            
+            if audio_data:
+                response_payload["audio"] = audio_data
+                logger.info("✅ Booking response with Rachel's voice")
+            else:
+                logger.info("✅ Booking response with browser TTS fallback")
+            
+            return jsonify(response_payload)
+        
+        # Regular FAQ processing for non-booking requests
+        faq_response, is_faq = get_faq_response(user_text)
+        response_text = faq_response
+        context = "professional" if is_faq else "friendly"
+        
+        # Try to generate premium audio with Rachel's voice
+        audio_data = None
+        engine_used = "browser_fallback"
+        
+        if elevenlabs_api_key:
+            try:
+                # Rachel's voice ID
+                voice_id = "21m00Tcm4TlvDq8ikWAM"
+                url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                
+                headers = {
+                    "Accept": "audio/mpeg",
+                    "Content-Type": "application/json",
+                    "xi-api-key": elevenlabs_api_key
+                }
+                
+                # Optimize text for speech
+                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
+                speech_text = speech_text.replace("AI", "A.I.")
+                speech_text = speech_text.replace("$", " dollars")
+                
+                tts_data = {
+                    "text": speech_text,
+                    "model_id": "eleven_monolingual_v1",  # Better for English
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    }
+                }
+                
+                timeout = 10
+                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                
+                if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                    audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                    engine_used = "elevenlabs_rachel"
+                    logger.info(f"✅ Rachel's voice audio generated ({len(tts_response.content)} bytes)")
+                else:
+                    logger.warning(f"⚠️ ElevenLabs failed: Status {tts_response.status_code}")
+                    
+            except Exception as tts_error:
+                logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+        
+        response_payload = {
+            "response": response_text,
+            "language": user_language,
+            "context": context,
+            "is_faq": is_faq,
+            "engine_used": engine_used,
+            "show_text": True  # Always show text
+        }
+        
+        if audio_data:
+            response_payload["audio"] = audio_data
+            logger.info("✅ Response with Rachel's voice audio")
+        else:
+            logger.info("✅ Response with browser TTS fallback")
+        
+        return jsonify(response_payload)
+        
+    except Exception as e:
+        logger.error(f"❌ Processing error: {e}")
+        return jsonify({"error": "I had a technical issue. Please try again."}), 500
+
+@app.route('/widget')
+def chat_widget():
+    """Embeddable chat widget"""
+    widget_html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RinglyPro Chat Widget</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            background: #f8f9fa; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column;
+        }
+        
+        .header { 
+            background: linear-gradient(135deg, #2196F3, #1976D2); 
+            color: white; 
+            padding: 15px; 
+            text-align: center;
+        }
+        
+        .chat { 
+            flex: 1; 
+            padding: 15px; 
+            overflow-y: auto; 
+            background: white;
+        }
+        
+        .message { 
+            margin-bottom: 12px; 
+            padding: 12px 15px; 
+            border-radius: 18px; 
+            max-width: 85%; 
+            font-size: 14px; 
+        }
+        
+        .bot-message { 
+            background: #f1f3f4; 
+            color: #333; 
+            margin-right: auto;
+        }
+        
+        .user-message { 
+            background: #2196F3; 
+            color: white; 
+            margin-left: auto; 
+            text-align: right;
+        }
+        
+        .input-area { 
+            padding: 15px; 
+            background: white; 
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .input-container { display: flex; gap: 8px; }
+        
+        .input-container input { 
+            flex: 1; 
+            padding: 12px 15px; 
+            border: 2px solid #e0e0e0; 
+            border-radius: 25px; 
+            outline: none;
+            background: white;
+            color: #333;
+        }
+        
+        .input-container input::placeholder {
+            color: #999;
+        }
+        
+        .input-container input:focus {
+            border-color: #2196F3;
+        }
+        
+        .send-btn { 
+            width: 40px; 
+            height: 40px; 
+            background: #2196F3; 
+            border: none; 
+            border-radius: 50%; 
+            color: white; 
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .send-btn:hover {
+            background: #1976D2;
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h3>💬 RinglyPro Widget</h3>
+        <p>Ask about our services!</p>
+    </div>
+    
+    <div class="chat" id="chat">
+        <div class="message bot-message">
+            👋 Hi! I'm here to help you learn about RinglyPro. What would you like to know?
+        </div>
+    </div>
+    
+    <div class="input-area">
+        <div class="input-container">
+            <input type="text" id="input" placeholder="Ask about services..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="send-btn" onclick="sendMessage()">→</button>
+        </div>
+    </div>
+
+    <script>
+        function sendMessage() {
+            var input = document.getElementById('input');
+            var message = input.value.trim();
+            if (!message) return;
+            
+            addMessage(message, 'user');
+            input.value = '';
+            
+            fetch('/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({message: message})
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                addMessage(data.response, 'bot');
+            })
+            .catch(function() {
+                addMessage('Sorry, there was an error. Please try again.', 'bot');
+            });
+        }
+        
+        function addMessage(text, type) {
+            var div = document.createElement('div');
+            div.className = 'message ' + type + '-message';
+            div.textContent = text;
+            document.getElementById('chat').appendChild(div);
+            document.getElementById('chat').scrollTop = 999999;
+        }
+    </script>
+</body>
+</html>"""
+    
+    return widget_html
+
+@app.route('/admin')
+def admin_dashboard():
+    """Enhanced admin dashboard with appointments and inquiries"""
+    try:
+        conn = sqlite3.connect('ringlypro.db')
+        cursor = conn.cursor()
+        
+        # Get inquiries
+        cursor.execute('''SELECT phone, question, timestamp, status, sms_sent, source 
+                          FROM inquiries ORDER BY timestamp DESC LIMIT 50''')
+        inquiries = cursor.fetchall()
+        
+        # Get appointments
+        cursor.execute('''SELECT customer_name, customer_email, customer_phone, appointment_date, 
+                          appointment_time, purpose, status, confirmation_code, created_at,
+                          hubspot_contact_id, hubspot_meeting_id
+                          FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50''')
+        appointments = cursor.fetchall()
+        
+        conn.close()
+        
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RinglyPro Admin Dashboard</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }}
+        h1 {{ color: #2196F3; text-align: center; margin-bottom: 30px; }}
+        .stats {{ display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }}
+        .stat-card {{ background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; min-width: 200px; }}
+        .stat-card h3 {{ font-size: 2.5em; margin: 0; }}
+        .stat-card p {{ margin: 10px 0 0 0; opacity: 0.9; }}
+        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }}
+        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
+        th {{ background: #f8f9fa; font-weight: bold; color: #333; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 RinglyPro Admin Dashboard</h1>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <h3>{len(inquiries)}</h3>
+                <p>Recent Inquiries</p>
+            </div>
+            <div class="stat-card">
+                <h3>{len(appointments)}</h3>
+                <p>Total Appointments</p>
+            </div>
+        </div>
+        
+        <h2>Recent Appointments</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Contact Info</th>
+                    <th>Date & Time</th>
+                    <th>Purpose</th>
+                    <th>Status</th>
+                    <th>Confirmation</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+        
+        for apt in appointments[:10]:  # Show first 10
+            name, email, phone, date, time, purpose, status, code, created, hubspot_contact_id, hubspot_meeting_id = apt
+            html += f"""
+                <tr>
+                    <td>{name}</td>
+                    <td>{email}<br>{phone}</td>
+                    <td>{date} {time}</td>
+                    <td>{purpose[:50]}</td>
+                    <td>{status}</td>
+                    <td>{code}</td>
+                </tr>
+            """
+        
+        html += """
+            </tbody>
+        </table>
+        
+        <h2>Recent Inquiries</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Phone</th>
+                    <th>Question</th>
+                    <th>Timestamp</th>
+                    <th>Source</th>
+                    <th>SMS Sent</th>
+                </tr>
+            </thead>
+            <tbody>
+        """
+        
+        for inquiry in inquiries[:10]:  # Show first 10
+            phone, question, timestamp, status, sms_sent, source = inquiry
+            html += f"""
+                <tr>
+                    <td>{phone}</td>
+                    <td>{question[:100]}</td>
+                    <td>{timestamp}</td>
+                    <td>{source}</td>
+                    <td>{'✅' if sms_sent else '❌'}</td>
+                </tr>
+            """
+        
+        html += """
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        logger.error(f"❌ Admin dashboard error: {e}")
+        return f"<h1>Admin Dashboard Error</h1><p>{e}</p>"
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        conn = sqlite3.connect('ringlypro.db')
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM inquiries')
+        inquiry_count = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM appointments')
+        appointment_count = cursor.fetchone()[0]
+        conn.close()
+        
+        return jsonify({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat(),
+            "version": "3.0.0",
+            "database": {
+                "inquiries": inquiry_count,
+                "appointments": appointment_count
+            },
+            "services": {
+                "anthropic": bool(anthropic_api_key),
+                "elevenlabs": bool(elevenlabs_api_key),
+                "twilio": bool(twilio_account_sid and twilio_auth_token),
+                "email": bool(email_user and email_password),
+                "hubspot": bool(hubspot_api_token)
+            }
+        })
+    except Exception as e:
+        logger.error(f"Health check error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ==================== IFRAME EMBEDDING SUPPORT ====================
+
+@app.after_request
+def allow_iframe_embedding(response):
+    """Allow iframe embedding for widget"""
+    response.headers['X-Frame-Options'] = 'ALLOWALL'
+    response.headers['Content-Security-Policy'] = "frame-ancestors *"
+    return response
+
+# ==================== DATABASE INITIALIZATION ====================
+
+# Setup database on startup
+init_database()
+
+# ==================== MAIN APPLICATION STARTUP ====================
 
 if __name__ == "__main__":
+    print("🚀 Starting RinglyPro AI Assistant v3.0")
+    print("\n" + "="*60)
+    print("📋 API STATUS:")
+    print(f"   • Claude API: {'✅ Ready' if anthropic_api_key else '❌ Missing'}")
+    print(f"   • ElevenLabs TTS: {'✅ Ready' if elevenlabs_api_key else '⚠️ Browser Fallback'}")
+    print(f"   • Twilio SMS: {'✅ Ready' if (twilio_account_sid and twilio_auth_token) else '⚠️ Disabled'}")
+    print(f"   • Email SMTP: {'✅ Ready' if (email_user and email_password) else '⚠️ Disabled'}")
+    print(f"   • HubSpot CRM: {'✅ Ready' if hubspot_api_token else '⚠️ Disabled'}")
+    print("\n🌐 ACCESS URLS:")
+    print("   • Voice Interface: http://localhost:5000")
+    print("   • Text Chat: http://localhost:5000/chat")
+    print("   • Enhanced Chat: http://localhost:5000/chat-enhanced")
+    print("   • Admin Dashboard: http://localhost:5000/admin")
+    print("   • Health Check: http://localhost:5000/health")
+    print("\n" + "="*60)
+    
+    # Start the application
     port = int(os.environ.get("PORT", 5000))
-    print(f"Starting on port {port}")
     app.run(debug=False, host='0.0.0.0', port=port)
