@@ -3688,7 +3688,6 @@ def process_text_enhanced():
 # ==================== TELEPHONY WEBHOOK ROUTES ====================
 
 @app.route('/phone/webhook', methods=['POST'])
-@validate_twilio_request
 def phone_webhook():
     """Main entry point for incoming phone calls"""
     try:
