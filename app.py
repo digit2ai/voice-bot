@@ -494,74 +494,74 @@ class PhoneCallHandler:
         
         return response
     
-def process_speech_input(self, speech_result: str) -> VoiceResponse:
-    """Process the caller's speech and route accordingly"""
-    response = VoiceResponse()
-    speech_lower = speech_result.lower().strip()
-    
-    logger.info(f"📞 Phone speech input: {speech_result}")
-    
-    # Detect intent from speech
-    if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
-        return self.handle_demo_booking()
-    elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
-        return self.handle_pricing_inquiry()
-    elif any(word in speech_lower for word in ['subscribe', 'subscription', 'sign up', 'signup', 'get started', 'start service', 'want to subscribe', 'i want to subscribe']):
-        return self.handle_subscription()
-    elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
-        return self.handle_support_transfer()
-    else:
-        # Try FAQ system - FIXED: Use the global function, not self method
-        faq_response, is_faq = get_faq_response(speech_result)
+    def process_speech_input(self, speech_result: str) -> VoiceResponse:
+        """Process the caller's speech and route accordingly"""
+        response = VoiceResponse()
+        speech_lower = speech_result.lower().strip()
         
-        if is_faq and not is_no_answer_response(faq_response):
-            # Limit response length for phone
-            if len(faq_response) > 300:
-                faq_response = faq_response[:297] + "..."
-            
-            # Use Rachel's voice for FAQ response
-            audio_url = self.generate_rachel_audio(faq_response)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(faq_response, voice='Polly.Joanna')
-            
-            response.pause(length=1)
-            
-            followup = Gather(
-                input='speech',
-                timeout=5,
-                action='/phone/process-speech',
-                method='POST',
-                speechTimeout='auto'
-            )
-            
-            followup_text = "Is there anything else I can help you with today?"
-            followup_audio = self.generate_rachel_audio(followup_text)
-            
-            if followup_audio:
-                followup.play(followup_audio)
-            else:
-                followup.say(followup_text, voice='Polly.Joanna')
-            
-            response.append(followup)
+        logger.info(f"📞 Phone speech input: {speech_result}")
+        
+        # Detect intent from speech
+        if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
+            return self.handle_demo_booking()
+        elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
+            return self.handle_pricing_inquiry()
+        elif any(word in speech_lower for word in ['subscribe', 'subscription', 'sign up', 'signup', 'get started', 'start service', 'want to subscribe', 'i want to subscribe']):
+            return self.handle_subscription()
+        elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
+            return self.handle_support_transfer()
         else:
-            # Can't answer, offer to transfer
-            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
+            # Try FAQ system - FIXED: Use the global function, not self method
+            faq_response, is_faq = get_faq_response(speech_result)
             
-            audio_url = self.generate_rachel_audio(transfer_text)
-            
-            if audio_url:
-                response.play(audio_url)
+            if is_faq and not is_no_answer_response(faq_response):
+                # Limit response length for phone
+                if len(faq_response) > 300:
+                    faq_response = faq_response[:297] + "..."
+                
+                # Use Rachel's voice for FAQ response
+                audio_url = self.generate_rachel_audio(faq_response)
+                
+                if audio_url:
+                    response.play(audio_url)
+                else:
+                    response.say(faq_response, voice='Polly.Joanna')
+                
+                response.pause(length=1)
+                
+                followup = Gather(
+                    input='speech',
+                    timeout=5,
+                    action='/phone/process-speech',
+                    method='POST',
+                    speechTimeout='auto'
+                )
+                
+                followup_text = "Is there anything else I can help you with today?"
+                followup_audio = self.generate_rachel_audio(followup_text)
+                
+                if followup_audio:
+                    followup.play(followup_audio)
+                else:
+                    followup.say(followup_text, voice='Polly.Joanna')
+                
+                response.append(followup)
             else:
-                response.say(transfer_text, voice='Polly.Joanna')
+                # Can't answer, offer to transfer
+                transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
+                
+                audio_url = self.generate_rachel_audio(transfer_text)
+                
+                if audio_url:
+                    response.play(audio_url)
+                else:
+                    response.say(transfer_text, voice='Polly.Joanna')
+                
+                dial = Dial(action='/phone/call-complete', timeout=30)
+                dial.number('+16566001400')
+                response.append(dial)
             
-            dial = Dial(action='/phone/call-complete', timeout=30)
-            dial.number('+16566001400')
-            response.append(dial)
-        
-        return response
+            return response
     
     def handle_demo_booking(self) -> VoiceResponse:
         """Handle demo booking request"""
@@ -640,57 +640,57 @@ def process_speech_input(self, speech_result: str) -> VoiceResponse:
         
         return response
     
-def handle_subscription(self) -> VoiceResponse:
-    """Handle subscription request with error handling"""
-    response = VoiceResponse()
-    
-    try:
-        # Get caller's phone number from the Twilio request
-        caller_phone = request.form.get('From', '')
-        logger.info(f"📱 Subscription request from: {caller_phone}")
+    def handle_subscription(self) -> VoiceResponse:
+        """Handle subscription request with SMS and transfer"""
+        response = VoiceResponse()
         
-        subscribe_text = """
-        Wonderful! I'm excited to help you get started with Ringly Pro. 
-        I'm sending you our subscription link via text message right now.
-        I'll also connect you with our onboarding specialist 
-        who will walk you through the setup process. 
-        
-        Please hold while I transfer you.
-        """
-        
-        # Use Rachel's voice
-        audio_url = self.generate_rachel_audio(subscribe_text)
-        
-        if audio_url:
-            response.play(audio_url)
-        else:
-            response.say(subscribe_text, voice='Polly.Joanna')
-        
-        # Send SMS with subscription link
-        if caller_phone:
-            self.send_subscription_sms(caller_phone)
-        
-        response.pause(length=1)
-        
-        # Transfer to sales/onboarding number
-        dial = Dial(
-            action='/phone/call-complete',
-            timeout=30,
-            record='record-from-answer-dual'
-        )
-        dial.number('+16566001400')
-        response.append(dial)
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ Error in handle_subscription: {e}")
-        # Fallback response
-        response.say("I'll connect you with our team to help with your subscription.", voice='Polly.Joanna')
-        dial = Dial()
-        dial.number('+16566001400')
-        response.append(dial)
-        return response
+        try:
+            # Get caller's phone number from the Twilio request
+            caller_phone = request.form.get('From', '')
+            logger.info(f"📱 Subscription request from: {caller_phone}")
+            
+            subscribe_text = """
+            Wonderful! I'm excited to help you get started with Ringly Pro. 
+            I'm sending you our subscription link via text message right now.
+            I'll also connect you with our onboarding specialist 
+            who will walk you through the setup process. 
+            
+            Please hold while I transfer you.
+            """
+            
+            # Use Rachel's voice
+            audio_url = self.generate_rachel_audio(subscribe_text)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(subscribe_text, voice='Polly.Joanna')
+            
+            # Send SMS with subscription link
+            if caller_phone:
+                self.send_subscription_sms(caller_phone)
+            
+            response.pause(length=1)
+            
+            # Transfer to sales/onboarding number
+            dial = Dial(
+                action='/phone/call-complete',
+                timeout=30,
+                record='record-from-answer-dual'
+            )
+            dial.number('+16566001400')
+            response.append(dial)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"❌ Error in handle_subscription: {e}")
+            # Fallback response
+            response.say("I'll connect you with our team to help with your subscription.", voice='Polly.Joanna')
+            dial = Dial()
+            dial.number('+16566001400')
+            response.append(dial)
+            return response
     
     def handle_support_transfer(self) -> VoiceResponse:
         """Transfer to customer support"""
@@ -773,11 +773,11 @@ def handle_subscription(self) -> VoiceResponse:
         return response
     
     def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
-        """Multi-step booking information collection - ENHANCED VERSION"""
+        """Multi-step booking information collection"""
         response = VoiceResponse()
         
         if step == 'name':
-            # Store name and ask for phone - NO CHANGES HERE
+            # Store name and ask for phone
             gather = Gather(
                 input='speech dtmf',
                 timeout=10,
@@ -799,7 +799,7 @@ def handle_subscription(self) -> VoiceResponse:
             response.append(gather)
             
         elif step == 'phone':
-            # ENHANCED: Try to create appointment in database
+            # Enhanced: Try to create appointment in database
             try:
                 # Get call SID and customer name from session
                 import flask
@@ -857,7 +857,7 @@ def handle_subscription(self) -> VoiceResponse:
         return response
     
     def send_booking_sms(self, phone_number: str):
-        """Send SMS with booking link - UNCHANGED"""
+        """Send SMS with booking link"""
         try:
             if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
                 logger.warning("Twilio not configured for SMS")
@@ -888,6 +888,184 @@ Questions? Call us back at 888-610-3810
             
         except Exception as e:
             logger.error(f"Failed to send booking SMS: {e}")
+    
+    def send_subscription_sms(self, phone_number: str):
+        """Send SMS with subscription link"""
+        try:
+            if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+                logger.warning("Twilio not configured for subscription SMS")
+                return
+            
+            client = Client(twilio_account_sid, twilio_auth_token)
+            
+            message_body = f"""
+🎉 Thanks for wanting to subscribe to RinglyPro!
+
+🔗 Complete your subscription here:
+https://ringlypro.com/subscribe
+
+You're also being connected to our specialist now.
+
+Questions? Call us back at 888-610-3810
+
+- The RinglyPro Team
+            """.strip()
+            
+            message = client.messages.create(
+                body=message_body,
+                from_=twilio_phone,
+                to=phone_number
+            )
+            
+            logger.info(f"📱 Subscription SMS sent to {phone_number}: {message.sid}")
+            
+        except Exception as e:
+            logger.error(f"Failed to send subscription SMS: {e}")
+    
+    def create_appointment_from_phone(self, name: str, phone: str, call_sid: str) -> Tuple[bool, Optional[str]]:
+        """Create appointment after phone collection"""
+        try:
+            # Use a valid email format that HubSpot will accept
+            phone_digits = re.sub(r'\D', '', phone)[-10:]  # Last 10 digits
+            email = f"phone.{phone_digits}@booking.ringlypro.com"
+            
+            # Get tomorrow's date and default morning slot
+            from datetime import datetime, timedelta
+            tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+            
+            # Log the attempt
+            logger.info(f"📞 Creating phone appointment for {name} ({phone}) with email {email}")
+            
+            appointment_data = {
+                'name': name,
+                'email': email,
+                'phone': phone,
+                'date': tomorrow,
+                'time': '10:00',  # Default morning slot
+                'purpose': f'Phone booking - Call {call_sid[:8]} - NEEDS EMAIL VERIFICATION'
+            }
+            
+            # Use existing AppointmentManager
+            appointment_manager = AppointmentManager()
+            success, message, appointment = appointment_manager.book_appointment(appointment_data)
+            
+            if success:
+                logger.info(f"✅ Phone appointment created: {appointment.get('confirmation_code')}")
+                logger.info(f"📊 HubSpot Contact ID: {appointment.get('hubspot_contact_id')}")
+                logger.info(f"📊 HubSpot Meeting ID: {appointment.get('hubspot_meeting_id')}")
+                
+                # Create detailed HubSpot task for follow-up
+                if appointment.get('hubspot_contact_id'):
+                    self.create_detailed_hubspot_task(
+                        name, 
+                        phone, 
+                        email,
+                        appointment.get('confirmation_code'),
+                        appointment.get('hubspot_contact_id')
+                    )
+                
+                return True, appointment.get('confirmation_code', 'PENDING')
+            else:
+                logger.warning(f"Failed to create appointment: {message}")
+                return False, None
+                
+        except Exception as e:
+            logger.error(f"Failed to create phone appointment: {e}")
+            return False, None
+
+    def create_detailed_hubspot_task(self, name: str, phone: str, email: str, confirmation_code: str, contact_id: str):
+        """Create detailed HubSpot task with contact association"""
+        try:
+            if not hubspot_api_token:
+                logger.warning("HubSpot API token not configured")
+                return
+                
+            headers = {
+                "Authorization": f"Bearer {hubspot_api_token}",
+                "Content-Type": "application/json"
+            }
+            
+            # Create task with detailed information
+            task_data = {
+                "properties": {
+                    "hs_task_subject": f"🔴 URGENT: Verify Phone Booking - {name}",
+                    "hs_task_body": f"""
+PHONE BOOKING FOLLOW-UP REQUIRED
+
+Customer Information:
+- Name: {name}
+- Phone: {phone}
+- Placeholder Email: {email}
+- Confirmation Code: {confirmation_code}
+- Booking Source: Phone Call (Rachel AI)
+
+IMMEDIATE ACTIONS NEEDED:
+1. ✉️ Get correct email address from customer
+2. 📧 Update HubSpot contact with real email
+3. 📅 Confirm appointment date/time works
+4. 📑 Send pre-meeting materials
+5. 💬 Add notes about customer's specific needs
+
+APPOINTMENT DETAILS:
+- Scheduled for: Tomorrow at 10:00 AM EST
+- Meeting Type: RinglyPro Consultation (30 min)
+- Zoom Link: Already sent via SMS
+
+⚠️ NOTE: This was booked via phone, so email is a placeholder.
+Customer expects confirmation - please verify ASAP!
+                    """.strip(),
+                    "hs_task_priority": "HIGH",
+                    "hs_task_status": "NOT_STARTED",
+                    "hs_task_type": "CALL"
+                }
+            }
+            
+            # Add owner if configured
+            if hubspot_owner_id:
+                task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
+            
+            # Set due date to 2 hours from now (urgent!)
+            due_date = datetime.now() + timedelta(hours=2)
+            task_data["properties"]["hs_timestamp"] = str(int(due_date.timestamp() * 1000))
+            
+            # Create the task
+            response = requests.post(
+                "https://api.hubapi.com/crm/v3/objects/tasks",
+                headers=headers,
+                json=task_data,
+                timeout=10
+            )
+            
+            if response.status_code in [200, 201]:
+                task_id = response.json().get("id")
+                logger.info(f"✅ HubSpot task created: {task_id}")
+                
+                # Associate task with contact
+                if task_id and contact_id:
+                    association_data = {
+                        "inputs": [{
+                            "from": {"id": task_id},
+                            "to": {"id": contact_id},
+                            "type": "task_to_contact"
+                        }]
+                    }
+                    
+                    assoc_response = requests.put(
+                        "https://api.hubapi.com/crm/v4/associations/tasks/contacts/batch/create",
+                        headers=headers,
+                        json=association_data,
+                        timeout=10
+                    )
+                    
+                    if assoc_response.status_code in [200, 201, 204]:
+                        logger.info(f"✅ Task associated with contact {contact_id}")
+                    else:
+                        logger.warning(f"Failed to associate task: {assoc_response.status_code}")
+            else:
+                logger.error(f"HubSpot task creation failed: {response.status_code} - {response.text}")
+                    
+        except Exception as e:
+            logger.error(f"HubSpot task error: {e}")
     
     # ================ NEW METHODS ADDED BELOW ================
     
