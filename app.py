@@ -444,43 +444,38 @@ class PhoneCallHandler:
             logger.error(f"Error generating Rachel audio: {e}")
             return None
     
-    def create_greeting_response(self) -> VoiceResponse:
-        """Create the initial greeting when someone calls"""
-        response = VoiceResponse()
-        
-        greeting_text = """
-        Thank you for calling Ringly Pro, your A.I. powered business assistant. 
-        I'm Rachel, your virtual receptionist. 
-        To better serve you, please tell me what you'd like to do. 
-        Say 'book a demo' to schedule a consultation, 
-        'pricing' to hear about our plans, 
-        'subscribe' to get started with our service, 
-        or 'support' for customer service.
-        """
-        
-        # Try to use Rachel's voice, fallback to Twilio's Polly
-        audio_url = self.generate_rachel_audio(greeting_text)
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/process-speech',
-            method='POST',
-            speechTimeout='auto',
-            language='en-US'
-        )
-        
-        if audio_url:
-            gather.play(audio_url)
-        else:
-            gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
-        
-        response.append(gather)
-        
-        # If no input, repeat
-        response.redirect('/phone/webhook')
-        
-        return response
+def create_greeting_response(self) -> VoiceResponse:
+    """Create the initial greeting when someone calls"""
+    response = VoiceResponse()
+    
+    greeting_text = """
+    Thank you for calling Ringly Pro, your A.I. powered business assistant. 
+    I'm Rachel, your virtual receptionist. 
+    To better serve you, please tell me what you'd like to do. 
+    Say book a demo to schedule a consultation, 
+    pricing to hear about our plans, 
+    subscribe to get started with our service, 
+    or support for customer service.
+    """
+    
+    gather = Gather(
+        input='speech',
+        timeout=5,
+        action='/phone/process-speech',
+        method='POST',
+        speechTimeout='auto',
+        language='en-US'
+    )
+    
+    # Just use Twilio's built-in TTS (Polly voice)
+    gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
+    
+    response.append(gather)
+    
+    # If no input, repeat
+    response.redirect('/phone/webhook')
+    
+    return response
     
     def process_speech_input(self, speech_result: str) -> VoiceResponse:
         """Process the caller's speech and route accordingly"""
@@ -4284,10 +4279,13 @@ def test_call():
         
         client = Client(twilio_account_sid, twilio_auth_token)
         
+        # Use the actual URL directly
+        webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
+        
         call = client.calls.create(
-            url=f'{TWILIO_WEBHOOK_BASE_URL}/phone/webhook',
+            url=f'{webhook_url}/phone/webhook',
             to='+16566001400',  # Test number
-            from_=TWILIO_PHONE_NUMBER
+            from_='+18886103810'  # Use the actual number
         )
         
         return jsonify({
