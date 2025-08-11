@@ -494,25 +494,74 @@ class PhoneCallHandler:
         
         return response
     
-    def process_speech_input(self, speech_result: str) -> VoiceResponse:
-        """Process the caller's speech and route accordingly"""
-        response = VoiceResponse()
-        speech_lower = speech_result.lower().strip()
+def process_speech_input(self, speech_result: str) -> VoiceResponse:
+    """Process the caller's speech and route accordingly"""
+    response = VoiceResponse()
+    speech_lower = speech_result.lower().strip()
+    
+    logger.info(f"📞 Phone speech input: {speech_result}")
+    
+    # Detect intent from speech
+    if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
+        return self.handle_demo_booking()
+    elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
+        return self.handle_pricing_inquiry()
+    elif any(word in speech_lower for word in ['subscribe', 'subscription', 'sign up', 'signup', 'get started', 'start service', 'want to subscribe', 'i want to subscribe']):
+        return self.handle_subscription()
+    elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
+        return self.handle_support_transfer()
+    else:
+        # Try FAQ system - FIXED: Use the global function, not self method
+        faq_response, is_faq = get_faq_response(speech_result)
         
-        logger.info(f"📞 Phone speech input: {speech_result}")
-        
-        # Detect intent from speech
-        if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
-            return self.handle_demo_booking()
-        elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
-            return self.handle_pricing_inquiry()
-        elif any(word in speech_lower for word in ['subscribe', 'sign up', 'get started', 'start service']):
-            return self.handle_subscription()
-        elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
-            return self.handle_support_transfer()
+        if is_faq and not is_no_answer_response(faq_response):
+            # Limit response length for phone
+            if len(faq_response) > 300:
+                faq_response = faq_response[:297] + "..."
+            
+            # Use Rachel's voice for FAQ response
+            audio_url = self.generate_rachel_audio(faq_response)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(faq_response, voice='Polly.Joanna')
+            
+            response.pause(length=1)
+            
+            followup = Gather(
+                input='speech',
+                timeout=5,
+                action='/phone/process-speech',
+                method='POST',
+                speechTimeout='auto'
+            )
+            
+            followup_text = "Is there anything else I can help you with today?"
+            followup_audio = self.generate_rachel_audio(followup_text)
+            
+            if followup_audio:
+                followup.play(followup_audio)
+            else:
+                followup.say(followup_text, voice='Polly.Joanna')
+            
+            response.append(followup)
         else:
-            # Try FAQ system
-            return self.handle_general_inquiry(speech_result)
+            # Can't answer, offer to transfer
+            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
+            
+            audio_url = self.generate_rachel_audio(transfer_text)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(transfer_text, voice='Polly.Joanna')
+            
+            dial = Dial(action='/phone/call-complete', timeout=30)
+            dial.number('+16566001400')
+            response.append(dial)
+        
+        return response
     
     def handle_demo_booking(self) -> VoiceResponse:
         """Handle demo booking request"""
