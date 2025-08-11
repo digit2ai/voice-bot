@@ -825,92 +825,368 @@ Questions? Call us back at 888-610-3810
     
     # ================ NEW METHODS ADDED BELOW ================
     
-    def create_appointment_from_phone(self, name: str, phone: str, call_sid: str) -> Tuple[bool, Optional[str]]:
-        """Create appointment after phone collection - NEW METHOD"""
-        try:
-            # Use a simple email placeholder for phone bookings
-            email = f"phone.booking.{call_sid[:8]}@ringlypro.pending"
-            
-            # Get tomorrow's date and default morning slot
-            from datetime import datetime, timedelta
-            tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-            
-            appointment_data = {
-                'name': name,
-                'email': email,
-                'phone': phone,
-                'date': tomorrow,
-                'time': '10:00',  # Default morning slot
-                'purpose': f'Phone booking from call {call_sid[:8]}'
-            }
-            
-            # Use existing AppointmentManager
-            appointment_manager = AppointmentManager()
-            success, message, appointment = appointment_manager.book_appointment(appointment_data)
-            
-            if success:
-                logger.info(f"✅ Phone appointment created: {appointment.get('confirmation_code')}")
-                
-                # Create simple HubSpot task if available
-                if hubspot_api_token and appointment.get('hubspot_contact_id'):
-                    self.create_simple_hubspot_task(name, phone, appointment.get('confirmation_code'))
-                
-                return True, appointment.get('confirmation_code', 'PENDING')
-            else:
-                logger.warning(f"Failed to create appointment: {message}")
-                return False, None
-                
-        except Exception as e:
-            logger.error(f"Failed to create phone appointment: {e}")
-            return False, None
-    
-    def create_simple_hubspot_task(self, name: str, phone: str, confirmation_code: str):
-        """Simple HubSpot task creation - NEW METHOD"""
-        try:
-            if not hubspot_api_token:
-                return
-                
-            headers = {
-                "Authorization": f"Bearer {hubspot_api_token}",
-                "Content-Type": "application/json"
-            }
-            
-            task_data = {
-                "properties": {
-                    "hs_task_subject": f"Phone booking follow-up: {name}",
-                    "hs_task_body": f"""
-Customer booked via phone call:
-Name: {name}
-Phone: {phone}
-Confirmation: {confirmation_code}
+# ENHANCED create_appointment_from_phone method with better HubSpot integration
+# Replace the existing method in PhoneCallHandler class
 
-Action needed:
-1. Verify/update email address
-2. Confirm appointment time
-3. Send pre-meeting materials
-                    """.strip(),
-                    "hs_task_priority": "HIGH",
-                    "hs_task_status": "NOT_STARTED"
+def create_appointment_from_phone(self, name: str, phone: str, call_sid: str) -> Tuple[bool, Optional[str]]:
+    """Create appointment after phone collection - FIXED HUBSPOT VERSION"""
+    try:
+        # IMPORTANT: Use a valid email format that HubSpot will accept
+        # Using the phone number as part of the email ensures uniqueness
+        phone_digits = re.sub(r'\D', '', phone)[-10:]  # Last 10 digits
+        email = f"phone.{phone_digits}@booking.ringlypro.com"  # More legitimate looking email
+        
+        # Get tomorrow's date and default morning slot
+        from datetime import datetime, timedelta
+        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        
+        # Log the attempt
+        logger.info(f"📞 Creating phone appointment for {name} ({phone}) with email {email}")
+        
+        appointment_data = {
+            'name': name,
+            'email': email,
+            'phone': phone,
+            'date': tomorrow,
+            'time': '10:00',  # Default morning slot
+            'purpose': f'Phone booking - Call {call_sid[:8]} - NEEDS EMAIL VERIFICATION'
+        }
+        
+        # Use existing AppointmentManager
+        appointment_manager = AppointmentManager()
+        success, message, appointment = appointment_manager.book_appointment(appointment_data)
+        
+        if success:
+            logger.info(f"✅ Phone appointment created: {appointment.get('confirmation_code')}")
+            logger.info(f"📊 HubSpot Contact ID: {appointment.get('hubspot_contact_id')}")
+            logger.info(f"📊 HubSpot Meeting ID: {appointment.get('hubspot_meeting_id')}")
+            
+            # Create detailed HubSpot task for follow-up
+            if appointment.get('hubspot_contact_id'):
+                self.create_detailed_hubspot_task(
+                    name, 
+                    phone, 
+                    email,
+                    appointment.get('confirmation_code'),
+                    appointment.get('hubspot_contact_id')
+                )
+            
+            return True, appointment.get('confirmation_code', 'PENDING')
+        else:
+            logger.warning(f"Failed to create appointment: {message}")
+            return False, None
+            
+    except Exception as e:
+        logger.error(f"Failed to create phone appointment: {e}")
+        return False, None
+
+def create_detailed_hubspot_task(self, name: str, phone: str, email: str, confirmation_code: str, contact_id: str):
+    """Create detailed HubSpot task with contact association - NEW METHOD"""
+    try:
+        if not hubspot_api_token:
+            logger.warning("HubSpot API token not configured")
+            return
+            
+        headers = {
+            "Authorization": f"Bearer {hubspot_api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Create task with detailed information
+        task_data = {
+            "properties": {
+                "hs_task_subject": f"🔴 URGENT: Verify Phone Booking - {name}",
+                "hs_task_body": f"""
+PHONE BOOKING FOLLOW-UP REQUIRED
+
+Customer Information:
+- Name: {name}
+- Phone: {phone}
+- Placeholder Email: {email}
+- Confirmation Code: {confirmation_code}
+- Booking Source: Phone Call (Rachel AI)
+
+IMMEDIATE ACTIONS NEEDED:
+1. ✉️ Get correct email address from customer
+2. 📧 Update HubSpot contact with real email
+3. 📅 Confirm appointment date/time works
+4. 📑 Send pre-meeting materials
+5. 💬 Add notes about customer's specific needs
+
+APPOINTMENT DETAILS:
+- Scheduled for: Tomorrow at 10:00 AM EST
+- Meeting Type: RinglyPro Consultation (30 min)
+- Zoom Link: Already sent via SMS
+
+⚠️ NOTE: This was booked via phone, so email is a placeholder.
+Customer expects confirmation - please verify ASAP!
+                """.strip(),
+                "hs_task_priority": "HIGH",
+                "hs_task_status": "NOT_STARTED",
+                "hs_task_type": "CALL"
+            }
+        }
+        
+        # Add owner if configured
+        if hubspot_owner_id:
+            task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
+        
+        # Set due date to 2 hours from now (urgent!)
+        due_date = datetime.now() + timedelta(hours=2)
+        task_data["properties"]["hs_timestamp"] = str(int(due_date.timestamp() * 1000))
+        
+        # Create the task
+        response = requests.post(
+            "https://api.hubapi.com/crm/v3/objects/tasks",
+            headers=headers,
+            json=task_data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            task_id = response.json().get("id")
+            logger.info(f"✅ HubSpot task created: {task_id}")
+            
+            # Associate task with contact
+            if task_id and contact_id:
+                association_data = {
+                    "inputs": [{
+                        "from": {"id": task_id},
+                        "to": {"id": contact_id},
+                        "type": "task_to_contact"
+                    }]
                 }
+                
+                assoc_response = requests.put(
+                    "https://api.hubapi.com/crm/v4/associations/tasks/contacts/batch/create",
+                    headers=headers,
+                    json=association_data,
+                    timeout=10
+                )
+                
+                if assoc_response.status_code in [200, 201, 204]:
+                    logger.info(f"✅ Task associated with contact {contact_id}")
+                else:
+                    logger.warning(f"Failed to associate task: {assoc_response.status_code}")
+        else:
+            logger.error(f"HubSpot task creation failed: {response.status_code} - {response.text}")
+                
+    except Exception as e:
+        logger.error(f"HubSpot task error: {e}")
+
+# ADD THIS DEBUG ENDPOINT to test HubSpot connection
+@app.route('/test-hubspot', methods=['GET'])
+def test_hubspot():
+    """Test HubSpot integration and show recent contacts/meetings"""
+    try:
+        if not hubspot_api_token:
+            return jsonify({"error": "HubSpot not configured"}), 500
+        
+        headers = {
+            "Authorization": f"Bearer {hubspot_api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        results = {
+            "token_configured": bool(hubspot_api_token),
+            "token_preview": hubspot_api_token[:20] + "..." if hubspot_api_token else None,
+            "contacts": [],
+            "meetings": [],
+            "tasks": []
+        }
+        
+        # Test 1: Get recent contacts
+        contacts_response = requests.get(
+            "https://api.hubapi.com/crm/v3/objects/contacts",
+            headers=headers,
+            params={"limit": 5, "sorts": "-createdAt"},
+            timeout=10
+        )
+        
+        if contacts_response.status_code == 200:
+            contacts = contacts_response.json().get("results", [])
+            for contact in contacts:
+                props = contact.get("properties", {})
+                results["contacts"].append({
+                    "id": contact.get("id"),
+                    "name": f"{props.get('firstname', '')} {props.get('lastname', '')}".strip(),
+                    "email": props.get("email"),
+                    "phone": props.get("phone"),
+                    "created": props.get("createdate")
+                })
+        else:
+            results["contacts_error"] = f"Status {contacts_response.status_code}: {contacts_response.text[:200]}"
+        
+        # Test 2: Get recent meetings
+        meetings_response = requests.get(
+            "https://api.hubapi.com/crm/v3/objects/meetings",
+            headers=headers,
+            params={"limit": 5, "sorts": "-createdAt"},
+            timeout=10
+        )
+        
+        if meetings_response.status_code == 200:
+            meetings = meetings_response.json().get("results", [])
+            for meeting in meetings:
+                props = meeting.get("properties", {})
+                results["meetings"].append({
+                    "id": meeting.get("id"),
+                    "title": props.get("hs_meeting_title"),
+                    "start_time": props.get("hs_meeting_start_time"),
+                    "created": props.get("createdate")
+                })
+        else:
+            results["meetings_error"] = f"Status {meetings_response.status_code}: {meetings_response.text[:200]}"
+        
+        # Test 3: Get recent tasks
+        tasks_response = requests.get(
+            "https://api.hubapi.com/crm/v3/objects/tasks",
+            headers=headers,
+            params={"limit": 5, "sorts": "-createdAt"},
+            timeout=10
+        )
+        
+        if tasks_response.status_code == 200:
+            tasks = tasks_response.json().get("results", [])
+            for task in tasks:
+                props = task.get("properties", {})
+                results["tasks"].append({
+                    "id": task.get("id"),
+                    "subject": props.get("hs_task_subject"),
+                    "priority": props.get("hs_task_priority"),
+                    "status": props.get("hs_task_status"),
+                    "created": props.get("createdate")
+                })
+        else:
+            results["tasks_error"] = f"Status {tasks_response.status_code}: {tasks_response.text[:200]}"
+        
+        # Test 4: Check our phone booking emails
+        search_response = requests.post(
+            "https://api.hubapi.com/crm/v3/objects/contacts/search",
+            headers=headers,
+            json={
+                "filterGroups": [{
+                    "filters": [{
+                        "propertyName": "email",
+                        "operator": "CONTAINS_TOKEN",
+                        "value": "booking.ringlypro"
+                    }]
+                }],
+                "limit": 10
+            },
+            timeout=10
+        )
+        
+        if search_response.status_code == 200:
+            phone_bookings = search_response.json().get("results", [])
+            results["phone_bookings"] = []
+            for booking in phone_bookings:
+                props = booking.get("properties", {})
+                results["phone_bookings"].append({
+                    "id": booking.get("id"),
+                    "name": f"{props.get('firstname', '')} {props.get('lastname', '')}".strip(),
+                    "email": props.get("email"),
+                    "phone": props.get("phone")
+                })
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ALSO UPDATE the HubSpotService.create_contact method to handle phone bookings better
+def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
+    """Create or update contact in HubSpot - ENHANCED FOR PHONE BOOKINGS"""
+    try:
+        # For phone bookings, search by phone first since email is placeholder
+        if email and "booking.ringlypro" in email and phone:
+            # Try to find existing contact by phone
+            search_data = {
+                "filterGroups": [{
+                    "filters": [{
+                        "propertyName": "phone",
+                        "operator": "EQ",
+                        "value": phone
+                    }]
+                }],
+                "properties": ["email", "firstname", "lastname", "phone", "company"],
+                "limit": 1
             }
             
-            if hubspot_owner_id:
-                task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
-            
-            response = requests.post(
-                "https://api.hubapi.com/crm/v3/objects/tasks",
-                headers=headers,
-                json=task_data,
+            search_response = requests.post(
+                f"{self.base_url}/crm/v3/objects/contacts/search",
+                headers=self.headers,
+                json=search_data,
                 timeout=10
             )
             
-            if response.status_code in [200, 201]:
-                logger.info("✅ HubSpot task created for phone booking")
-            else:
-                logger.warning(f"HubSpot task creation failed: {response.status_code}")
-                
-        except Exception as e:
-            logger.error(f"HubSpot task error (non-critical): {e}")
+            if search_response.status_code == 200:
+                results = search_response.json()
+                if results.get("results"):
+                    # Contact exists with this phone - update it
+                    existing_contact = results["results"][0]
+                    contact_id = existing_contact["id"]
+                    
+                    # Update with new information
+                    update_data = {
+                        "firstname": name.split()[0] if name.split() else "",
+                        "lastname": " ".join(name.split()[1:]) if len(name.split()) > 1 else "",
+                        "lifecyclestage": "lead",
+                        "lead_source": "RinglyPro Voice Assistant - Phone Booking"
+                    }
+                    
+                    # Only update email if the existing one is also a placeholder
+                    existing_email = existing_contact.get("properties", {}).get("email", "")
+                    if not existing_email or "booking.ringlypro" in existing_email:
+                        update_data["email"] = email
+                    
+                    return self.update_contact(contact_id, update_data)
+        
+        # Standard contact creation for non-phone bookings or if no existing contact found
+        name_parts = name.strip().split()
+        properties = {
+            "firstname": name_parts[0] if name_parts else "",
+            "lastname": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
+            "email": email,
+            "phone": phone,
+            "company": company or "Phone Booking - Needs Follow-up",
+            "lifecyclestage": "lead",
+            "lead_source": "RinglyPro Voice Assistant"
+        }
+        
+        # Add note for phone bookings
+        if email and "booking.ringlypro" in email:
+            properties["hs_lead_status"] = "OPEN"
+            properties["notes"] = "Phone booking - email needs verification"
+        
+        # Remove empty values
+        properties = {k: v for k, v in properties.items() if v}
+        
+        contact_data = {"properties": properties}
+        
+        response = requests.post(
+            f"{self.base_url}/crm/v3/objects/contacts",
+            headers=self.headers,
+            json=contact_data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            contact = response.json()
+            logger.info(f"✅ HubSpot contact created: {contact.get('id')} - {name}")
+            return {
+                "success": True,
+                "message": f"Contact created: {name}",
+                "contact_id": contact.get("id"),
+                "contact": contact
+            }
+        else:
+            logger.error(f"HubSpot contact creation failed: {response.status_code} - {response.text}")
+            return {"success": False, "error": f"Failed to create contact: {response.text}"}
+            
+    except Exception as e:
+        logger.error(f"Error creating HubSpot contact: {e}")
+        return {"success": False, "error": f"Error creating contact: {str(e)}"}
             # Don't break the flow if HubSpot fails
 
 # END OF PhoneCallHandler CLASS
