@@ -592,46 +592,56 @@ class PhoneCallHandler:
         return response
     
 def handle_subscription(self) -> VoiceResponse:
-    """Handle subscription request"""
+    """Handle subscription request with error handling"""
     response = VoiceResponse()
     
-    # Get caller's phone number from the Twilio request
-    caller_phone = request.form.get('From', '')
-    
-    subscribe_text = """
-    Wonderful! I'm excited to help you get started with Ringly Pro. 
-    I'm sending you our subscription link via text message right now.
-    I'll also connect you with our onboarding specialist 
-    who will walk you through the setup process and ensure everything is configured 
-    for your business needs. 
-    
-    Please hold while I transfer you.
-    """
-    
-    # Use Rachel's voice
-    audio_url = self.generate_rachel_audio(subscribe_text)
-    
-    if audio_url:
-        response.play(audio_url)
-    else:
-        response.say(subscribe_text, voice='Polly.Joanna')
-    
-    # Send SMS with subscription link
-    if caller_phone:
-        self.send_subscription_sms(caller_phone)
-    
-    response.pause(length=1)
-    
-    # Transfer to sales/onboarding number (your existing code)
-    dial = Dial(
-        action='/phone/call-complete',
-        timeout=30,
-        record='record-from-answer-dual'
-    )
-    dial.number('+16566001400')
-    response.append(dial)
-    
-    return response
+    try:
+        # Get caller's phone number from the Twilio request
+        caller_phone = request.form.get('From', '')
+        logger.info(f"📱 Subscription request from: {caller_phone}")
+        
+        subscribe_text = """
+        Wonderful! I'm excited to help you get started with Ringly Pro. 
+        I'm sending you our subscription link via text message right now.
+        I'll also connect you with our onboarding specialist 
+        who will walk you through the setup process. 
+        
+        Please hold while I transfer you.
+        """
+        
+        # Use Rachel's voice
+        audio_url = self.generate_rachel_audio(subscribe_text)
+        
+        if audio_url:
+            response.play(audio_url)
+        else:
+            response.say(subscribe_text, voice='Polly.Joanna')
+        
+        # Send SMS with subscription link
+        if caller_phone:
+            self.send_subscription_sms(caller_phone)
+        
+        response.pause(length=1)
+        
+        # Transfer to sales/onboarding number
+        dial = Dial(
+            action='/phone/call-complete',
+            timeout=30,
+            record='record-from-answer-dual'
+        )
+        dial.number('+16566001400')
+        response.append(dial)
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Error in handle_subscription: {e}")
+        # Fallback response
+        response.say("I'll connect you with our team to help with your subscription.", voice='Polly.Joanna')
+        dial = Dial()
+        dial.number('+16566001400')
+        response.append(dial)
+        return response
     
     def handle_support_transfer(self) -> VoiceResponse:
         """Transfer to customer support"""
