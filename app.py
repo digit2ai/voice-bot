@@ -385,422 +385,94 @@ class HubSpotService:
 
 # ==================== TELEPHONY CALL HANDLER ====================
 
-def say_with_rachel(self, response: VoiceResponse, text: str) -> None:
-    """Helper to use Rachel's voice or fallback to Polly"""
-    audio_url = self.generate_rachel_audio(text)
-    
-    if audio_url:
-        response.play(audio_url)
-        logger.info("✅ Using Rachel's voice")
-    else:
-        response.say(text, voice='Polly.Joanna')
-        logger.info("⚠️ Using Polly fallback")
-class PhoneCallHandler:
-    """Handle incoming phone calls with IVR and Rachel's voice"""
-    
-    def __init__(self):
-        self.elevenlabs_api_key = elevenlabs_api_key
-        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
-        self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
-    
-    def generate_rachel_audio(self, text: str) -> Optional[str]:
-        """Generate audio URL using Rachel's voice via ElevenLabs"""
-        if not self.elevenlabs_api_key:
-            return None
-            
+# Enhanced route handlers - Add/replace these in your Flask app
+
+@app.route('/phone/collect-name', methods=['POST'])
+def collect_name():
+    """Collect customer name for booking - ENHANCED to store in session"""
+    try:
+        speech_result = request.form.get('SpeechResult', '')
+        call_sid = request.form.get('CallSid', '')
+        
+        if not speech_result:
+            response = VoiceResponse()
+            response.say("I didn't get your name. Let's try again.", voice='Polly.Joanna')
+            response.redirect('/phone/webhook')
+            return str(response), 200, {'Content-Type': 'text/xml'}
+        
+        # Store name in session for later use
+        session[f'call_{call_sid}_name'] = speech_result
+        
+        handler = PhoneCallHandler()
+        response = handler.collect_booking_info('name', speech_result)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Name collection error: {e}")
+        response = VoiceResponse()
+        response.say("Let me transfer you to schedule your appointment.")
+        response.dial('+16566001400')
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/collect-phone', methods=['POST'])
+def collect_phone():
+    """Collect customer phone for booking - ENHANCED with database save"""
+    try:
+        # Try speech first, then DTMF
+        phone_number = request.form.get('SpeechResult', '')
+        if not phone_number:
+            phone_number = request.form.get('Digits', '')
+        
+        call_sid = request.form.get('CallSid', '')
+        from_number = request.form.get('From', '')
+        
+        # Clean up phone number
+        phone_digits = re.sub(r'\D', '', phone_number)
+        
+        if len(phone_digits) < 10:
+            # Use caller's number
+            phone_digits = re.sub(r'\D', '', from_number)
+        
+        # Format phone number
+        if len(phone_digits) == 10:
+            formatted_phone = f"+1{phone_digits}"
+        elif len(phone_digits) == 11 and phone_digits[0] == '1':
+            formatted_phone = f"+{phone_digits}"
+        else:
+            formatted_phone = from_number
+        
+        # Get name from session (stored in previous step)
+        customer_name = session.get(f'call_{call_sid}_name', 'Customer')
+        
+        # Log to inquiries table for tracking
         try:
-            url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.rachel_voice_id}"
-            
-            headers = {
-                "Accept": "audio/mpeg",
-                "Content-Type": "application/json",
-                "xi-api-key": self.elevenlabs_api_key
-            }
-            
-            # Optimize text for speech
-            speech_text = text.replace("RinglyPro", "Ringly Pro")
-            speech_text = speech_text.replace("AI", "A.I.")
-            speech_text = speech_text.replace("$", " dollars")
-            
-            tts_data = {
-                "text": speech_text,
-                "model_id": "eleven_monolingual_v1",
-                "voice_settings": {
-                    "stability": 0.5,
-                    "similarity_boost": 0.75
-                }
-            }
-            
-            response = requests.post(url, json=tts_data, headers=headers, timeout=10)
-            
-            if response.status_code == 200:
-                # Save audio temporarily
-                audio_filename = f"rachel_{uuid.uuid4()}.mp3"
-                audio_path = f"/tmp/{audio_filename}"
-                
-                with open(audio_path, 'wb') as f:
-                    f.write(response.content)
-                
-                # Return URL that Twilio can access
-                audio_url = f"{self.webhook_base_url}/audio/{audio_filename}"
-                logger.info(f"✅ Rachel audio generated: {audio_url}")
-                return audio_url
-            else:
-                logger.warning(f"ElevenLabs TTS failed: {response.status_code}")
-                return None
-                
+            conn = sqlite3.connect('ringlypro.db')
+            cursor = conn.cursor()
+            cursor.execute('''INSERT INTO inquiries (phone, question, source, notes)
+                             VALUES (?, ?, ?, ?)''',
+                          (formatted_phone, f'Demo booking request from {customer_name}', 
+                           'phone', f'Call SID: {call_sid}'))
+            conn.commit()
+            conn.close()
         except Exception as e:
-            logger.error(f"Error generating Rachel audio: {e}")
-            return None
-    
-    def create_greeting_response(self) -> VoiceResponse:
-        """Create the initial greeting when someone calls"""
+            logger.error(f"Failed to save booking request: {e}")
+        
+        # Use the handler with the enhanced method
+        handler = PhoneCallHandler()
+        response = handler.collect_booking_info('phone', formatted_phone)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Phone collection error: {e}")
+        # Fallback to original safe behavior
         response = VoiceResponse()
-        
-        greeting_text = """
-        Thank you for calling Ringly Pro, your A.I. powered business assistant. 
-        I'm Rachel, your virtual receptionist. 
-        To better serve you, please tell me what you'd like to do. 
-        Say book a demo to schedule a consultation, 
-        pricing to hear about our plans, 
-        subscribe to get started with our service, 
-        or support for customer service.
-        """
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/process-speech',
-            method='POST',
-            speechTimeout='auto',
-            language='en-US'
-        )
-        
-        # Try to use Rachel's voice first
-        audio_url = self.generate_rachel_audio(greeting_text)
-        
-        if audio_url:
-            # Use Rachel's premium voice
-            gather.play(audio_url)
-            logger.info("✅ Using Rachel's premium voice from ElevenLabs")
-        else:
-            # Fallback to Twilio's voice
-            gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
-            logger.info("⚠️ Falling back to Twilio's Polly voice")
-        
-        response.append(gather)
-        response.redirect('/phone/webhook')
-        
-        return response
-    
-    def process_speech_input(self, speech_result: str) -> VoiceResponse:
-        """Process the caller's speech and route accordingly"""
-        response = VoiceResponse()
-        speech_lower = speech_result.lower().strip()
-        
-        logger.info(f"📞 Phone speech input: {speech_result}")
-        
-        # Detect intent from speech
-        if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
-            return self.handle_demo_booking()
-        elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
-            return self.handle_pricing_inquiry()
-        elif any(word in speech_lower for word in ['subscribe', 'sign up', 'get started', 'start service']):
-            return self.handle_subscription()
-        elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
-            return self.handle_support_transfer()
-        else:
-            # Try FAQ system
-            return self.handle_general_inquiry(speech_result)
-    
-    def handle_demo_booking(self) -> VoiceResponse:  # NOW INDENTED!
-        """Handle demo booking request"""
-        response = VoiceResponse()
-        
-        booking_text = """
-        Excellent! I'd be happy to schedule a free consultation for you. 
-        Our team will show you how Ringly Pro can transform your business communications. 
-        I'll need to collect a few details. 
-        First, please say your full name.
-        """
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/collect-name',
-            method='POST',
-            speechTimeout='auto'
-        )
-        
-        # Try to use Rachel's voice first
-        audio_url = self.generate_rachel_audio(booking_text)
-        
-        if audio_url:
-            gather.play(audio_url)
-            logger.info("✅ Using Rachel's voice for booking")
-        else:
-            gather.say(booking_text, voice='Polly.Joanna')
-            logger.info("⚠️ Falling back to Polly voice")
-        
-        response.append(gather)
-        
-        return response
-    
-    def handle_pricing_inquiry(self) -> VoiceResponse:  # NOW INDENTED!
-        """Provide pricing information"""
-        response = VoiceResponse()
-        
-        pricing_text = """
-        I'd be happy to share our pricing plans with you. 
-        
-        We offer three tiers:
-        
-        The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
-        text messaging, and appointment scheduling.
-        
-        The Office Manager at 297 dollars per month includes 3000 minutes, 
-        C.R.M. integrations, and mobile app access.
-        
-        The Marketing Director at 497 dollars per month includes 7500 minutes, 
-        dedicated account management, and marketing automation.
-        
-        Would you like to schedule a consultation to discuss which plan is right for you? 
-        Say yes to book a demo, or repeat to hear the prices again.
-        """
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/pricing-followup',
-            method='POST',
-            speechTimeout='auto'
-        )
-        
-        # Try to use Rachel's voice first
-        audio_url = self.generate_rachel_audio(pricing_text)
-        
-        if audio_url:
-            gather.play(audio_url)
-            logger.info("✅ Using Rachel's voice for pricing")
-        else:
-            gather.say(pricing_text, voice='Polly.Joanna')
-            logger.info("⚠️ Falling back to Polly voice")
-        
-        response.append(gather)
-        
-        return response
-    
-    def handle_subscription(self) -> VoiceResponse:
-        """Handle subscription request"""
-        response = VoiceResponse()
-        
-        subscribe_text = """
-        Wonderful! I'm excited to help you get started with Ringly Pro. 
-        To set up your account, I'll connect you with our onboarding specialist 
-        who will walk you through the setup process and ensure everything is configured 
-        for your business needs. 
-        
-        Please hold while I transfer you. 
-        If you'd prefer, you can also visit ringly pro dot com to sign up online.
-        """
-        
-        # Use Rachel's voice
-        audio_url = self.generate_rachel_audio(subscribe_text)
-        
-        if audio_url:
-            response.play(audio_url)
-        else:
-            response.say(subscribe_text, voice='Polly.Joanna')
-        
-        response.pause(length=1)
-        
-        # Transfer to sales/onboarding number
-        dial = Dial(
-            action='/phone/call-complete',
-            timeout=30,
-            record='record-from-answer-dual'
-        )
-        dial.number('+16566001400')
-        response.append(dial)
-        
-        return response
-    
-    def handle_support_transfer(self) -> VoiceResponse:  # NOW INDENTED!
-        """Transfer to customer support"""
-        response = VoiceResponse()
-        
-        transfer_text = "I'll connect you with our customer support team right away. Please hold."
-        
-        # Use Rachel's voice
-        audio_url = self.generate_rachel_audio(transfer_text)
-        
-        if audio_url:
-            response.play(audio_url)
-        else:
-            response.say(transfer_text, voice='Polly.Joanna')
-        
-        dial = Dial(
-            action='/phone/call-complete',
-            timeout=30,
-            record='record-from-answer-dual'
-        )
-        dial.number('+16566001400')
-        response.append(dial)
-        
-        return response
-    
-    def handle_general_inquiry(self, question: str) -> VoiceResponse:
-        """Handle general questions using FAQ system"""
-        response = VoiceResponse()
-        
-        # Use existing FAQ system
-        faq_response, is_faq = get_faq_response(question)
-        
-        if is_faq and not is_no_answer_response(faq_response):
-            # Limit response length for phone
-            if len(faq_response) > 300:
-                faq_response = faq_response[:297] + "..."
-            
-            # Use Rachel's voice for FAQ response
-            audio_url = self.generate_rachel_audio(faq_response)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(faq_response, voice='Polly.Joanna')
-            
-            response.pause(length=1)
-            
-            followup = Gather(
-                input='speech',
-                timeout=5,
-                action='/phone/process-speech',
-                method='POST',
-                speechTimeout='auto'
-            )
-            
-            followup_text = "Is there anything else I can help you with today?"
-            followup_audio = self.generate_rachel_audio(followup_text)
-            
-            if followup_audio:
-                followup.play(followup_audio)
-            else:
-                followup.say(followup_text, voice='Polly.Joanna')
-            
-            response.append(followup)
-        else:
-            # Can't answer, offer to transfer
-            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
-            
-            audio_url = self.generate_rachel_audio(transfer_text)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(transfer_text, voice='Polly.Joanna')
-            
-            dial = Dial(action='/phone/call-complete', timeout=30)
-            dial.number('+16566001400')
-            response.append(dial)
-        
-        return response
-    
-    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
-        """Multi-step booking information collection"""
-        response = VoiceResponse()
-        
-        if step == 'name':
-            # Store name and ask for phone
-            gather = Gather(
-                input='speech dtmf',
-                timeout=10,
-                action='/phone/collect-phone',
-                method='POST',
-                speechTimeout='auto',
-                numDigits=10,
-                finishOnKey='#'
-            )
-            
-            text = f"Thank you {value}. Now, please say or enter your phone number using the keypad."
-            audio_url = self.generate_rachel_audio(text)
-            
-            if audio_url:
-                gather.play(audio_url)
-            else:
-                gather.say(text, voice='Polly.Joanna')
-            
-            response.append(gather)
-            
-        elif step == 'phone':
-            # Store phone and ask for email/schedule
-            text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
-            
-            audio_url = self.generate_rachel_audio(text1)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(text1, voice='Polly.Joanna')
-            
-            # Send SMS with booking link
-            self.send_booking_sms(value)
-            
-            response.pause(length=1)
-            
-            text2 = "The text has been sent. You can also visit ringly pro dot com to book directly. Is there anything else I can help you with?"
-            
-            audio_url2 = self.generate_rachel_audio(text2)
-            
-            if audio_url2:
-                response.play(audio_url2)
-            else:
-                response.say(text2, voice='Polly.Joanna')
-            
-            gather = Gather(
-                input='speech',
-                timeout=5,
-                action='/phone/process-speech',
-                method='POST'
-            )
-            response.append(gather)
-            
-        return response
-    
-    def send_booking_sms(self, phone_number: str):
-        """Send SMS with booking link"""
-        try:
-            if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-                logger.warning("Twilio not configured for SMS")
-                return
-            
-            client = Client(twilio_account_sid, twilio_auth_token)
-            
-            message_body = f"""
-Thank you for calling RinglyPro! 🎯
-
-📅 Schedule your FREE consultation:
-{self.webhook_base_url}/chat-enhanced
-
-Or reply to this message with your preferred date/time.
-
-Questions? Call us back at 888-610-3810
-
-- The RinglyPro Team
-            """.strip()
-            
-            message = client.messages.create(
-                body=message_body,
-                from_=twilio_phone,
-                to=phone_number
-            )
-            
-            logger.info(f"📱 Booking SMS sent to {phone_number}: {message.sid}")
-            
-        except Exception as e:
-            logger.error(f"Failed to send booking SMS: {e}")
-
-# END OF CLASS - no more indentation after this line
-# END OF PhoneCallHandler CLASS
+        response.say("I'll send you information to the number you're calling from.")
+        handler = PhoneCallHandler()
+        handler.send_booking_sms(request.form.get('From', ''))
+        response.say("The information has been sent. Thank you for calling!")
+        return str(response), 200, {'Content-Type': 'text/xml'}
 
 # ==================== APPOINTMENT MANAGEMENT CLASS ====================
 
