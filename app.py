@@ -1,4 +1,4 @@
-from twilio.twiml.voice_response import VoiceResponse, Gather, Say, Play, Record, Dial, Pause
+from flask import Flask, request, jsonify, render_template_string, session, make_responsefrom twilio.twiml.voice_response import VoiceResponse, Gather, Say, Play, Record, Dial, Pause
 from twilio.rest import Client
 from functools import wraps
 import re
@@ -385,8 +385,6 @@ class HubSpotService:
 
 # ==================== TELEPHONY CALL HANDLER ====================
 
-# ==================== TELEPHONY CALL HANDLER ====================
-
 class PhoneCallHandler:
     """Handle incoming phone calls with IVR and Rachel's voice"""
     
@@ -395,12 +393,65 @@ class PhoneCallHandler:
         self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
         self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
         
+class PhoneCallHandler:
+    """Handle incoming phone calls with IVR and Rachel's voice"""
+    
+    def __init__(self):
+        self.elevenlabs_api_key = elevenlabs_api_key
+        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
+        self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
+    
     def generate_rachel_audio(self, text: str) -> Optional[str]:
         """Generate audio URL using Rachel's voice via ElevenLabs"""
-        # ... method code ...
-        return None  # Simplified for now
+        if not self.elevenlabs_api_key:
+            return None
+            
+        try:
+            url = f"https://api.elevenlabs.io/v1/text-to-speech/{self.rachel_voice_id}"
+            
+            headers = {
+                "Accept": "audio/mpeg",
+                "Content-Type": "application/json",
+                "xi-api-key": self.elevenlabs_api_key
+            }
+            
+            # Optimize text for speech
+            speech_text = text.replace("RinglyPro", "Ringly Pro")
+            speech_text = speech_text.replace("AI", "A.I.")
+            speech_text = speech_text.replace("$", " dollars")
+            
+            tts_data = {
+                "text": speech_text,
+                "model_id": "eleven_monolingual_v1",
+                "voice_settings": {
+                    "stability": 0.5,
+                    "similarity_boost": 0.75
+                }
+            }
+            
+            response = requests.post(url, json=tts_data, headers=headers, timeout=10)
+            
+            if response.status_code == 200:
+                # Save audio temporarily
+                audio_filename = f"rachel_{uuid.uuid4()}.mp3"
+                audio_path = f"/tmp/{audio_filename}"
+                
+                with open(audio_path, 'wb') as f:
+                    f.write(response.content)
+                
+                # Return URL that Twilio can access
+                audio_url = f"{self.webhook_base_url}/audio/{audio_filename}"
+                logger.info(f"✅ Rachel audio generated: {audio_url}")
+                return audio_url
+            else:
+                logger.warning(f"ElevenLabs TTS failed: {response.status_code}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error generating Rachel audio: {e}")
+            return None
     
-    def create_greeting_response(self) -> VoiceResponse:  # THIS LINE NEEDS INDENTATION!
+    def create_greeting_response(self) -> VoiceResponse:  # INDENTED!
         """Create the initial greeting when someone calls"""
         response = VoiceResponse()
         
@@ -423,14 +474,24 @@ class PhoneCallHandler:
             language='en-US'
         )
         
-        gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
+        # Try to use Rachel's voice first
+        audio_url = self.generate_rachel_audio(greeting_text)
+        
+        if audio_url:
+            # Use Rachel's premium voice
+            gather.play(audio_url)
+            logger.info("✅ Using Rachel's premium voice from ElevenLabs")
+        else:
+            # Fallback to Twilio's voice
+            gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
+            logger.info("⚠️ Falling back to Twilio's Polly voice")
+        
         response.append(gather)
         response.redirect('/phone/webhook')
         
         return response
     
-    
-    def process_speech_input(self, speech_result: str) -> VoiceResponse:
+    def process_speech_input(self, speech_result: str) -> VoiceResponse:  # INDENTED!
         """Process the caller's speech and route accordingly"""
         response = VoiceResponse()
         speech_lower = speech_result.lower().strip()
@@ -450,7 +511,7 @@ class PhoneCallHandler:
             # Try FAQ system
             return self.handle_general_inquiry(speech_result)
     
-    def handle_demo_booking(self) -> VoiceResponse:
+    def handle_demo_booking(self) -> VoiceResponse:  # INDENTED!
         """Handle demo booking request"""
         response = VoiceResponse()
         
@@ -473,7 +534,7 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_pricing_inquiry(self) -> VoiceResponse:
+    def handle_pricing_inquiry(self) -> VoiceResponse:  # INDENTED!
         """Provide pricing information"""
         response = VoiceResponse()
         
@@ -507,7 +568,7 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_subscription(self) -> VoiceResponse:
+    def handle_subscription(self) -> VoiceResponse:  # INDENTED!
         """Handle subscription request"""
         response = VoiceResponse()
         
@@ -535,7 +596,7 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_support_transfer(self) -> VoiceResponse:
+    def handle_support_transfer(self) -> VoiceResponse:  # INDENTED!
         """Transfer to customer support"""
         response = VoiceResponse()
         
@@ -554,7 +615,7 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_general_inquiry(self, question: str) -> VoiceResponse:
+    def handle_general_inquiry(self, question: str) -> VoiceResponse:  # INDENTED!
         """Handle general questions using FAQ system"""
         response = VoiceResponse()
         
@@ -594,7 +655,7 @@ class PhoneCallHandler:
         
         return response
     
-    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
+    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:  # INDENTED!
         """Multi-step booking information collection"""
         response = VoiceResponse()
         
@@ -641,7 +702,7 @@ class PhoneCallHandler:
             
         return response
     
-    def send_booking_sms(self, phone_number: str):
+    def send_booking_sms(self, phone_number: str):  # INDENTED!
         """Send SMS with booking link"""
         try:
             if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
@@ -673,6 +734,8 @@ Questions? Call us back at 888-610-3810
             
         except Exception as e:
             logger.error(f"Failed to send booking SMS: {e}")
+
+# END OF PhoneCallHandler CLASS
 
 # ==================== APPOINTMENT MANAGEMENT CLASS ====================
 
@@ -3987,6 +4050,26 @@ def process_text_enhanced():
 
 # ==================== TELEPHONY WEBHOOK ROUTES ====================
 
+@app.route('/audio/<filename>')
+def serve_audio(filename):
+    """Serve audio files for Twilio to play"""
+    try:
+        audio_path = f'/tmp/{filename}'
+        if os.path.exists(audio_path):
+            from flask import make_response
+            with open(audio_path, 'rb') as f:
+                audio_data = f.read()
+            
+            response = make_response(audio_data)
+            response.headers['Content-Type'] = 'audio/mpeg'
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
+        else:
+            return "Audio file not found", 404
+    except Exception as e:
+        logger.error(f"Error serving audio: {e}")
+        return "Error serving audio", 500
+        
 @app.route('/phone/webhook', methods=['POST'])
 def phone_webhook():
     """Main entry point for incoming phone calls"""
