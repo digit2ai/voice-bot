@@ -556,13 +556,13 @@ class PhoneCallHandler:
         
         We offer three tiers:
         
-        The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
+        The Starter Plan at 97 dollars per month includes 1000 minutes, 
         text messaging, and appointment scheduling.
         
-        The Office Manager at 297 dollars per month includes 3000 minutes, 
+        The Pro Plan at 297 dollars per month includes 3000 minutes, 
         C.R.M. integrations, and mobile app access.
         
-        The Marketing Director at 497 dollars per month includes 7500 minutes, 
+        The Premium Plan at 497 dollars per month includes 7500 minutes, 
         dedicated account management, and marketing automation.
         
         Would you like to schedule a consultation to discuss which plan is right for you? 
