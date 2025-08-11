@@ -591,40 +591,47 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_subscription(self) -> VoiceResponse:
-        """Handle subscription request"""
-        response = VoiceResponse()
-        
-        subscribe_text = """
-        Wonderful! I'm excited to help you get started with Ringly Pro. 
-        To set up your account, I'll connect you with our onboarding specialist 
-        who will walk you through the setup process and ensure everything is configured 
-        for your business needs. 
-        
-        Please hold while I transfer you. 
-        If you'd prefer, you can also visit ringly pro dot com to sign up online.
-        """
-        
-        # Use Rachel's voice
-        audio_url = self.generate_rachel_audio(subscribe_text)
-        
-        if audio_url:
-            response.play(audio_url)
-        else:
-            response.say(subscribe_text, voice='Polly.Joanna')
-        
-        response.pause(length=1)
-        
-        # Transfer to sales/onboarding number
-        dial = Dial(
-            action='/phone/call-complete',
-            timeout=30,
-            record='record-from-answer-dual'
-        )
-        dial.number('+16566001400')
-        response.append(dial)
-        
-        return response
+def handle_subscription(self) -> VoiceResponse:
+    """Handle subscription request"""
+    response = VoiceResponse()
+    
+    # Get caller's phone number from the Twilio request
+    caller_phone = request.form.get('From', '')
+    
+    subscribe_text = """
+    Wonderful! I'm excited to help you get started with Ringly Pro. 
+    I'm sending you our subscription link via text message right now.
+    I'll also connect you with our onboarding specialist 
+    who will walk you through the setup process and ensure everything is configured 
+    for your business needs. 
+    
+    Please hold while I transfer you.
+    """
+    
+    # Use Rachel's voice
+    audio_url = self.generate_rachel_audio(subscribe_text)
+    
+    if audio_url:
+        response.play(audio_url)
+    else:
+        response.say(subscribe_text, voice='Polly.Joanna')
+    
+    # Send SMS with subscription link
+    if caller_phone:
+        self.send_subscription_sms(caller_phone)
+    
+    response.pause(length=1)
+    
+    # Transfer to sales/onboarding number (your existing code)
+    dial = Dial(
+        action='/phone/call-complete',
+        timeout=30,
+        record='record-from-answer-dual'
+    )
+    dial.number('+16566001400')
+    response.append(dial)
+    
+    return response
     
     def handle_support_transfer(self) -> VoiceResponse:
         """Transfer to customer support"""
@@ -973,6 +980,39 @@ Customer expects confirmation - please verify ASAP!
                 
     except Exception as e:
         logger.error(f"HubSpot task error: {e}")
+
+def send_subscription_sms(self, phone_number: str):
+    """Send SMS with subscription link"""
+    try:
+        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+            logger.warning("Twilio not configured for subscription SMS")
+            return
+        
+        client = Client(twilio_account_sid, twilio_auth_token)
+        
+        message_body = f"""
+🎉 Thanks for wanting to subscribe to RinglyPro!
+
+🔗 Complete your subscription here:
+https://ringlypro.com/subscribe
+
+You're also being connected to our specialist now.
+
+Questions? Call us back at 888-610-3810
+
+- The RinglyPro Team
+        """.strip()
+        
+        message = client.messages.create(
+            body=message_body,
+            from_=twilio_phone,
+            to=phone_number
+        )
+        
+        logger.info(f"📱 Subscription SMS sent to {phone_number}: {message.sid}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send subscription SMS: {e}")
 
 # ADD THIS DEBUG ENDPOINT to test HubSpot connection
 @app.route('/test-hubspot', methods=['GET'])
