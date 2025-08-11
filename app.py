@@ -55,6 +55,9 @@ elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+# Twilio Webhook Configuration
+TWILIO_PHONE_NUMBER = "+18886103810"  # Your business number
+TWILIO_WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
 
 # Email Configuration
 smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
