@@ -402,14 +402,6 @@ class PhoneCallHandler:
         self.elevenlabs_api_key = elevenlabs_api_key
         self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
         self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
-        
-class PhoneCallHandler:
-    """Handle incoming phone calls with IVR and Rachel's voice"""
-    
-    def __init__(self):
-        self.elevenlabs_api_key = elevenlabs_api_key
-        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
-        self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
     
     def generate_rachel_audio(self, text: str) -> Optional[str]:
         """Generate audio URL using Rachel's voice via ElevenLabs"""
@@ -461,7 +453,7 @@ class PhoneCallHandler:
             logger.error(f"Error generating Rachel audio: {e}")
             return None
     
-    def create_greeting_response(self) -> VoiceResponse:  # INDENTED!
+    def create_greeting_response(self) -> VoiceResponse:
         """Create the initial greeting when someone calls"""
         response = VoiceResponse()
         
@@ -501,7 +493,7 @@ class PhoneCallHandler:
         
         return response
     
-    def process_speech_input(self, speech_result: str) -> VoiceResponse:  # INDENTED!
+    def process_speech_input(self, speech_result: str) -> VoiceResponse:
         """Process the caller's speech and route accordingly"""
         response = VoiceResponse()
         speech_lower = speech_result.lower().strip()
@@ -521,84 +513,84 @@ class PhoneCallHandler:
             # Try FAQ system
             return self.handle_general_inquiry(speech_result)
     
-def handle_demo_booking(self) -> VoiceResponse:
-    """Handle demo booking request"""
-    response = VoiceResponse()
+    def handle_demo_booking(self) -> VoiceResponse:  # NOW INDENTED!
+        """Handle demo booking request"""
+        response = VoiceResponse()
+        
+        booking_text = """
+        Excellent! I'd be happy to schedule a free consultation for you. 
+        Our team will show you how Ringly Pro can transform your business communications. 
+        I'll need to collect a few details. 
+        First, please say your full name.
+        """
+        
+        gather = Gather(
+            input='speech',
+            timeout=5,
+            action='/phone/collect-name',
+            method='POST',
+            speechTimeout='auto'
+        )
+        
+        # Try to use Rachel's voice first
+        audio_url = self.generate_rachel_audio(booking_text)
+        
+        if audio_url:
+            gather.play(audio_url)
+            logger.info("✅ Using Rachel's voice for booking")
+        else:
+            gather.say(booking_text, voice='Polly.Joanna')
+            logger.info("⚠️ Falling back to Polly voice")
+        
+        response.append(gather)
+        
+        return response
     
-    booking_text = """
-    Excellent! I'd be happy to schedule a free consultation for you. 
-    Our team will show you how Ringly Pro can transform your business communications. 
-    I'll need to collect a few details. 
-    First, please say your full name.
-    """
+    def handle_pricing_inquiry(self) -> VoiceResponse:  # NOW INDENTED!
+        """Provide pricing information"""
+        response = VoiceResponse()
+        
+        pricing_text = """
+        I'd be happy to share our pricing plans with you. 
+        
+        We offer three tiers:
+        
+        The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
+        text messaging, and appointment scheduling.
+        
+        The Office Manager at 297 dollars per month includes 3000 minutes, 
+        C.R.M. integrations, and mobile app access.
+        
+        The Marketing Director at 497 dollars per month includes 7500 minutes, 
+        dedicated account management, and marketing automation.
+        
+        Would you like to schedule a consultation to discuss which plan is right for you? 
+        Say yes to book a demo, or repeat to hear the prices again.
+        """
+        
+        gather = Gather(
+            input='speech',
+            timeout=5,
+            action='/phone/pricing-followup',
+            method='POST',
+            speechTimeout='auto'
+        )
+        
+        # Try to use Rachel's voice first
+        audio_url = self.generate_rachel_audio(pricing_text)
+        
+        if audio_url:
+            gather.play(audio_url)
+            logger.info("✅ Using Rachel's voice for pricing")
+        else:
+            gather.say(pricing_text, voice='Polly.Joanna')
+            logger.info("⚠️ Falling back to Polly voice")
+        
+        response.append(gather)
+        
+        return response
     
-    gather = Gather(
-        input='speech',
-        timeout=5,
-        action='/phone/collect-name',
-        method='POST',
-        speechTimeout='auto'
-    )
-    
-    # Try to use Rachel's voice first
-    audio_url = self.generate_rachel_audio(booking_text)
-    
-    if audio_url:
-        gather.play(audio_url)
-        logger.info("✅ Using Rachel's voice for booking")
-    else:
-        gather.say(booking_text, voice='Polly.Joanna')
-        logger.info("⚠️ Falling back to Polly voice")
-    
-    response.append(gather)
-    
-    return response
-    
-def handle_pricing_inquiry(self) -> VoiceResponse:
-    """Provide pricing information"""
-    response = VoiceResponse()
-    
-    pricing_text = """
-    I'd be happy to share our pricing plans with you. 
-    
-    We offer three tiers:
-    
-    The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
-    text messaging, and appointment scheduling.
-    
-    The Office Manager at 297 dollars per month includes 3000 minutes, 
-    C.R.M. integrations, and mobile app access.
-    
-    The Marketing Director at 497 dollars per month includes 7500 minutes, 
-    dedicated account management, and marketing automation.
-    
-    Would you like to schedule a consultation to discuss which plan is right for you? 
-    Say yes to book a demo, or repeat to hear the prices again.
-    """
-    
-    gather = Gather(
-        input='speech',
-        timeout=5,
-        action='/phone/pricing-followup',
-        method='POST',
-        speechTimeout='auto'
-    )
-    
-    # Try to use Rachel's voice first
-    audio_url = self.generate_rachel_audio(pricing_text)
-    
-    if audio_url:
-        gather.play(audio_url)
-        logger.info("✅ Using Rachel's voice for pricing")
-    else:
-        gather.say(pricing_text, voice='Polly.Joanna')
-        logger.info("⚠️ Falling back to Polly voice")
-    
-    response.append(gather)
-    
-    return response
-    
-    def handle_subscription(self) -> VoiceResponse:  # INDENTED!
+    def handle_subscription(self) -> VoiceResponse:
         """Handle subscription request"""
         response = VoiceResponse()
         
@@ -612,7 +604,14 @@ def handle_pricing_inquiry(self) -> VoiceResponse:
         If you'd prefer, you can also visit ringly pro dot com to sign up online.
         """
         
-        response.say(subscribe_text, voice='Polly.Joanna')
+        # Use Rachel's voice
+        audio_url = self.generate_rachel_audio(subscribe_text)
+        
+        if audio_url:
+            response.play(audio_url)
+        else:
+            response.say(subscribe_text, voice='Polly.Joanna')
+        
         response.pause(length=1)
         
         # Transfer to sales/onboarding number
@@ -621,29 +620,36 @@ def handle_pricing_inquiry(self) -> VoiceResponse:
             timeout=30,
             record='record-from-answer-dual'
         )
-        dial.number('+16566001400')  # Your customer service number
+        dial.number('+16566001400')
         response.append(dial)
         
         return response
     
-def handle_support_transfer(self) -> VoiceResponse:
-    """Transfer to customer support"""
-    response = VoiceResponse()
+    def handle_support_transfer(self) -> VoiceResponse:  # NOW INDENTED!
+        """Transfer to customer support"""
+        response = VoiceResponse()
+        
+        transfer_text = "I'll connect you with our customer support team right away. Please hold."
+        
+        # Use Rachel's voice
+        audio_url = self.generate_rachel_audio(transfer_text)
+        
+        if audio_url:
+            response.play(audio_url)
+        else:
+            response.say(transfer_text, voice='Polly.Joanna')
+        
+        dial = Dial(
+            action='/phone/call-complete',
+            timeout=30,
+            record='record-from-answer-dual'
+        )
+        dial.number('+16566001400')
+        response.append(dial)
+        
+        return response
     
-    transfer_text = "I'll connect you with our customer support team right away. Please hold."
-    self.say_with_rachel(response, transfer_text)
-    
-    dial = Dial(
-        action='/phone/call-complete',
-        timeout=30,
-        record='record-from-answer-dual'
-    )
-    dial.number('+16566001400')
-    response.append(dial)
-    
-    return response
-    
-    def handle_general_inquiry(self, question: str) -> VoiceResponse:  # INDENTED!
+    def handle_general_inquiry(self, question: str) -> VoiceResponse:
         """Handle general questions using FAQ system"""
         response = VoiceResponse()
         
@@ -655,7 +661,14 @@ def handle_support_transfer(self) -> VoiceResponse:
             if len(faq_response) > 300:
                 faq_response = faq_response[:297] + "..."
             
-            response.say(faq_response, voice='Polly.Joanna')
+            # Use Rachel's voice for FAQ response
+            audio_url = self.generate_rachel_audio(faq_response)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(faq_response, voice='Polly.Joanna')
+            
             response.pause(length=1)
             
             followup = Gather(
@@ -665,17 +678,26 @@ def handle_support_transfer(self) -> VoiceResponse:
                 method='POST',
                 speechTimeout='auto'
             )
-            followup.say(
-                "Is there anything else I can help you with today?",
-                voice='Polly.Joanna'
-            )
+            
+            followup_text = "Is there anything else I can help you with today?"
+            followup_audio = self.generate_rachel_audio(followup_text)
+            
+            if followup_audio:
+                followup.play(followup_audio)
+            else:
+                followup.say(followup_text, voice='Polly.Joanna')
+            
             response.append(followup)
         else:
             # Can't answer, offer to transfer
-            response.say(
-                "I'd be happy to help with that. Let me connect you with someone who can provide more specific information.",
-                voice='Polly.Joanna'
-            )
+            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
+            
+            audio_url = self.generate_rachel_audio(transfer_text)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(transfer_text, voice='Polly.Joanna')
             
             dial = Dial(action='/phone/call-complete', timeout=30)
             dial.number('+16566001400')
@@ -683,7 +705,7 @@ def handle_support_transfer(self) -> VoiceResponse:
         
         return response
     
-    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:  # INDENTED!
+    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
         """Multi-step booking information collection"""
         response = VoiceResponse()
         
@@ -698,27 +720,41 @@ def handle_support_transfer(self) -> VoiceResponse:
                 numDigits=10,
                 finishOnKey='#'
             )
-            gather.say(
-                f"Thank you {value}. Now, please say or enter your phone number using the keypad.",
-                voice='Polly.Joanna'
-            )
+            
+            text = f"Thank you {value}. Now, please say or enter your phone number using the keypad."
+            audio_url = self.generate_rachel_audio(text)
+            
+            if audio_url:
+                gather.play(audio_url)
+            else:
+                gather.say(text, voice='Polly.Joanna')
+            
             response.append(gather)
             
         elif step == 'phone':
             # Store phone and ask for email/schedule
-            response.say(
-                f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience.",
-                voice='Polly.Joanna'
-            )
+            text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
+            
+            audio_url = self.generate_rachel_audio(text1)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(text1, voice='Polly.Joanna')
             
             # Send SMS with booking link
             self.send_booking_sms(value)
             
             response.pause(length=1)
-            response.say(
-                "The text has been sent. You can also visit ringly pro dot com to book directly. Is there anything else I can help you with?",
-                voice='Polly.Joanna'
-            )
+            
+            text2 = "The text has been sent. You can also visit ringly pro dot com to book directly. Is there anything else I can help you with?"
+            
+            audio_url2 = self.generate_rachel_audio(text2)
+            
+            if audio_url2:
+                response.play(audio_url2)
+            else:
+                response.say(text2, voice='Polly.Joanna')
             
             gather = Gather(
                 input='speech',
@@ -730,7 +766,7 @@ def handle_support_transfer(self) -> VoiceResponse:
             
         return response
     
-    def send_booking_sms(self, phone_number: str):  # INDENTED!
+    def send_booking_sms(self, phone_number: str):
         """Send SMS with booking link"""
         try:
             if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
@@ -763,6 +799,7 @@ Questions? Call us back at 888-610-3810
         except Exception as e:
             logger.error(f"Failed to send booking SMS: {e}")
 
+# END OF CLASS - no more indentation after this line
 # END OF PhoneCallHandler CLASS
 
 # ==================== APPOINTMENT MANAGEMENT CLASS ====================
