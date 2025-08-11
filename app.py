@@ -385,6 +385,16 @@ class HubSpotService:
 
 # ==================== TELEPHONY CALL HANDLER ====================
 
+def say_with_rachel(self, response: VoiceResponse, text: str) -> None:
+    """Helper to use Rachel's voice or fallback to Polly"""
+    audio_url = self.generate_rachel_audio(text)
+    
+    if audio_url:
+        response.play(audio_url)
+        logger.info("✅ Using Rachel's voice")
+    else:
+        response.say(text, voice='Polly.Joanna')
+        logger.info("⚠️ Using Polly fallback")
 class PhoneCallHandler:
     """Handle incoming phone calls with IVR and Rachel's voice"""
     
@@ -511,62 +521,82 @@ class PhoneCallHandler:
             # Try FAQ system
             return self.handle_general_inquiry(speech_result)
     
-    def handle_demo_booking(self) -> VoiceResponse:  # INDENTED!
-        """Handle demo booking request"""
-        response = VoiceResponse()
-        
-        booking_text = """
-        Excellent! I'd be happy to schedule a free consultation for you. 
-        Our team will show you how Ringly Pro can transform your business communications. 
-        I'll need to collect a few details. 
-        First, please say your full name.
-        """
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/collect-name',
-            method='POST',
-            speechTimeout='auto'
-        )
-        gather.say(booking_text, voice='Polly.Joanna')
-        response.append(gather)
-        
-        return response
+def handle_demo_booking(self) -> VoiceResponse:
+    """Handle demo booking request"""
+    response = VoiceResponse()
     
-    def handle_pricing_inquiry(self) -> VoiceResponse:  # INDENTED!
-        """Provide pricing information"""
-        response = VoiceResponse()
-        
-        pricing_text = """
-        I'd be happy to share our pricing plans with you. 
-        
-        We offer three tiers:
-        
-        The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
-        text messaging, and appointment scheduling.
-        
-        The Office Manager at 297 dollars per month includes 3000 minutes, 
-        C.R.M. integrations, and mobile app access.
-        
-        The Marketing Director at 497 dollars per month includes 7500 minutes, 
-        dedicated account management, and marketing automation.
-        
-        Would you like to schedule a consultation to discuss which plan is right for you? 
-        Say 'yes' to book a demo, or 'repeat' to hear the prices again.
-        """
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/pricing-followup',
-            method='POST',
-            speechTimeout='auto'
-        )
+    booking_text = """
+    Excellent! I'd be happy to schedule a free consultation for you. 
+    Our team will show you how Ringly Pro can transform your business communications. 
+    I'll need to collect a few details. 
+    First, please say your full name.
+    """
+    
+    gather = Gather(
+        input='speech',
+        timeout=5,
+        action='/phone/collect-name',
+        method='POST',
+        speechTimeout='auto'
+    )
+    
+    # Try to use Rachel's voice first
+    audio_url = self.generate_rachel_audio(booking_text)
+    
+    if audio_url:
+        gather.play(audio_url)
+        logger.info("✅ Using Rachel's voice for booking")
+    else:
+        gather.say(booking_text, voice='Polly.Joanna')
+        logger.info("⚠️ Falling back to Polly voice")
+    
+    response.append(gather)
+    
+    return response
+    
+def handle_pricing_inquiry(self) -> VoiceResponse:
+    """Provide pricing information"""
+    response = VoiceResponse()
+    
+    pricing_text = """
+    I'd be happy to share our pricing plans with you. 
+    
+    We offer three tiers:
+    
+    The Scheduling Assistant at 97 dollars per month includes 1000 minutes, 
+    text messaging, and appointment scheduling.
+    
+    The Office Manager at 297 dollars per month includes 3000 minutes, 
+    C.R.M. integrations, and mobile app access.
+    
+    The Marketing Director at 497 dollars per month includes 7500 minutes, 
+    dedicated account management, and marketing automation.
+    
+    Would you like to schedule a consultation to discuss which plan is right for you? 
+    Say yes to book a demo, or repeat to hear the prices again.
+    """
+    
+    gather = Gather(
+        input='speech',
+        timeout=5,
+        action='/phone/pricing-followup',
+        method='POST',
+        speechTimeout='auto'
+    )
+    
+    # Try to use Rachel's voice first
+    audio_url = self.generate_rachel_audio(pricing_text)
+    
+    if audio_url:
+        gather.play(audio_url)
+        logger.info("✅ Using Rachel's voice for pricing")
+    else:
         gather.say(pricing_text, voice='Polly.Joanna')
-        response.append(gather)
-        
-        return response
+        logger.info("⚠️ Falling back to Polly voice")
+    
+    response.append(gather)
+    
+    return response
     
     def handle_subscription(self) -> VoiceResponse:  # INDENTED!
         """Handle subscription request"""
@@ -596,24 +626,22 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_support_transfer(self) -> VoiceResponse:  # INDENTED!
-        """Transfer to customer support"""
-        response = VoiceResponse()
-        
-        response.say(
-            "I'll connect you with our customer support team right away. Please hold.",
-            voice='Polly.Joanna'
-        )
-        
-        dial = Dial(
-            action='/phone/call-complete',
-            timeout=30,
-            record='record-from-answer-dual'
-        )
-        dial.number('+16566001400')
-        response.append(dial)
-        
-        return response
+def handle_support_transfer(self) -> VoiceResponse:
+    """Transfer to customer support"""
+    response = VoiceResponse()
+    
+    transfer_text = "I'll connect you with our customer support team right away. Please hold."
+    self.say_with_rachel(response, transfer_text)
+    
+    dial = Dial(
+        action='/phone/call-complete',
+        timeout=30,
+        record='record-from-answer-dual'
+    )
+    dial.number('+16566001400')
+    response.append(dial)
+    
+    return response
     
     def handle_general_inquiry(self, question: str) -> VoiceResponse:  # INDENTED!
         """Handle general questions using FAQ system"""
