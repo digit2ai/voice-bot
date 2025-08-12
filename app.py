@@ -1252,6 +1252,55 @@ Questions? Call us back at 888-610-3810
         logger.error(f"Failed to send subscription SMS: {e}")
 
 # ADD THIS DEBUG ENDPOINT to test HubSpot connection
+@app.route('/test-meeting-only', methods=['GET'])
+def test_meeting_only():
+    """Test creating just a meeting"""
+    try:
+        headers = {
+            "Authorization": f"Bearer {hubspot_api_token}",
+            "Content-Type": "application/json"
+        }
+        
+        # Create a meeting using the engagement API (older but more reliable)
+        meeting_data = {
+            "engagement": {
+                "active": True,
+                "type": "MEETING",
+                "timestamp": int(time.time() * 1000)
+            },
+            "associations": {
+                "contactIds": [],  # We'll leave empty for test
+                "companyIds": [],
+                "dealIds": []
+            },
+            "metadata": {
+                "title": "Test RinglyPro Meeting",
+                "body": "Test meeting from RinglyPro system",
+                "startTime": int((datetime.now() + timedelta(days=1)).timestamp() * 1000),
+                "endTime": int((datetime.now() + timedelta(days=1, minutes=30)).timestamp() * 1000),
+                "location": "https://us06web.zoom.us/j/7269045564"
+            }
+        }
+        
+        # Try the older engagement API
+        response = requests.post(
+            "https://api.hubapi.com/engagements/v1/engagements",
+            headers=headers,
+            json=meeting_data,
+            timeout=10
+        )
+        
+        return jsonify({
+            "status": response.status_code,
+            "response": response.json() if response.status_code != 204 else "Success"
+        })
+        
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()})
+
+
+
 @app.route('/test-hubspot', methods=['GET'])
 def test_hubspot():
     """Test HubSpot integration and show recent contacts/meetings"""
