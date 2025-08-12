@@ -3169,113 +3169,111 @@ VOICE_HTML_TEMPLATE = '''
             };
         }
 
-// Replace the processTranscript method in EnhancedVoiceBot class with this version:
+        async processTranscript(transcript) {
+            if (!transcript || transcript.length < 2) {
+                this.handleError('No speech detected');
+                return;
+            }
 
-async processTranscript(transcript) {
-    if (!transcript || transcript.length < 2) {
-        this.handleError('No speech detected');
-        return;
-    }
-
-    console.log('Processing transcript:', transcript);
-    this.isProcessing = true;
-    this.updateUI('processing');
-    this.updateStatus('🤖 Processing...');
-    
-    // Clear any existing timeout
-    if (this.processTimeout) {
-        clearTimeout(this.processTimeout);
-    }
-    
-    // Add timeout for the entire processing
-    this.processTimeout = setTimeout(() => {
-        if (this.isProcessing) {
-            console.log('Processing timeout - resetting UI');
-            this.handleError('Processing took too long. Please try again.');
-        }
-    }, 15000);
-
-    try {
-        const response = await fetch('/process-text-enhanced', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                text: transcript,
-                language: this.currentLanguage,
-                mobile: this.isMobile
-            })
-        });
-
-        clearTimeout(this.processTimeout);
-
-        if (!response.ok) throw new Error('Server error: ' + response.status);
-
-        const data = await response.json();
-        if (data.error) throw new Error(data.error);
-
-        console.log('Received data:', data);
-
-        // Always show text if available
-        if (data.show_text && data.response) {
-            this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
-        }
-
-        // Check for subscription popup action (NEW)
-        if (data.action === 'show_subscription_popup') {
-            console.log('🎯 Subscription popup triggered');
+            console.log('Processing transcript:', transcript);
+            this.isProcessing = true;
+            this.updateUI('processing');
+            this.updateStatus('🤖 Processing...');
             
-            // Play audio if available
-            if (data.audio) {
-                console.log('Playing audio response');
-                await this.playPremiumAudio(data.audio, data.response, data.show_text);
-            } else {
-                console.log('No audio, using browser TTS');
-                await this.playBrowserTTS(data.response);
+            // Clear any existing timeout
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
             }
             
-            // Show subscription popup
-            setTimeout(() => {
-                showSubscriptionPopup();
-            }, 500);
-            return;
-        }
+            // Add timeout for the entire processing
+            this.processTimeout = setTimeout(() => {
+                if (this.isProcessing) {
+                    console.log('Processing timeout - resetting UI');
+                    this.handleError('Processing took too long. Please try again.');
+                }
+            }, 15000);
 
-        // Check for booking redirect action
-        if (data.action === 'redirect_to_booking') {
-            console.log('🎯 Booking redirect detected');
-            
-            // Play audio if available
-            if (data.audio) {
-                console.log('Playing audio response');
-                await this.playPremiumAudio(data.audio, data.response, data.show_text);
-            } else {
-                console.log('No audio, using browser TTS');
-                await this.playBrowserTTS(data.response);
+            try {
+                const response = await fetch('/process-text-enhanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: transcript,
+                        language: this.currentLanguage,
+                        mobile: this.isMobile
+                    })
+                });
+
+                clearTimeout(this.processTimeout);
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                console.log('Received data:', data);
+
+                // Always show text if available
+                if (data.show_text && data.response) {
+                    this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
+                }
+
+                // Check for subscription popup action (NEW)
+                if (data.action === 'show_subscription_popup') {
+                    console.log('🎯 Subscription popup triggered');
+                    
+                    // Play audio if available
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
+                    }
+                    
+                    // Show subscription popup
+                    setTimeout(() => {
+                        showSubscriptionPopup();
+                    }, 500);
+                    return;
+                }
+
+                // Check for booking redirect action
+                if (data.action === 'redirect_to_booking') {
+                    console.log('🎯 Booking redirect detected');
+                    
+                    // Play audio if available
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
+                    }
+                    
+                    // Show booking form
+                    setTimeout(() => {
+                        this.showInlineBookingForm();
+                    }, 500);
+                    return;
+                }
+
+                // Regular responses
+                if (data.audio) {
+                    console.log('Playing Rachel audio response');
+                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                } else if (data.response) {
+                    console.log('Using browser TTS');
+                    await this.playBrowserTTS(data.response);
+                } else {
+                    this.audioFinished();
+                }
+
+            } catch (error) {
+                clearTimeout(this.processTimeout);
+                this.handleError('Processing error: ' + error.message);
             }
-            
-            // Show booking form
-            setTimeout(() => {
-                this.showInlineBookingForm();
-            }, 500);
-            return;
         }
-
-        // Regular responses
-        if (data.audio) {
-            console.log('Playing Rachel audio response');
-            await this.playPremiumAudio(data.audio, data.response, data.show_text);
-        } else if (data.response) {
-            console.log('Using browser TTS');
-            await this.playBrowserTTS(data.response);
-        } else {
-            this.audioFinished();
-        }
-
-    } catch (error) {
-        clearTimeout(this.processTimeout);
-        this.handleError('Processing error: ' + error.message);
-    }
-}
 
         async playPremiumAudio(audioBase64, responseText, showText = false) {
             console.log('Playing premium audio, showText:', showText, 'isMobile:', this.isMobile);
@@ -3448,7 +3446,7 @@ async processTranscript(transcript) {
             this.isPlaying = false;
             this.isProcessing = false;
             this.updateUI('ready');
-            this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to continue');
+            this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to continue');
         }
 
         setupEventListeners() {
@@ -3570,7 +3568,7 @@ async processTranscript(transcript) {
             }
             
             setTimeout(() => {
-                this.updateStatus('🎙️ Say "book appointment" for instant booking or tap to try again');
+                this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to try again');
             }, 3000);
         }
 
@@ -3620,7 +3618,109 @@ async processTranscript(transcript) {
             const overlay = document.getElementById('bookingFormOverlay');
             if (overlay) overlay.style.display = 'none';
             
-            this.updateStatus('🎙️ Ready! Say "book appointment" for instant booking');
+            const subscriptionPopup = document.getElementById('subscriptionPopup');
+            if (subscriptionPopup) subscriptionPopup.style.display = 'none';
+            
+            this.updateStatus('🎙️ Ready! Say "subscribe" or "book appointment"');
+        }
+    }
+
+    // Subscription Popup Functions
+    function showSubscriptionPopup() {
+        const popup = document.getElementById('subscriptionPopup');
+        if (popup) {
+            popup.style.display = 'flex';
+            
+            // Animate entrance
+            setTimeout(() => {
+                popup.classList.add('active');
+            }, 10);
+            
+            // Log analytics event
+            console.log('📊 Subscription popup shown');
+            
+            // Update status
+            if (window.voiceBot) {
+                window.voiceBot.updateStatus('🎯 Choose your perfect plan above!');
+            }
+        }
+    }
+
+    function closeSubscriptionPopup() {
+        const popup = document.getElementById('subscriptionPopup');
+        if (popup) {
+            popup.style.display = 'none';
+            
+            // Update status
+            if (window.voiceBot) {
+                window.voiceBot.updateStatus('🎙️ Ready! Say "subscribe" to see plans again');
+            }
+        }
+    }
+
+    function selectPlan(planType) {
+        // Log the plan selection
+        console.log(`📊 Plan selected: ${planType}`);
+        
+        // Redirect to subscription page with plan parameter
+        const subscriptionUrl = `https://ringlypro.com/subscribe?plan=${planType}`;
+        
+        // Show confirmation before redirect
+        const planNames = {
+            'starter': 'Scheduling Assistant ($97/month)',
+            'pro': 'Office Manager ($297/month)',
+            'premium': 'Marketing Director ($497/month)'
+        };
+        
+        const selectedPlanName = planNames[planType] || planType;
+        
+        // Update the popup content to show confirmation
+        const container = document.querySelector('.subscription-popup-container');
+        if (container) {
+            container.innerHTML = `
+                <div class="subscription-header" style="padding: 60px 20px;">
+                    <h2>🎉 Excellent Choice!</h2>
+                    <p style="font-size: 1.3rem; margin: 20px 0;">You selected: <strong>${selectedPlanName}</strong></p>
+                    <p style="color: #666; margin-bottom: 30px;">Redirecting you to complete your subscription...</p>
+                    <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                        <button class="plan-btn" style="width: auto; padding: 15px 40px;" onclick="window.open('${subscriptionUrl}', '_blank')">
+                            Complete Subscription →
+                        </button>
+                        <button class="contact-sales-btn" style="width: auto; padding: 15px 40px;" onclick="contactSales()">
+                            Talk to Sales First
+                        </button>
+                    </div>
+                    <p style="margin-top: 30px; color: #999;">
+                        Or call us directly at <strong>(888) 610-3810</strong>
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Redirect after a short delay
+        setTimeout(() => {
+            window.open(subscriptionUrl, '_blank');
+        }, 2000);
+    }
+
+    function contactSales() {
+        // Close the subscription popup
+        closeSubscriptionPopup();
+        
+        // Show the booking form for sales consultation
+        if (window.voiceBot && window.voiceBot.showInlineBookingForm) {
+            window.voiceBot.showInlineBookingForm();
+            
+            // Pre-fill the purpose field if possible
+            setTimeout(() => {
+                const purposeField = document.getElementById('inlineAppointmentPurpose');
+                if (purposeField) {
+                    purposeField.value = 'Sales consultation - Interested in RinglyPro subscription plans';
+                }
+            }, 100);
+        } else {
+            // Fallback: redirect to contact page
+            window.location.href = '/chat-enhanced';
         }
     }
 
@@ -3783,130 +3883,6 @@ async processTranscript(transcript) {
             window.voiceBot.updateStatus('✅ Appointment booked successfully!');
         }
     }
-
-    // Add these functions to the <script> section in VOICE_HTML_TEMPLATE
-
-// Subscription Popup Functions
-function showSubscriptionPopup() {
-    const popup = document.getElementById('subscriptionPopup');
-    if (popup) {
-        popup.style.display = 'flex';
-        
-        // Animate entrance
-        setTimeout(() => {
-            popup.classList.add('active');
-        }, 10);
-        
-        // Log analytics event
-        console.log('📊 Subscription popup shown');
-        
-        // Update status
-        if (window.voiceBot) {
-            window.voiceBot.updateStatus('🎯 Choose your perfect plan above!');
-        }
-    }
-}
-
-function closeSubscriptionPopup() {
-    const popup = document.getElementById('subscriptionPopup');
-    if (popup) {
-        popup.style.display = 'none';
-        
-        // Update status
-        if (window.voiceBot) {
-            window.voiceBot.updateStatus('🎙️ Ready! Say "subscribe" to see plans again');
-        }
-    }
-}
-
-function selectPlan(planType) {
-    // Log the plan selection
-    console.log(`📊 Plan selected: ${planType}`);
-    
-    // Redirect to subscription page with plan parameter
-    const subscriptionUrl = `https://ringlypro.com/subscribe?plan=${planType}`;
-    
-    // Show confirmation before redirect
-    const planNames = {
-        'starter': 'Scheduling Assistant ($97/month)',
-        'pro': 'Office Manager ($297/month)',
-        'premium': 'Marketing Director ($497/month)'
-    };
-    
-    const selectedPlanName = planNames[planType] || planType;
-    
-    // Update the popup content to show confirmation
-    const container = document.querySelector('.subscription-popup-container');
-    if (container) {
-        container.innerHTML = `
-            <div class="subscription-header" style="padding: 60px 20px;">
-                <h2>🎉 Excellent Choice!</h2>
-                <p style="font-size: 1.3rem; margin: 20px 0;">You selected: <strong>${selectedPlanName}</strong></p>
-                <p style="color: #666; margin-bottom: 30px;">Redirecting you to complete your subscription...</p>
-                <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
-                    <button class="plan-btn" style="width: auto; padding: 15px 40px;" onclick="window.open('${subscriptionUrl}', '_blank')">
-                        Complete Subscription →
-                    </button>
-                    <button class="contact-sales-btn" style="width: auto; padding: 15px 40px;" onclick="contactSales()">
-                        Talk to Sales First
-                    </button>
-                </div>
-                <p style="margin-top: 30px; color: #999;">
-                    Or call us directly at <strong>(888) 610-3810</strong>
-                </p>
-            </div>
-        `;
-    }
-    
-    // Redirect after a short delay
-    setTimeout(() => {
-        window.open(subscriptionUrl, '_blank');
-    }, 2000);
-}
-
-function contactSales() {
-    // Close the subscription popup
-    closeSubscriptionPopup();
-    
-    // Show the booking form for sales consultation
-    if (window.voiceBot && window.voiceBot.showInlineBookingForm) {
-        window.voiceBot.showInlineBookingForm();
-        
-        // Pre-fill the purpose field if possible
-        setTimeout(() => {
-            const purposeField = document.getElementById('inlineAppointmentPurpose');
-            if (purposeField) {
-                purposeField.value = 'Sales consultation - Interested in RinglyPro subscription plans';
-            }
-        }, 100);
-    } else {
-        // Fallback: redirect to contact page
-        window.location.href = '/chat-enhanced';
-    }
-}
-
-// Update the processTranscript method in EnhancedVoiceBot class
-// Find the processTranscript method and add this case after the booking redirect check:
-
-// In the processTranscript method, after checking for booking redirect, add:
-if (data.action === 'show_subscription_popup') {
-    console.log('🎯 Subscription popup triggered');
-    
-    // Play audio if available
-    if (data.audio) {
-        console.log('Playing audio response');
-        await this.playPremiumAudio(data.audio, data.response, data.show_text);
-    } else {
-        console.log('No audio, using browser TTS');
-        await this.playBrowserTTS(data.response);
-    }
-    
-    // Show subscription popup
-    setTimeout(() => {
-        showSubscriptionPopup();
-    }, 500);
-    return;
-}
 
     function showInlineBookingError(message) {
         const form = document.getElementById('inlineBookingForm');
