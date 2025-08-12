@@ -1467,7 +1467,7 @@ def create_contact(self, name: str, email: str = "", phone: str = "", company: s
                         "firstname": name.split()[0] if name.split() else "",
                         "lastname": " ".join(name.split()[1:]) if len(name.split()) > 1 else "",
                         "lifecyclestage": "lead",
-                        "lead_source": "RinglyPro Voice Assistant - Phone Booking"
+                        "hs_lead_status": "NEW"  # CHANGED: Using valid HubSpot property
                     }
                     
                     # Only update email if the existing one is also a placeholder
@@ -1485,14 +1485,14 @@ def create_contact(self, name: str, email: str = "", phone: str = "", company: s
             "email": email,
             "phone": phone,
             "company": company or "Phone Booking - Needs Follow-up",
-            "lifecyclestage": "lead",
-            "lead_source": "RinglyPro Voice Assistant"
+            "lifecyclestage": "lead"
+            # REMOVED: "lead_source" - this property doesn't exist in HubSpot
         }
         
         # Add note for phone bookings
         if email and "booking.ringlypro" in email:
-            properties["hs_lead_status"] = "OPEN"
-            properties["notes"] = "Phone booking - email needs verification"
+            properties["hs_lead_status"] = "NEW"  # CHANGED: Using valid property
+            # REMOVED: "notes" property - use description instead if needed
         
         # Remove empty values
         properties = {k: v for k, v in properties.items() if v}
