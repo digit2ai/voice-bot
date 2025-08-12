@@ -1485,17 +1485,13 @@ class AppointmentManager:
         """Get available appointment slots for a given date"""
         try:
             target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            # Use Eastern Time (UTC-5) for business hours - adjust for daylight saving if needed
             target_tz = timezone(timedelta(hours=-5))
             
-            # Get day of week
             day_name = target_date.strftime('%A').lower()
             
-            # Check if business is open
             if day_name not in business_hours or business_hours[day_name]['start'] == 'closed':
                 return []
             
-            # Generate time slots
             start_time = datetime.strptime(business_hours[day_name]['start'], '%H:%M').time()
             end_time = datetime.strptime(business_hours[day_name]['end'], '%H:%M').time()
             
@@ -1506,23 +1502,21 @@ class AppointmentManager:
             while current_time < end_datetime:
                 slot_time = current_time.strftime('%H:%M')
                 
-                # Check if slot is already booked
                 if not AppointmentManager.is_slot_available(date_str, slot_time):
                     current_time += timedelta(minutes=30)
                     continue
                 
-                # Don't show past slots for today
                 if target_date == datetime.now().date():
                     now = datetime.now(target_tz)
                     slot_datetime = datetime.combine(target_date, current_time.time()).replace(tzinfo=target_tz)
-                    if slot_datetime <= now + timedelta(hours=1):  # 1 hour buffer
+                    if slot_datetime <= now + timedelta(hours=1):
                         current_time += timedelta(minutes=30)
                         continue
                 
                 slots.append(slot_time)
                 current_time += timedelta(minutes=30)
             
-            return slots[:10]  # Limit to 10 slots per day
+            return slots[:10]
             
         except Exception as e:
             logger.error(f"Error getting available slots: {e}")
@@ -1548,20 +1542,33 @@ class AppointmentManager:
             return False
     
     def book_appointment(self, customer_data: dict) -> Tuple[bool, str, dict]:
-        """Book a new appointment with HubSpot integration"""
+        """Book a new appointment with ENHANCED HubSpot integration and notifications"""
         try:
             confirmation_code = self.generate_confirmation_code()
+            logger.info(f"📅 Starting appointment booking with confirmation code: {confirmation_code}")
             
             # Validate required fields
             required_fields = ['name', 'email', 'phone', 'date', 'time']
             for field in required_fields:
                 if not customer_data.get(field):
+                    logger.error(f"Missing required field: {field}")
                     return False, f"Missing required field: {field}", {}
             
-            # Validate phone number
-            validated_phone = validate_phone_number(customer_data['phone'])
-            if not validated_phone:
+            # Fix phone number format
+            phone_input = customer_data['phone']
+            # Remove all non-digits
+            phone_digits = re.sub(r'\D', '', phone_input)
+            
+            # Ensure proper format for US numbers
+            if len(phone_digits) == 10:
+                formatted_phone = f"+1{phone_digits}"
+            elif len(phone_digits) == 11 and phone_digits[0] == '1':
+                formatted_phone = f"+{phone_digits}"
+            else:
+                logger.error(f"Invalid phone format: {phone_input}")
                 return False, "Invalid phone number format", {}
+            
+            logger.info(f"📞 Formatted phone: {phone_input} -> {formatted_phone}")
             
             # Check slot availability
             if not self.is_slot_available(customer_data['date'], customer_data['time']):
@@ -1573,57 +1580,84 @@ class AppointmentManager:
                 datetime.strptime(customer_data['time'], '%H:%M').time()
             )
             
-            # Create/update contact in HubSpot
+            # Initialize tracking variables
             hubspot_contact_id = None
             hubspot_meeting_id = None
+            hubspot_success = False
             
+            # Try HubSpot integration with better error handling
             if self.hubspot_service.api_token:
-                contact_result = self.hubspot_service.create_contact(
-                    customer_data['name'], 
-                    customer_data['email'], 
-                    validated_phone, 
-                    "RinglyPro Prospect"
-                )
-                if contact_result.get("success"):
-                    hubspot_contact_id = contact_result.get("contact_id")
-                    
-                    # Create meeting in HubSpot
-                    meeting_title = f"RinglyPro Consultation - {customer_data.get('purpose', 'General consultation')}"
-                    meeting_result = self.hubspot_service.create_meeting(
-                        meeting_title, 
-                        hubspot_contact_id, 
-                        appointment_datetime,
-                        30
+                logger.info("🔄 Attempting HubSpot integration...")
+                
+                try:
+                    # Create/update contact in HubSpot
+                    contact_result = self.hubspot_service.create_contact(
+                        customer_data['name'], 
+                        customer_data['email'], 
+                        formatted_phone,  # Use formatted phone
+                        "RinglyPro Prospect"
                     )
                     
-                    if meeting_result.get("success"):
-                        hubspot_meeting_id = meeting_result.get("meeting_id")
+                    if contact_result.get("success"):
+                        hubspot_contact_id = contact_result.get("contact_id")
+                        logger.info(f"✅ HubSpot contact created/updated: {hubspot_contact_id}")
+                        
+                        # Create meeting in HubSpot
+                        meeting_title = f"RinglyPro Consultation - {customer_data.get('purpose', 'General consultation')}"
+                        meeting_result = self.hubspot_service.create_meeting(
+                            meeting_title, 
+                            hubspot_contact_id, 
+                            appointment_datetime,
+                            30
+                        )
+                        
+                        if meeting_result.get("success"):
+                            hubspot_meeting_id = meeting_result.get("meeting_id")
+                            hubspot_success = True
+                            logger.info(f"✅ HubSpot meeting created: {hubspot_meeting_id}")
+                        else:
+                            logger.error(f"❌ HubSpot meeting creation failed: {meeting_result.get('error')}")
+                    else:
+                        logger.error(f"❌ HubSpot contact creation failed: {contact_result.get('error')}")
+                        
+                except Exception as hubspot_error:
+                    logger.error(f"❌ HubSpot integration error: {hubspot_error}")
+                    # Continue anyway - don't fail the booking
+                    
+            else:
+                logger.warning("⚠️ HubSpot API token not configured - skipping CRM integration")
             
-            # Save to database
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''INSERT INTO appointments 
-                              (customer_name, customer_email, customer_phone, appointment_date, 
-                               appointment_time, purpose, zoom_meeting_url, confirmation_code, 
-                               timezone, hubspot_contact_id, hubspot_meeting_id)
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
-                customer_data['name'],
-                customer_data['email'],
-                validated_phone,
-                customer_data['date'],
-                customer_data['time'],
-                customer_data.get('purpose', 'General consultation'),
-                zoom_meeting_url,
-                confirmation_code,
-                customer_data.get('timezone', 'Eastern'),
-                hubspot_contact_id,
-                hubspot_meeting_id
-            ))
-            
-            appointment_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+            # Save to local database (always do this)
+            try:
+                conn = sqlite3.connect('ringlypro.db')
+                cursor = conn.cursor()
+                
+                cursor.execute('''INSERT INTO appointments 
+                                  (customer_name, customer_email, customer_phone, appointment_date, 
+                                   appointment_time, purpose, zoom_meeting_url, confirmation_code, 
+                                   timezone, hubspot_contact_id, hubspot_meeting_id)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
+                    customer_data['name'],
+                    customer_data['email'],
+                    formatted_phone,  # Save formatted phone
+                    customer_data['date'],
+                    customer_data['time'],
+                    customer_data.get('purpose', 'General consultation'),
+                    zoom_meeting_url,
+                    confirmation_code,
+                    customer_data.get('timezone', 'Eastern'),
+                    hubspot_contact_id,
+                    hubspot_meeting_id
+                ))
+                
+                appointment_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                logger.info(f"✅ Appointment saved to database with ID: {appointment_id}")
+                
+            except Exception as db_error:
+                logger.error(f"❌ Database save error: {db_error}")
+                return False, f"Database error: {str(db_error)}", {}
             
             # Create appointment object
             appointment = {
@@ -1631,7 +1665,7 @@ class AppointmentManager:
                 'confirmation_code': confirmation_code,
                 'customer_name': customer_data['name'],
                 'customer_email': customer_data['email'],
-                'customer_phone': validated_phone,
+                'customer_phone': formatted_phone,
                 'date': customer_data['date'],
                 'time': customer_data['time'],
                 'purpose': customer_data.get('purpose', 'General consultation'),
@@ -1642,36 +1676,55 @@ class AppointmentManager:
                 'hubspot_meeting_id': hubspot_meeting_id
             }
             
-            # Send confirmations
-            self.send_appointment_confirmations(appointment)
+            # Send confirmations with better error handling
+            confirmation_results = self.send_appointment_confirmations(appointment)
             
-            logger.info(f"✅ Appointment booked: {confirmation_code}")
+            # Log final status
+            logger.info(f"""
+            📊 APPOINTMENT BOOKING SUMMARY:
+            - Confirmation Code: {confirmation_code}
+            - Database: ✅ Saved
+            - HubSpot: {'✅ Integrated' if hubspot_success else '⚠️ Failed/Skipped'}
+            - Email: {confirmation_results.get('email', '❌ Failed')}
+            - SMS: {confirmation_results.get('sms', '❌ Failed')}
+            """)
+            
             return True, "Appointment booked successfully", appointment
             
         except Exception as e:
-            logger.error(f"❌ Error booking appointment: {e}")
+            logger.error(f"❌ Critical error booking appointment: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False, f"Booking error: {str(e)}", {}
     
     @staticmethod
-    def send_appointment_confirmations(appointment: dict):
-        """Send email and SMS confirmations"""
+    def send_appointment_confirmations(appointment: dict) -> dict:
+        """Send email and SMS confirmations with better error handling"""
+        results = {'email': '❌ Failed', 'sms': '❌ Failed'}
+        
         try:
             # Send email confirmation
-            AppointmentManager.send_email_confirmation(appointment)
+            email_result = AppointmentManager.send_email_confirmation(appointment)
+            results['email'] = '✅ Sent' if email_result else '❌ Failed'
             
             # Send SMS confirmation
-            AppointmentManager.send_sms_confirmation(appointment)
+            sms_result = AppointmentManager.send_sms_confirmation(appointment)
+            results['sms'] = '✅ Sent' if sms_result else '❌ Failed'
             
         except Exception as e:
-            logger.error(f"Error sending confirmations: {e}")
+            logger.error(f"Error in send_appointment_confirmations: {e}")
+        
+        return results
     
     @staticmethod
-    def send_email_confirmation(appointment: dict):
-        """Send detailed email confirmation"""
+    def send_email_confirmation(appointment: dict) -> bool:
+        """Send detailed email confirmation with better error handling"""
         try:
             if not all([email_user, email_password]):
-                logger.warning("Email credentials not configured")
-                return
+                logger.warning("⚠️ Email credentials not configured")
+                return False
+            
+            logger.info(f"📧 Attempting to send email to: {appointment['customer_email']}")
             
             # Format date and time
             date_obj = datetime.strptime(appointment['date'], '%Y-%m-%d')
@@ -1703,14 +1756,14 @@ Your appointment with RinglyPro has been successfully scheduled!
 Our team will discuss your specific needs and how RinglyPro can help streamline your business communications. Come prepared with any questions about our services.
 
 📱 NEED TO RESCHEDULE?
-Reply to this email or call us at (656) 213-3300 with your confirmation code.
+Reply to this email or call us at (888) 610-3810 with your confirmation code.
 
 We look forward to speaking with you!
 
 Best regards,
 The RinglyPro Team
 Email: support@ringlypro.com
-Phone: (656) 213-3300
+Phone: (888) 610-3810
 Website: https://ringlypro.com
             """.strip()
             
@@ -1729,17 +1782,23 @@ Website: https://ringlypro.com
             server.quit()
             
             logger.info(f"✅ Email confirmation sent to {appointment['customer_email']}")
+            return True
             
         except Exception as e:
             logger.error(f"❌ Email sending failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
     @staticmethod
-    def send_sms_confirmation(appointment: dict):
-        """Send SMS confirmation"""
+    def send_sms_confirmation(appointment: dict) -> bool:
+        """Send SMS confirmation with better error handling"""
         try:
             if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-                logger.warning("Twilio credentials not configured")
-                return
+                logger.warning("⚠️ Twilio credentials not configured")
+                return False
+            
+            logger.info(f"📱 Attempting to send SMS to: {appointment['customer_phone']}")
             
             client = Client(twilio_account_sid, twilio_auth_token)
             
@@ -1760,7 +1819,7 @@ Website: https://ringlypro.com
 Meeting ID: {appointment['zoom_id']}
 Password: {appointment['zoom_password']}
 
-Need help? Reply to this message or call (656) 213-3300.
+Need help? Reply to this message or call (888) 610-3810.
             """.strip()
             
             message = client.messages.create(
@@ -1770,9 +1829,13 @@ Need help? Reply to this message or call (656) 213-3300.
             )
             
             logger.info(f"✅ SMS confirmation sent. SID: {message.sid}")
+            return True
             
         except Exception as e:
             logger.error(f"❌ SMS sending failed: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
     
     @staticmethod
     def get_appointment_by_code(confirmation_code: str) -> Optional[dict]:
@@ -5038,6 +5101,194 @@ def submit_phone():
             'success': False,
             'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
         })
+@app.route('/test-appointment-system', methods=['GET'])
+def test_appointment_system():
+    """Test appointment system configuration and integrations"""
+    try:
+        results = {
+            "timestamp": datetime.now().isoformat(),
+            "configurations": {},
+            "tests": {}
+        }
+        
+        # Check environment variables
+        results["configurations"] = {
+            "hubspot": {
+                "api_token_configured": bool(hubspot_api_token),
+                "token_preview": hubspot_api_token[:20] + "..." if hubspot_api_token else None,
+                "portal_id": hubspot_portal_id,
+                "owner_id": hubspot_owner_id
+            },
+            "email": {
+                "smtp_server": smtp_server,
+                "smtp_port": smtp_port,
+                "email_user_configured": bool(email_user),
+                "email_password_configured": bool(email_password),
+                "from_email": from_email
+            },
+            "twilio": {
+                "account_sid_configured": bool(twilio_account_sid),
+                "auth_token_configured": bool(twilio_auth_token),
+                "phone_number": twilio_phone
+            },
+            "zoom": {
+                "meeting_url": zoom_meeting_url,
+                "meeting_id": zoom_meeting_id,
+                "password": zoom_password
+            }
+        }
+        
+        # Test HubSpot connection
+        if hubspot_api_token:
+            hubspot_service = HubSpotService()
+            hubspot_test = hubspot_service.test_connection()
+            results["tests"]["hubspot"] = hubspot_test
+        else:
+            results["tests"]["hubspot"] = {"success": False, "error": "No API token configured"}
+        
+        # Test email configuration
+        if email_user and email_password:
+            try:
+                import smtplib
+                server = smtplib.SMTP(smtp_server, smtp_port)
+                server.starttls()
+                server.login(email_user, email_password)
+                server.quit()
+                results["tests"]["email"] = {"success": True, "message": "Email configuration valid"}
+            except Exception as e:
+                results["tests"]["email"] = {"success": False, "error": str(e)}
+        else:
+            results["tests"]["email"] = {"success": False, "error": "Email credentials not configured"}
+        
+        # Test Twilio configuration
+        if twilio_account_sid and twilio_auth_token:
+            try:
+                from twilio.rest import Client
+                client = Client(twilio_account_sid, twilio_auth_token)
+                # Just try to fetch account info
+                account = client.api.accounts(twilio_account_sid).fetch()
+                results["tests"]["twilio"] = {
+                    "success": True, 
+                    "message": "Twilio configuration valid",
+                    "account_status": account.status
+                }
+            except Exception as e:
+                results["tests"]["twilio"] = {"success": False, "error": str(e)}
+        else:
+            results["tests"]["twilio"] = {"success": False, "error": "Twilio credentials not configured"}
+        
+        # Check recent appointments in database
+        try:
+            conn = sqlite3.connect('ringlypro.db')
+            cursor = conn.cursor()
+            
+            # Get last 5 appointments
+            cursor.execute('''SELECT customer_name, customer_email, customer_phone, 
+                             appointment_date, appointment_time, confirmation_code,
+                             hubspot_contact_id, hubspot_meeting_id, created_at
+                             FROM appointments 
+                             ORDER BY created_at DESC 
+                             LIMIT 5''')
+            recent_appointments = cursor.fetchall()
+            
+            results["recent_appointments"] = []
+            for apt in recent_appointments:
+                results["recent_appointments"].append({
+                    "name": apt[0],
+                    "email": apt[1],
+                    "phone": apt[2],
+                    "date": apt[3],
+                    "time": apt[4],
+                    "confirmation": apt[5],
+                    "hubspot_contact": apt[6],
+                    "hubspot_meeting": apt[7],
+                    "created": apt[8]
+                })
+            
+            conn.close()
+        except Exception as e:
+            results["database_error"] = str(e)
+        
+        # Format as HTML for easy reading
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Appointment System Test</title>
+            <style>
+                body {{ font-family: monospace; padding: 20px; background: #f0f0f0; }}
+                .success {{ color: green; font-weight: bold; }}
+                .error {{ color: red; font-weight: bold; }}
+                .warning {{ color: orange; font-weight: bold; }}
+                pre {{ background: white; padding: 15px; border-radius: 5px; }}
+                h2 {{ color: #2196F3; }}
+            </style>
+        </head>
+        <body>
+            <h1>🔍 Appointment System Configuration Test</h1>
+            <h2>Environment Status:</h2>
+            <pre>{json.dumps(results["configurations"], indent=2)}</pre>
+            
+            <h2>Integration Tests:</h2>
+            <pre>{json.dumps(results["tests"], indent=2)}</pre>
+            
+            <h2>Recent Appointments:</h2>
+            <pre>{json.dumps(results.get("recent_appointments", []), indent=2)}</pre>
+            
+            <h2>Quick Fix Checklist:</h2>
+            <ul>
+        """
+        
+        # Add recommendations based on test results
+        if not results["tests"].get("hubspot", {}).get("success"):
+            html += "<li class='error'>❌ HubSpot: Check HUBSPOT_ACCESS_TOKEN environment variable</li>"
+        else:
+            html += "<li class='success'>✅ HubSpot: Connected</li>"
+            
+        if not results["tests"].get("email", {}).get("success"):
+            html += "<li class='error'>❌ Email: Check EMAIL_USER and EMAIL_PASSWORD environment variables</li>"
+        else:
+            html += "<li class='success'>✅ Email: Connected</li>"
+            
+        if not results["tests"].get("twilio", {}).get("success"):
+            html += "<li class='error'>❌ Twilio: Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables</li>"
+        else:
+            html += "<li class='success'>✅ Twilio: Connected</li>"
+        
+        html += """
+            </ul>
+            <h2>Test Booking:</h2>
+            <button onclick="testBooking()">Test Book Appointment</button>
+            <div id="result"></div>
+            
+            <script>
+            function testBooking() {
+                fetch('/book-appointment', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        name: 'Test User',
+                        email: 'test@example.com',
+                        phone: '(555) 123-4567',
+                        date: new Date().toISOString().split('T')[0],
+                        time: '14:00',
+                        purpose: 'System test booking'
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('result').innerHTML = '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                });
+            }
+            </script>
+        </body>
+        </html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/process-text-enhanced', methods=['POST'])
 def process_text_enhanced():
