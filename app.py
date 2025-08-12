@@ -2660,6 +2660,322 @@ VOICE_HTML_TEMPLATE = '''
     }
   </style>
 </head>
+<!-- Add this right before </body> in VOICE_HTML_TEMPLATE -->
+
+<!-- Subscription Popup Overlay -->
+<div id="subscriptionPopup" class="subscription-popup-overlay" style="display: none;">
+    <div class="subscription-popup-container">
+        <button class="close-subscription-popup" onclick="closeSubscriptionPopup()">×</button>
+        
+        <div class="subscription-header">
+            <h2>🚀 Start Your RinglyPro Journey</h2>
+            <p>Choose the perfect plan for your business</p>
+        </div>
+        
+        <div class="subscription-plans">
+            <div class="plan-card">
+                <div class="plan-badge">Most Popular</div>
+                <h3>Scheduling Assistant</h3>
+                <div class="plan-price">$97<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>✅ 1,000 minutes</li>
+                    <li>✅ 1,000 text messages</li>
+                    <li>✅ Appointment scheduling</li>
+                    <li>✅ Call recording</li>
+                    <li>✅ Email support</li>
+                </ul>
+                <button class="plan-btn" onclick="selectPlan('starter')">Get Started</button>
+            </div>
+            
+            <div class="plan-card featured">
+                <div class="plan-badge">Best Value</div>
+                <h3>Office Manager</h3>
+                <div class="plan-price">$297<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>✅ 3,000 minutes</li>
+                    <li>✅ 3,000 text messages</li>
+                    <li>✅ Everything in Starter</li>
+                    <li>✅ CRM integrations</li>
+                    <li>✅ Mobile app</li>
+                    <li>✅ Priority support</li>
+                </ul>
+                <button class="plan-btn featured-btn" onclick="selectPlan('pro')">Get Started</button>
+            </div>
+            
+            <div class="plan-card">
+                <div class="plan-badge">Premium</div>
+                <h3>Marketing Director</h3>
+                <div class="plan-price">$497<span>/month</span></div>
+                <ul class="plan-features">
+                    <li>✅ 7,500 minutes</li>
+                    <li>✅ 7,500 text messages</li>
+                    <li>✅ Everything in Office Manager</li>
+                    <li>✅ Dedicated account manager</li>
+                    <li>✅ Marketing automation</li>
+                    <li>✅ Custom integrations</li>
+                </ul>
+                <button class="plan-btn" onclick="selectPlan('premium')">Get Started</button>
+            </div>
+        </div>
+        
+        <div class="subscription-footer">
+            <p>Questions? Call us at <strong>(888) 610-3810</strong></p>
+            <button class="contact-sales-btn" onclick="contactSales()">💬 Talk to Sales</button>
+        </div>
+    </div>
+</div>
+
+<!-- Add this CSS in the <style> section of VOICE_HTML_TEMPLATE -->
+<style>
+/* Subscription Popup Styles */
+.subscription-popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.subscription-popup-container {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-radius: 25px;
+    padding: 40px;
+    max-width: 1200px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+    position: relative;
+    animation: slideUp 0.4s ease;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.close-subscription-popup {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.1);
+    border: none;
+    color: #333;
+    font-size: 28px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.close-subscription-popup:hover {
+    background: rgba(0, 0, 0, 0.2);
+    transform: rotate(90deg);
+}
+
+.subscription-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.subscription-header h2 {
+    color: #2196F3;
+    font-size: 2.5rem;
+    margin-bottom: 10px;
+    background: linear-gradient(45deg, #2196F3, #4CAF50);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.subscription-header p {
+    color: #666;
+    font-size: 1.2rem;
+}
+
+.subscription-plans {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    margin-bottom: 30px;
+}
+
+.plan-card {
+    background: white;
+    border-radius: 20px;
+    padding: 30px;
+    position: relative;
+    border: 2px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.plan-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+}
+
+.plan-card.featured {
+    border-color: #4CAF50;
+    transform: scale(1.05);
+}
+
+.plan-badge {
+    position: absolute;
+    top: -12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+    color: white;
+    padding: 5px 20px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+
+.plan-card.featured .plan-badge {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+}
+
+.plan-card h3 {
+    color: #333;
+    font-size: 1.5rem;
+    margin: 20px 0;
+    text-align: center;
+}
+
+.plan-price {
+    font-size: 3rem;
+    font-weight: bold;
+    color: #2196F3;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.plan-price span {
+    font-size: 1rem;
+    color: #666;
+    font-weight: normal;
+}
+
+.plan-features {
+    list-style: none;
+    padding: 0;
+    margin: 20px 0;
+}
+
+.plan-features li {
+    padding: 10px 0;
+    color: #555;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.plan-features li:last-child {
+    border-bottom: none;
+}
+
+.plan-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #2196F3, #1976D2);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.plan-btn:hover {
+    background: linear-gradient(135deg, #1976D2, #1565C0);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(33, 150, 243, 0.3);
+}
+
+.plan-btn.featured-btn {
+    background: linear-gradient(135deg, #4CAF50, #45a049);
+}
+
+.plan-btn.featured-btn:hover {
+    background: linear-gradient(135deg, #45a049, #388e3c);
+    box-shadow: 0 10px 20px rgba(76, 175, 80, 0.3);
+}
+
+.subscription-footer {
+    text-align: center;
+    padding-top: 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.subscription-footer p {
+    color: #666;
+    margin-bottom: 15px;
+}
+
+.contact-sales-btn {
+    padding: 12px 30px;
+    background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+    color: white;
+    border: none;
+    border-radius: 25px;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.contact-sales-btn:hover {
+    background: linear-gradient(135deg, #FF8E53, #FF6B6B);
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .subscription-popup-container {
+        padding: 20px;
+    }
+    
+    .subscription-header h2 {
+        font-size: 1.8rem;
+    }
+    
+    .subscription-plans {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .plan-card.featured {
+        transform: scale(1);
+    }
+    
+    .plan-card {
+        padding: 20px;
+    }
+    
+    .plan-price {
+        font-size: 2.5rem;
+    }
+}
+</style>
 <body>
   <div class="container">
     <button class="booking-button" onclick="window.location.href='/chat-enhanced'">📅 Book Appointment</button>
@@ -2853,91 +3169,113 @@ VOICE_HTML_TEMPLATE = '''
             };
         }
 
-        async processTranscript(transcript) {
-            if (!transcript || transcript.length < 2) {
-                this.handleError('No speech detected');
-                return;
-            }
+// Replace the processTranscript method in EnhancedVoiceBot class with this version:
 
-            console.log('Processing transcript:', transcript);
-            this.isProcessing = true;
-            this.updateUI('processing');
-            this.updateStatus('🤖 Processing...');
-            
-            // Clear any existing timeout
-            if (this.processTimeout) {
-                clearTimeout(this.processTimeout);
-            }
-            
-            // Add timeout for the entire processing
-            this.processTimeout = setTimeout(() => {
-                if (this.isProcessing) {
-                    console.log('Processing timeout - resetting UI');
-                    this.handleError('Processing took too long. Please try again.');
-                }
-            }, 15000);
+async processTranscript(transcript) {
+    if (!transcript || transcript.length < 2) {
+        this.handleError('No speech detected');
+        return;
+    }
 
-            try {
-                const response = await fetch('/process-text-enhanced', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        text: transcript,
-                        language: this.currentLanguage,
-                        mobile: this.isMobile
-                    })
-                });
-
-                clearTimeout(this.processTimeout);
-
-                if (!response.ok) throw new Error('Server error: ' + response.status);
-
-                const data = await response.json();
-                if (data.error) throw new Error(data.error);
-
-                console.log('Received data:', data);
-
-                // Always show text if available
-                if (data.show_text && data.response) {
-                    this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
-                }
-
-                // Check for booking redirect action
-                if (data.action === 'redirect_to_booking') {
-                    console.log('🎯 Booking redirect detected');
-                    
-                    // Play audio if available
-                    if (data.audio) {
-                        console.log('Playing audio response');
-                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                    } else {
-                        console.log('No audio, using browser TTS');
-                        await this.playBrowserTTS(data.response);
-                    }
-                    
-                    // Show booking form
-                    setTimeout(() => {
-                        this.showInlineBookingForm();
-                    }, 500);
-                    return;
-                }
-
-                // Regular responses
-                if (data.audio) {
-                    console.log('Playing Rachel audio response');
-                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                } else if (data.response) {
-                    console.log('Using browser TTS');
-                    await this.playBrowserTTS(data.response);
-                } else {
-                    this.audioFinished();
-                }
-
-            } catch (error) {
-                clearTimeout(this.processTimeout);
-                this.handleError('Processing error: ' + error.message);
-            }
+    console.log('Processing transcript:', transcript);
+    this.isProcessing = true;
+    this.updateUI('processing');
+    this.updateStatus('🤖 Processing...');
+    
+    // Clear any existing timeout
+    if (this.processTimeout) {
+        clearTimeout(this.processTimeout);
+    }
+    
+    // Add timeout for the entire processing
+    this.processTimeout = setTimeout(() => {
+        if (this.isProcessing) {
+            console.log('Processing timeout - resetting UI');
+            this.handleError('Processing took too long. Please try again.');
         }
+    }, 15000);
+
+    try {
+        const response = await fetch('/process-text-enhanced', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: transcript,
+                language: this.currentLanguage,
+                mobile: this.isMobile
+            })
+        });
+
+        clearTimeout(this.processTimeout);
+
+        if (!response.ok) throw new Error('Server error: ' + response.status);
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error);
+
+        console.log('Received data:', data);
+
+        // Always show text if available
+        if (data.show_text && data.response) {
+            this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
+        }
+
+        // Check for subscription popup action (NEW)
+        if (data.action === 'show_subscription_popup') {
+            console.log('🎯 Subscription popup triggered');
+            
+            // Play audio if available
+            if (data.audio) {
+                console.log('Playing audio response');
+                await this.playPremiumAudio(data.audio, data.response, data.show_text);
+            } else {
+                console.log('No audio, using browser TTS');
+                await this.playBrowserTTS(data.response);
+            }
+            
+            // Show subscription popup
+            setTimeout(() => {
+                showSubscriptionPopup();
+            }, 500);
+            return;
+        }
+
+        // Check for booking redirect action
+        if (data.action === 'redirect_to_booking') {
+            console.log('🎯 Booking redirect detected');
+            
+            // Play audio if available
+            if (data.audio) {
+                console.log('Playing audio response');
+                await this.playPremiumAudio(data.audio, data.response, data.show_text);
+            } else {
+                console.log('No audio, using browser TTS');
+                await this.playBrowserTTS(data.response);
+            }
+            
+            // Show booking form
+            setTimeout(() => {
+                this.showInlineBookingForm();
+            }, 500);
+            return;
+        }
+
+        // Regular responses
+        if (data.audio) {
+            console.log('Playing Rachel audio response');
+            await this.playPremiumAudio(data.audio, data.response, data.show_text);
+        } else if (data.response) {
+            console.log('Using browser TTS');
+            await this.playBrowserTTS(data.response);
+        } else {
+            this.audioFinished();
+        }
+
+    } catch (error) {
+        clearTimeout(this.processTimeout);
+        this.handleError('Processing error: ' + error.message);
+    }
+}
 
         async playPremiumAudio(audioBase64, responseText, showText = false) {
             console.log('Playing premium audio, showText:', showText, 'isMobile:', this.isMobile);
@@ -3445,6 +3783,130 @@ VOICE_HTML_TEMPLATE = '''
             window.voiceBot.updateStatus('✅ Appointment booked successfully!');
         }
     }
+
+    // Add these functions to the <script> section in VOICE_HTML_TEMPLATE
+
+// Subscription Popup Functions
+function showSubscriptionPopup() {
+    const popup = document.getElementById('subscriptionPopup');
+    if (popup) {
+        popup.style.display = 'flex';
+        
+        // Animate entrance
+        setTimeout(() => {
+            popup.classList.add('active');
+        }, 10);
+        
+        // Log analytics event
+        console.log('📊 Subscription popup shown');
+        
+        // Update status
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('🎯 Choose your perfect plan above!');
+        }
+    }
+}
+
+function closeSubscriptionPopup() {
+    const popup = document.getElementById('subscriptionPopup');
+    if (popup) {
+        popup.style.display = 'none';
+        
+        // Update status
+        if (window.voiceBot) {
+            window.voiceBot.updateStatus('🎙️ Ready! Say "subscribe" to see plans again');
+        }
+    }
+}
+
+function selectPlan(planType) {
+    // Log the plan selection
+    console.log(`📊 Plan selected: ${planType}`);
+    
+    // Redirect to subscription page with plan parameter
+    const subscriptionUrl = `https://ringlypro.com/subscribe?plan=${planType}`;
+    
+    // Show confirmation before redirect
+    const planNames = {
+        'starter': 'Scheduling Assistant ($97/month)',
+        'pro': 'Office Manager ($297/month)',
+        'premium': 'Marketing Director ($497/month)'
+    };
+    
+    const selectedPlanName = planNames[planType] || planType;
+    
+    // Update the popup content to show confirmation
+    const container = document.querySelector('.subscription-popup-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="subscription-header" style="padding: 60px 20px;">
+                <h2>🎉 Excellent Choice!</h2>
+                <p style="font-size: 1.3rem; margin: 20px 0;">You selected: <strong>${selectedPlanName}</strong></p>
+                <p style="color: #666; margin-bottom: 30px;">Redirecting you to complete your subscription...</p>
+                <div style="display: flex; gap: 20px; justify-content: center; flex-wrap: wrap;">
+                    <button class="plan-btn" style="width: auto; padding: 15px 40px;" onclick="window.open('${subscriptionUrl}', '_blank')">
+                        Complete Subscription →
+                    </button>
+                    <button class="contact-sales-btn" style="width: auto; padding: 15px 40px;" onclick="contactSales()">
+                        Talk to Sales First
+                    </button>
+                </div>
+                <p style="margin-top: 30px; color: #999;">
+                    Or call us directly at <strong>(888) 610-3810</strong>
+                </p>
+            </div>
+        `;
+    }
+    
+    // Redirect after a short delay
+    setTimeout(() => {
+        window.open(subscriptionUrl, '_blank');
+    }, 2000);
+}
+
+function contactSales() {
+    // Close the subscription popup
+    closeSubscriptionPopup();
+    
+    // Show the booking form for sales consultation
+    if (window.voiceBot && window.voiceBot.showInlineBookingForm) {
+        window.voiceBot.showInlineBookingForm();
+        
+        // Pre-fill the purpose field if possible
+        setTimeout(() => {
+            const purposeField = document.getElementById('inlineAppointmentPurpose');
+            if (purposeField) {
+                purposeField.value = 'Sales consultation - Interested in RinglyPro subscription plans';
+            }
+        }, 100);
+    } else {
+        // Fallback: redirect to contact page
+        window.location.href = '/chat-enhanced';
+    }
+}
+
+// Update the processTranscript method in EnhancedVoiceBot class
+// Find the processTranscript method and add this case after the booking redirect check:
+
+// In the processTranscript method, after checking for booking redirect, add:
+if (data.action === 'show_subscription_popup') {
+    console.log('🎯 Subscription popup triggered');
+    
+    // Play audio if available
+    if (data.audio) {
+        console.log('Playing audio response');
+        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+    } else {
+        console.log('No audio, using browser TTS');
+        await this.playBrowserTTS(data.response);
+    }
+    
+    // Show subscription popup
+    setTimeout(() => {
+        showSubscriptionPopup();
+    }, 500);
+    return;
+}
 
     function showInlineBookingError(message) {
         const form = document.getElementById('inlineBookingForm');
@@ -4603,7 +5065,7 @@ def submit_phone():
 
 @app.route('/process-text-enhanced', methods=['POST'])
 def process_text_enhanced():
-    """Enhanced text processing with premium audio and booking detection"""
+    """Enhanced text processing with premium audio and subscription detection"""
     logger.info("🎤 Enhanced text processing request")
     
     try:
@@ -4643,7 +5105,75 @@ def process_text_enhanced():
         
         logger.info(f"📝 Processing: {user_text}")
         
-        # Check for booking intent in voice
+        # ENHANCED: Check for subscription intent FIRST (before booking)
+        subscription_keywords = [
+            'subscribe', 'subscription', 'sign up', 'signup', 'get started',
+            'join', 'register', 'start service', 'want to subscribe',
+            'i want to subscribe', 'interested in subscribing', 'how to subscribe',
+            'ready to subscribe', 'start my subscription', 'become a member'
+        ]
+        
+        subscription_detected = any(keyword in user_lower for keyword in subscription_keywords)
+        
+        if subscription_detected:
+            logger.info("🎯 Subscription intent detected in voice!")
+            subscription_response = "Wonderful! I'm excited to help you get started with RinglyPro. I'm opening our subscription options for you right now. You'll see our plans and can choose the one that best fits your business needs."
+            
+            # Try to generate premium audio with Rachel's voice
+            audio_data = None
+            engine_used = "browser_fallback"
+            
+            if elevenlabs_api_key:
+                try:
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel's voice
+                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+                    
+                    headers = {
+                        "Accept": "audio/mpeg",
+                        "Content-Type": "application/json",
+                        "xi-api-key": elevenlabs_api_key
+                    }
+                    
+                    tts_data = {
+                        "text": subscription_response,
+                        "model_id": "eleven_monolingual_v1",
+                        "voice_settings": {
+                            "stability": 0.5,
+                            "similarity_boost": 0.75
+                        }
+                    }
+                    
+                    timeout = 10
+                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                    
+                    if tts_response.status_code == 200 and len(tts_response.content) > 1000:
+                        audio_data = base64.b64encode(tts_response.content).decode('utf-8')
+                        engine_used = "elevenlabs_rachel"
+                        logger.info("✅ Rachel's voice audio generated for subscription")
+                    else:
+                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                    
+                except Exception as tts_error:
+                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+            
+            response_payload = {
+                "response": subscription_response,
+                "language": user_language,
+                "context": "subscription_redirect",
+                "action": "show_subscription_popup",  # NEW ACTION
+                "engine_used": engine_used,
+                "show_text": True
+            }
+            
+            if audio_data:
+                response_payload["audio"] = audio_data
+                logger.info("✅ Subscription response with Rachel's voice")
+            else:
+                logger.info("✅ Subscription response with browser TTS fallback")
+            
+            return jsonify(response_payload)
+        
+        # Check for booking intent (after subscription check)
         booking_keywords = [
             'book', 'schedule', 'appointment', 'meeting', 'consultation',
             'want to book', 'book an appointment', 'schedule meeting',
@@ -4662,8 +5192,7 @@ def process_text_enhanced():
             
             if elevenlabs_api_key:
                 try:
-                    # Use Rachel's voice - correct voice ID
-                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # This is Rachel's voice
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"
                     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
                     
                     headers = {
@@ -4674,7 +5203,7 @@ def process_text_enhanced():
                     
                     tts_data = {
                         "text": booking_response,
-                        "model_id": "eleven_monolingual_v1",  # Better for English
+                        "model_id": "eleven_monolingual_v1",
                         "voice_settings": {
                             "stability": 0.5,
                             "similarity_boost": 0.75
@@ -4700,7 +5229,7 @@ def process_text_enhanced():
                 "context": "booking_redirect",
                 "action": "redirect_to_booking",
                 "engine_used": engine_used,
-                "show_text": True  # Always show text
+                "show_text": True
             }
             
             if audio_data:
@@ -4711,7 +5240,7 @@ def process_text_enhanced():
             
             return jsonify(response_payload)
         
-        # Regular FAQ processing for non-booking requests
+        # Regular FAQ processing for non-booking/non-subscription requests
         faq_response, is_faq = get_faq_response(user_text)
         response_text = faq_response
         context = "professional" if is_faq else "friendly"
@@ -4722,7 +5251,6 @@ def process_text_enhanced():
         
         if elevenlabs_api_key:
             try:
-                # Rachel's voice ID
                 voice_id = "21m00Tcm4TlvDq8ikWAM"
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
                 
@@ -4732,14 +5260,13 @@ def process_text_enhanced():
                     "xi-api-key": elevenlabs_api_key
                 }
                 
-                # Optimize text for speech
                 speech_text = response_text.replace("RinglyPro", "Ringly Pro")
                 speech_text = speech_text.replace("AI", "A.I.")
                 speech_text = speech_text.replace("$", " dollars")
                 
                 tts_data = {
                     "text": speech_text,
-                    "model_id": "eleven_monolingual_v1",  # Better for English
+                    "model_id": "eleven_monolingual_v1",
                     "voice_settings": {
                         "stability": 0.5,
                         "similarity_boost": 0.75
@@ -4765,7 +5292,7 @@ def process_text_enhanced():
             "context": context,
             "is_faq": is_faq,
             "engine_used": engine_used,
-            "show_text": True  # Always show text
+            "show_text": True
         }
         
         if audio_data:
@@ -4778,7 +5305,7 @@ def process_text_enhanced():
         
     except Exception as e:
         logger.error(f"❌ Processing error: {e}")
-        return jsonify({"error": "I had a technical issue. Please try again."}), 500
+        return jsonify({"error": "I had a technical issue. Please try again."}), 5000
 
 # ==================== TELEPHONY WEBHOOK ROUTES ====================
 
