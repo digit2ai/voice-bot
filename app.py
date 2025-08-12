@@ -189,7 +189,7 @@ class HubSpotService:
         except Exception as e:
             return {"success": False, "error": f"Connection failed: {str(e)}"}
     
-    def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
+def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
         """Create or update contact in HubSpot"""
         try:
             # Search for existing contact by email first
@@ -211,8 +211,8 @@ class HubSpotService:
                 "email": email,
                 "phone": phone,
                 "company": company,
-                "lifecyclestage": "lead",
-                "lead_source": "RinglyPro Voice Assistant"
+                "lifecyclestage": "lead"
+                # REMOVED: "lead_source": "RinglyPro Voice Assistant" - THIS PROPERTY DOESN'T EXIST
             }
             
             # Remove empty values
@@ -229,6 +229,7 @@ class HubSpotService:
             
             if response.status_code in [200, 201]:
                 contact = response.json()
+                logger.info(f"✅ HubSpot contact created: {contact.get('id')} - {name}")
                 return {
                     "success": True,
                     "message": f"Contact created: {name}",
@@ -236,9 +237,11 @@ class HubSpotService:
                     "contact": contact
                 }
             else:
+                logger.error(f"❌ HubSpot contact creation failed: {response.status_code} - {response.text}")
                 return {"success": False, "error": f"Failed to create contact: {response.text}"}
                 
         except Exception as e:
+            logger.error(f"❌ Error creating contact: {str(e)}")
             return {"success": False, "error": f"Error creating contact: {str(e)}"}
     
     def search_contact_by_email(self, email: str) -> Dict[str, Any]:
@@ -306,60 +309,60 @@ class HubSpotService:
         except Exception as e:
             return {"success": False, "error": f"Error updating contact: {str(e)}"}
     
-def create_meeting(self, title: str, contact_id: str, start_time: datetime, duration_minutes: int = 30) -> Dict[str, Any]:
-    """Create meeting using Engagement API (WORKING VERSION)"""
-    try:
-        # Use the Engagement API that we just tested and works!
-        end_time = start_time + timedelta(minutes=duration_minutes)
-        
-        meeting_data = {
-            "engagement": {
-                "active": True,
-                "type": "MEETING",
-                "timestamp": int(start_time.timestamp() * 1000)
-            },
-            "associations": {
-                "contactIds": [contact_id] if contact_id else [],
-                "companyIds": [],
-                "dealIds": []
-            },
-            "metadata": {
-                "title": title,
-                "body": f"Appointment scheduled via RinglyPro Voice Assistant\n\nZoom Details:\n{zoom_meeting_url}\nMeeting ID: {zoom_meeting_id}\nPassword: {zoom_password}",
-                "startTime": int(start_time.timestamp() * 1000),
-                "endTime": int(end_time.timestamp() * 1000),
-                "location": zoom_meeting_url,
-                "meetingOutcome": "SCHEDULED"
+    def create_meeting(self, title: str, contact_id: str, start_time: datetime, duration_minutes: int = 30) -> Dict[str, Any]:
+        """Create meeting using Engagement API (WORKING VERSION)"""
+        try:
+            # Use the Engagement API that works!
+            end_time = start_time + timedelta(minutes=duration_minutes)
+            
+            meeting_data = {
+                "engagement": {
+                    "active": True,
+                    "type": "MEETING",
+                    "timestamp": int(start_time.timestamp() * 1000)
+                },
+                "associations": {
+                    "contactIds": [contact_id] if contact_id else [],
+                    "companyIds": [],
+                    "dealIds": []
+                },
+                "metadata": {
+                    "title": title,
+                    "body": f"Appointment scheduled via RinglyPro Voice Assistant\n\nZoom Details:\n{zoom_meeting_url}\nMeeting ID: {zoom_meeting_id}\nPassword: {zoom_password}",
+                    "startTime": int(start_time.timestamp() * 1000),
+                    "endTime": int(end_time.timestamp() * 1000),
+                    "location": zoom_meeting_url,
+                    "meetingOutcome": "SCHEDULED"
+                }
             }
-        }
-        
-        response = requests.post(
-            "https://api.hubapi.com/engagements/v1/engagements",
-            headers=self.headers,
-            json=meeting_data,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201]:
-            engagement = response.json()
-            # Get the engagement ID correctly from the response structure
-            engagement_id = engagement.get("engagement", {}).get("id")
             
-            logger.info(f"✅ Meeting created via Engagement API: {engagement_id}")
+            response = requests.post(
+                "https://api.hubapi.com/engagements/v1/engagements",
+                headers=self.headers,
+                json=meeting_data,
+                timeout=10
+            )
             
-            return {
-                "success": True,
-                "message": f"Meeting created: {title}",
-                "meeting_id": str(engagement_id),  # Convert to string for consistency
-                "meeting": engagement
-            }
-        else:
-            logger.error(f"Failed to create meeting: {response.status_code} - {response.text}")
-            return {"success": False, "error": f"Failed to create meeting: {response.text}"}
-            
-    except Exception as e:
-        logger.error(f"Error creating meeting: {str(e)}")
-        return {"success": False, "error": f"Error creating meeting: {str(e)}"}
+            if response.status_code in [200, 201]:
+                engagement = response.json()
+                # Get the engagement ID correctly from the response structure
+                engagement_id = engagement.get("engagement", {}).get("id")
+                
+                logger.info(f"✅ Meeting created via Engagement API: {engagement_id}")
+                
+                return {
+                    "success": True,
+                    "message": f"Meeting created: {title}",
+                    "meeting_id": str(engagement_id),  # Convert to string for consistency
+                    "meeting": engagement
+                }
+            else:
+                logger.error(f"❌ Failed to create meeting: {response.status_code} - {response.text}")
+                return {"success": False, "error": f"Failed to create meeting: {response.text}"}
+                
+        except Exception as e:
+            logger.error(f"❌ Error creating meeting: {str(e)}")
+            return {"success": False, "error": f"Error creating meeting: {str(e)}"}
     
     def associate_meeting_with_contact(self, meeting_id: str, contact_id: str) -> Dict[str, Any]:
         """Associate meeting with contact"""
