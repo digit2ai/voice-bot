@@ -271,262 +271,196 @@ class HubSpotService:
         
         return max(base_value, 500)  # Minimum $500
     
-    def create_contact_enhanced(self, appointment_data: dict) -> Dict[str, Any]:
-        """Create contact with comprehensive business details"""
-        try:
-            name = appointment_data.get('name', '')
-            email = appointment_data.get('email', '')
-            phone = appointment_data.get('phone', '')
-            purpose = appointment_data.get('purpose', '')
-            
-            # Check for existing contact first
-            if email and not ("booking.ringlypro" in email):
-                existing = self.search_contact_by_email(email)
-                if existing.get("success") and existing.get("contact"):
-                    # Update existing contact with new appointment info
-                    return self.update_contact_with_appointment_details(
-                        existing["contact"]["id"], 
-                        appointment_data
-                    )
-            
-            # Analyze purpose to extract business context
-            business_context = self.analyze_business_context(purpose)
-            
-            name_parts = name.strip().split()
-            properties = {
-                "firstname": name_parts[0] if name_parts else "",
-                "lastname": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-                "email": email,
-                "phone": phone,
-                "lifecyclestage": "lead",
-                "hs_lead_status": "NEW",
-                "lead_source": "Website",
-                "hs_analytics_source": "ORGANIC_SEARCH",
-                "notes_last_contacted": f"Scheduled RinglyPro consultation on {datetime.now().strftime('%Y-%m-%d')}. Purpose: {purpose}",
+def create_contact_enhanced(self, appointment_data: dict) -> Dict[str, Any]:
+    """Create contact with comprehensive business details - COMPATIBILITY VERSION"""
+    try:
+        name = appointment_data.get('name', '')
+        email = appointment_data.get('email', '')
+        phone = appointment_data.get('phone', '')
+        purpose = appointment_data.get('purpose', '')
+        
+        # Check for existing contact first
+        if email and not ("booking.ringlypro" in email):
+            existing = self.search_contact_by_email(email)
+            if existing.get("success") and existing.get("contact"):
+                # Update existing contact with new appointment info
+                return self.update_contact_with_appointment_details(
+                    existing["contact"]["id"], 
+                    appointment_data
+                )
+        
+        # Analyze purpose to extract business context
+        business_context = self.analyze_business_context(purpose)
+        
+        name_parts = name.strip().split()
+        
+        # FIXED: Only use standard HubSpot properties that definitely exist
+        properties = {
+            "firstname": name_parts[0] if name_parts else "",
+            "lastname": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
+            "email": email,
+            "phone": phone,
+            "lifecyclestage": "lead",
+            "hs_lead_status": "NEW"
+        }
+        
+        # Add business context to company field and notes field (standard properties)
+        if business_context.get('business_size') != 'Unknown':
+            properties["company"] = f"{business_context['business_size']} {business_context['industry']} - RinglyPro Prospect"
+        else:
+            properties["company"] = "RinglyPro Prospect"
+        
+        # Use notes field for business context (this is a standard property)
+        context_notes = f"Consultation Purpose: {purpose}\n"
+        context_notes += f"Business Size: {business_context.get('business_size', 'Unknown')}\n"
+        context_notes += f"Industry: {business_context.get('industry', 'Unknown')}\n"
+        context_notes += f"Interest Level: {business_context.get('interest_level', 'Medium')}\n"
+        context_notes += f"Urgency: {business_context.get('urgency', 'Normal')}\n"
+        context_notes += f"Booking Source: {appointment_data.get('booking_source', 'Online Form')}\n"
+        context_notes += f"Scheduled: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        properties["notes"] = context_notes
+        
+        # Remove empty values
+        properties = {k: v for k, v in properties.items() if v}
+        
+        contact_data = {"properties": properties}
+        
+        response = requests.post(
+            f"{self.base_url}/crm/v3/objects/contacts",
+            headers=self.headers,
+            json=contact_data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            contact = response.json()
+            logger.info(f"✅ Compatible contact created: {contact.get('id')} - {name}")
+            return {
+                "success": True,
+                "message": f"Contact created: {name}",
+                "contact_id": contact.get("id"),
+                "contact": contact,
+                "business_context": business_context
             }
+        else:
+            logger.error(f"❌ Contact creation failed: {response.status_code} - {response.text}")
+            return {"success": False, "error": f"Failed to create contact: {response.text}"}
             
-            # Add business context if available
-            if business_context.get('business_size') != 'Unknown':
-                properties["company"] = f"{business_context['business_size']} Business - {business_context['industry']}"
-            
-            # Add custom properties (will only work if they exist in your HubSpot)
-            try:
-                properties.update({
-                    "business_needs": purpose,
-                    "consultation_interest": business_context.get('interest_level', 'High'),
-                    "estimated_business_size": business_context.get('business_size', 'Unknown'),
-                    "industry": business_context.get('industry', 'Unknown'),
-                    "appointment_urgency": business_context.get('urgency', 'Normal'),
-                    "booking_source": appointment_data.get('booking_source', 'Online Form')
-                })
-            except:
-                # If custom properties don't exist, continue without them
-                pass
-            
-            # Remove empty values
-            properties = {k: v for k, v in properties.items() if v}
-            
-            contact_data = {"properties": properties}
-            
-            response = requests.post(
-                f"{self.base_url}/crm/v3/objects/contacts",
+    except Exception as e:
+        logger.error(f"❌ Error creating compatible contact: {e}")
+        return {"success": False, "error": f"Error creating contact: {str(e)}"}
+
+def update_contact_with_appointment_details(self, contact_id: str, appointment_data: dict) -> Dict[str, Any]:
+    """Update existing contact with new appointment details - COMPATIBILITY VERSION"""
+    try:
+        purpose = appointment_data.get('purpose', '')
+        business_context = self.analyze_business_context(purpose)
+        
+        # FIXED: Only update standard properties
+        updates = {
+            "hs_lead_status": "OPEN",
+            "company": f"{business_context.get('business_size', 'Unknown')} {business_context.get('industry', 'Unknown')} - RinglyPro Prospect"
+        }
+        
+        # Get existing notes and append new consultation info
+        try:
+            existing_contact = requests.get(
+                f"{self.base_url}/crm/v3/objects/contacts/{contact_id}",
                 headers=self.headers,
-                json=contact_data,
+                params={"properties": "notes"},
                 timeout=10
             )
             
-            if response.status_code in [200, 201]:
-                contact = response.json()
-                logger.info(f"✅ Enhanced contact created: {contact.get('id')} - {name}")
-                return {
-                    "success": True,
-                    "message": f"Contact created: {name}",
-                    "contact_id": contact.get("id"),
-                    "contact": contact,
-                    "business_context": business_context
-                }
-            else:
-                logger.error(f"❌ Contact creation failed: {response.status_code} - {response.text}")
-                return {"success": False, "error": f"Failed to create contact: {response.text}"}
-                
-        except Exception as e:
-            logger.error(f"❌ Error creating enhanced contact: {e}")
-            return {"success": False, "error": f"Error creating contact: {str(e)}"}
-    
-    def update_contact_with_appointment_details(self, contact_id: str, appointment_data: dict) -> Dict[str, Any]:
-        """Update existing contact with new appointment details"""
-        try:
-            purpose = appointment_data.get('purpose', '')
-            business_context = self.analyze_business_context(purpose)
+            existing_notes = ""
+            if existing_contact.status_code == 200:
+                existing_notes = existing_contact.json().get("properties", {}).get("notes", "")
             
-            updates = {
-                "hs_lead_status": "OPEN",
-                "notes_last_contacted": f"New consultation scheduled on {datetime.now().strftime('%Y-%m-%d')}. Purpose: {purpose}",
+            # Append new consultation info
+            new_notes = f"{existing_notes}\n\n--- NEW CONSULTATION ({datetime.now().strftime('%Y-%m-%d')}) ---\n"
+            new_notes += f"Purpose: {purpose}\n"
+            new_notes += f"Business Size: {business_context.get('business_size', 'Unknown')}\n"
+            new_notes += f"Industry: {business_context.get('industry', 'Unknown')}\n"
+            new_notes += f"Interest Level: {business_context.get('interest_level', 'Medium')}\n"
+            new_notes += f"Booking Source: {appointment_data.get('booking_source', 'Online Form')}"
+            
+            updates["notes"] = new_notes
+            
+        except:
+            # If we can't get existing notes, just add new ones
+            updates["notes"] = f"New consultation scheduled: {purpose}"
+        
+        result = self.update_contact(contact_id, updates)
+        if result.get("success"):
+            result["business_context"] = business_context
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"❌ Error updating contact with appointment details: {e}")
+        return {"success": False, "error": str(e)}
+
+def create_deal_with_details(self, contact_id: str, appointment_data: dict, business_context: dict = None) -> Dict[str, Any]:
+    """Create a detailed deal for the appointment - COMPATIBILITY VERSION"""
+    try:
+        # Calculate potential deal value
+        deal_amount = self.estimate_deal_value(appointment_data.get('purpose', ''), business_context)
+        
+        # Format appointment date/time for deal name
+        date_obj = datetime.strptime(appointment_data['date'], '%Y-%m-%d')
+        time_obj = datetime.strptime(appointment_data['time'], '%H:%M')
+        formatted_date = date_obj.strftime('%m/%d/%Y')
+        formatted_time = time_obj.strftime('%I:%M %p')
+        
+        # Create comprehensive deal description
+        deal_description = self.create_deal_description(appointment_data, business_context)
+        
+        # FIXED: Only use standard HubSpot deal properties
+        deal_properties = {
+            "dealname": f"RinglyPro Consultation - {appointment_data['name']} ({formatted_date})",
+            "amount": str(deal_amount),
+            "dealstage": "appointmentscheduled",  # Make sure this stage exists in your pipeline
+            "closedate": int((date_obj + timedelta(days=30)).timestamp() * 1000),
+            "pipeline": "default",
+            "dealtype": "newbusiness",
+            "description": deal_description,
+        }
+        
+        # Add owner if configured
+        if self.owner_id:
+            deal_properties["hubspot_owner_id"] = self.owner_id
+        
+        deal_data = {"properties": deal_properties}
+        
+        response = requests.post(
+            f"{self.base_url}/crm/v3/objects/deals",
+            headers=self.headers,
+            json=deal_data,
+            timeout=10
+        )
+        
+        if response.status_code in [200, 201]:
+            deal = response.json()
+            deal_id = deal.get("id")
+            
+            # Associate deal with contact
+            if contact_id and deal_id:
+                self.associate_deal_with_contact(deal_id, contact_id)
+            
+            logger.info(f"✅ Compatible deal created: {deal_id} - {deal_properties['dealname']}")
+            return {
+                "success": True,
+                "deal_id": deal_id,
+                "deal": deal,
+                "message": f"Deal created: {deal_properties['dealname']}"
             }
+        else:
+            logger.error(f"❌ Deal creation failed: {response.status_code} - {response.text}")
+            return {"success": False, "error": f"Failed to create deal: {response.text}"}
             
-            # Add business context updates (only if custom properties exist)
-            try:
-                updates.update({
-                    "business_needs": purpose,
-                    "consultation_interest": business_context.get('interest_level', 'High'),
-                    "booking_source": appointment_data.get('booking_source', 'Online Form')
-                })
-            except:
-                pass
-            
-            result = self.update_contact(contact_id, updates)
-            if result.get("success"):
-                result["business_context"] = business_context
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ Error updating contact with appointment details: {e}")
-            return {"success": False, "error": str(e)}
-    
-    def create_deal_description(self, appointment_data: dict, business_context: dict = None) -> str:
-        """Create comprehensive deal description"""
-        formatted_date = datetime.strptime(appointment_data['date'], '%Y-%m-%d').strftime('%B %d, %Y')
-        formatted_time = datetime.strptime(appointment_data['time'], '%H:%M').strftime('%I:%M %p EST')
-        
-        description = f"""
-🎯 RINGLYPRO CONSULTATION OPPORTUNITY
-
-📋 CUSTOMER INFORMATION:
-• Name: {appointment_data.get('name', 'N/A')}
-• Email: {appointment_data.get('email', 'N/A')}
-• Phone: {appointment_data.get('phone', 'N/A')}
-• Confirmation Code: {appointment_data.get('confirmation_code', 'N/A')}
-
-📅 APPOINTMENT DETAILS:
-• Date: {formatted_date}
-• Time: {formatted_time}
-• Duration: 30 minutes
-• Zoom Link: {appointment_data.get('zoom_url', zoom_meeting_url)}
-
-💼 BUSINESS NEEDS:
-{appointment_data.get('purpose', 'General RinglyPro consultation')}
-        """.strip()
-        
-        if business_context:
-            description += f"""
-
-🔍 BUSINESS ANALYSIS:
-• Business Size: {business_context.get('business_size', 'Unknown')}
-• Industry: {business_context.get('industry', 'Unknown')}
-• Interest Level: {business_context.get('interest_level', 'Medium')}
-• Urgency: {business_context.get('urgency', 'Normal')}
-            """
-        
-        description += f"""
-
-📋 CONSULTATION AGENDA:
-• Understand current communication challenges
-• Identify pain points with existing phone systems
-• Demonstrate relevant RinglyPro features
-• Assess technical requirements
-• Discuss pricing and implementation timeline
-• Provide customized solution recommendations
-
-🎯 SUCCESS METRICS:
-• Qualify business fit for RinglyPro services
-• Identify decision makers and timeline
-• Determine budget parameters
-• Schedule follow-up or implementation call
-
-📞 NEXT STEPS:
-• Conduct consultation call
-• Send follow-up proposal within 24 hours
-• Schedule implementation planning session
-• Update deal stage based on outcome
-
-🔔 REMINDERS:
-• Send meeting reminder 24 hours before
-• Prepare demo scenarios for their industry
-• Review pricing options for their business size
-• Follow up within 24 hours after meeting
-
-Source: RinglyPro AI Assistant ({appointment_data.get('booking_source', 'Online Form')})
-        """.strip()
-        
-        return description
-    
-    def create_deal_with_details(self, contact_id: str, appointment_data: dict, business_context: dict = None) -> Dict[str, Any]:
-        """Create a detailed deal for the appointment"""
-        try:
-            # Calculate potential deal value
-            deal_amount = self.estimate_deal_value(appointment_data.get('purpose', ''), business_context)
-            
-            # Format appointment date/time for deal name
-            date_obj = datetime.strptime(appointment_data['date'], '%Y-%m-%d')
-            time_obj = datetime.strptime(appointment_data['time'], '%H:%M')
-            formatted_date = date_obj.strftime('%m/%d/%Y')
-            formatted_time = time_obj.strftime('%I:%M %p')
-            
-            # Create comprehensive deal description
-            deal_description = self.create_deal_description(appointment_data, business_context)
-            
-            deal_properties = {
-                "dealname": f"RinglyPro Consultation - {appointment_data['name']} ({formatted_date})",
-                "amount": str(deal_amount),
-                "dealstage": "appointmentscheduled",  # Adjust to your pipeline stage
-                "closedate": int((date_obj + timedelta(days=30)).timestamp() * 1000),  # 30 days out
-                "pipeline": "default",  # Adjust to your pipeline
-                "dealtype": "newbusiness",
-                "description": deal_description,
-                "hs_lead_status": "OPEN",
-                "lead_source": "Website",
-                "hs_analytics_source": "ORGANIC_SEARCH",
-            }
-            
-            # Add custom properties if they exist
-            try:
-                deal_properties.update({
-                    "appointment_date_custom": formatted_date,
-                    "appointment_time_custom": formatted_time,
-                    "booking_source": appointment_data.get('booking_source', 'Online Form'),
-                    "consultation_type": "Initial Consultation",
-                    "business_size": business_context.get('business_size', 'Unknown') if business_context else 'Unknown',
-                    "industry": business_context.get('industry', 'Unknown') if business_context else 'Unknown'
-                })
-            except:
-                pass
-            
-            # Add owner if configured
-            if self.owner_id:
-                deal_properties["hubspot_owner_id"] = self.owner_id
-            
-            deal_data = {"properties": deal_properties}
-            
-            response = requests.post(
-                f"{self.base_url}/crm/v3/objects/deals",
-                headers=self.headers,
-                json=deal_data,
-                timeout=10
-            )
-            
-            if response.status_code in [200, 201]:
-                deal = response.json()
-                deal_id = deal.get("id")
-                
-                # Associate deal with contact
-                if contact_id and deal_id:
-                    self.associate_deal_with_contact(deal_id, contact_id)
-                
-                logger.info(f"✅ Deal created: {deal_id} - {deal_properties['dealname']}")
-                return {
-                    "success": True,
-                    "deal_id": deal_id,
-                    "deal": deal,
-                    "message": f"Deal created: {deal_properties['dealname']}"
-                }
-            else:
-                logger.error(f"❌ Deal creation failed: {response.status_code} - {response.text}")
-                return {"success": False, "error": f"Failed to create deal: {response.text}"}
-                
-        except Exception as e:
-            logger.error(f"❌ Error creating deal: {e}")
-            return {"success": False, "error": f"Error creating deal: {str(e)}"}
+    except Exception as e:
+        logger.error(f"❌ Error creating compatible deal: {e}")
+        return {"success": False, "error": f"Error creating deal: {str(e)}"}
     
     def create_meeting_body(self, appointment_data: dict, formatted_date: str, formatted_time: str, duration_minutes: int) -> str:
         """Create comprehensive meeting body"""
