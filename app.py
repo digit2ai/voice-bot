@@ -189,7 +189,7 @@ class HubSpotService:
         except Exception as e:
             return {"success": False, "error": f"Connection failed: {str(e)}"}
     
-def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
+    def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
         """Create or update contact in HubSpot"""
         try:
             # Search for existing contact by email first
@@ -212,7 +212,7 @@ def create_contact(self, name: str, email: str = "", phone: str = "", company: s
                 "phone": phone,
                 "company": company,
                 "lifecyclestage": "lead"
-                # REMOVED: "lead_source": "RinglyPro Voice Assistant" - THIS PROPERTY DOESN'T EXIST
+                # REMOVED: "lead_source" - THIS PROPERTY DOESN'T EXIST IN HUBSPOT
             }
             
             # Remove empty values
