@@ -2931,8 +2931,25 @@ command_processor = CommandProcessor()
 
 # ==================== HTML TEMPLATE ====================
 
+# ==================== HTML TEMPLATE ====================
+
 def get_html_template():
     rcs_enabled = CONFIG["twilio_rcs_agent_id"] and CONFIG["twilio_messaging_service_sid"]
+    
+    # Build RCS section separately to avoid f-string issues
+    rcs_section = ""
+    if rcs_enabled:
+        rcs_section = '''<div class="capability-section rcs">
+                <h4>📱 RCS Rich Messaging</h4>
+                <ul>
+                    <li>"send rich message to Manuel Stagg saying meeting confirmed"</li>
+                    <li>"send menu to client for services"</li>
+                    <li>"send meeting reminder to John about tomorrow's call"</li>
+                </ul>
+            </div>'''
+    
+    rcs_badge = '<div class="rcs-badge">🚀 RCS Enabled</div>' if rcs_enabled else ''
+    rcs_text = 'RCS messaging, ' if rcs_enabled else ''
     
     return f'''<!DOCTYPE html>
 <html lang="en">
@@ -2996,9 +3013,9 @@ def get_html_template():
     <div class="container">
         <div class="header">
             <h1>Business Automation</h1>
-            {f'<div class="rcs-badge">🚀 RCS Enabled</div>' if rcs_enabled else ''}
+            {rcs_badge}
             <img src="https://assets.cdn.filesafe.space/3lSeAHXNU9t09Hhp9oai/media/688c054fea6d0f50b10fc3d7.webp" alt="CRMAutoPilot AI Assistant Logo" />
-            <p>Voice-powered business automation with {f'RCS messaging, ' if rcs_enabled else ''}HubSpot CRM & RinglyPro FAQ!</p>
+            <p>Voice-powered business automation with {rcs_text}HubSpot CRM & RinglyPro FAQ!</p>
         </div>
         
         <div class="capabilities">
@@ -3013,14 +3030,7 @@ def get_html_template():
                     <li>"what's included in each plan"</li>
                 </ul>
             </div>
-            {f'''<div class="capability-section rcs">
-                <h4>📱 RCS Rich Messaging</h4>
-                <ul>
-                    <li>"send rich message to Manuel Stagg saying meeting confirmed"</li>
-                    <li>"send menu to client for services"</li>
-                    <li>"send meeting reminder to John about tomorrow's call"</li>
-                </ul>
-            </div>''' if rcs_enabled else ''}
+            {rcs_section}
             <div class="capability-section">
                 <h4>📱 Communication</h4>
                 <ul>
@@ -3077,7 +3087,7 @@ def get_html_template():
             <small style="opacity: 0.7; display: block; margin-top: 10px; text-align: center;">💡 Direct commands - no wake word needed!</small>
         </div>
         <div class="browser-support" id="browserSupport">Checking browser compatibility...</div>
-        <div class="privacy-note">🔒 <strong>Privacy:</strong> Voice recognition runs locally in your browser. {f'RCS messages are delivered via verified business messaging. ' if rcs_enabled else ''}HubSpot CRM data is securely handled via encrypted APIs.</div>
+        <div class="privacy-note">🔒 <strong>Privacy:</strong> Voice recognition runs locally in your browser. {rcs_text}HubSpot CRM data is securely handled via encrypted APIs.</div>
     </div>
 
     <script>
