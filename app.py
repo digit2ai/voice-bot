@@ -188,126 +188,6 @@ class HubSpotService:
                 
         except Exception as e:
             return {"success": False, "error": f"Connection failed: {str(e)}"}
-
-    # Add this method to PhoneCallHandler class
-
-def create_enhanced_phone_appointment(self, name: str, phone: str, preferred_date: str, preferred_time: str, call_sid: str) -> Tuple[bool, Optional[str]]:
-    """Create appointment with detailed preferences from phone call"""
-    try:
-        # Parse the preferred date and time
-        parsed_date, parsed_time = self.parse_date_time_preferences(preferred_date, preferred_time)
-        
-        # Create detailed email for HubSpot
-        phone_digits = re.sub(r'\D', '', phone)[-10:]
-        email = f"phone.{phone_digits}@booking.ringlypro.com"
-        
-        # Create detailed purpose with all phone booking context
-        purpose = f"""PHONE BOOKING - PRIORITY FOLLOW-UP REQUIRED
-
-Customer Details:
-- Name: {name}
-- Phone: {phone}
-- Call SID: {call_sid[:8]}
-- Booking Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-Customer Preferences:
-- Preferred Date: {preferred_date}
-- Preferred Time: {preferred_time}
-- Parsed Date: {parsed_date}
-- Parsed Time: {parsed_time}
-
-URGENT ACTIONS:
-1. Confirm exact date/time within 2 hours
-2. Get real email address
-3. Send calendar invite
-4. Update HubSpot contact with verified details
-
-Meeting Type: RinglyPro Consultation (30 minutes)
-Source: Phone Call via Rachel AI Assistant"""
-        
-        appointment_data = {
-            'name': name,
-            'email': email,
-            'phone': phone,
-            'date': parsed_date,
-            'time': parsed_time,
-            'purpose': purpose
-        }
-        
-        # Use existing AppointmentManager
-        appointment_manager = AppointmentManager()
-        success, message, appointment = appointment_manager.book_appointment(appointment_data)
-        
-        if success:
-            logger.info(f"✅ Enhanced phone appointment created: {appointment.get('confirmation_code')}")
-            
-            # Create detailed HubSpot task with customer preferences
-            if appointment.get('hubspot_contact_id'):
-                self.create_detailed_phone_booking_task(
-                    name, phone, email, preferred_date, preferred_time,
-                    appointment.get('confirmation_code'),
-                    appointment.get('hubspot_contact_id'),
-                    call_sid
-                )
-            
-            return True, appointment.get('confirmation_code', 'PENDING')
-        else:
-            logger.warning(f"Failed to create enhanced appointment: {message}")
-            return False, None
-            
-    except Exception as e:
-        logger.error(f"Failed to create enhanced phone appointment: {e}")
-        return False, None
-
-def parse_date_time_preferences(self, date_pref: str, time_pref: str) -> Tuple[str, str]:
-    """Parse natural language date/time preferences"""
-    from datetime import datetime, timedelta
-    
-    # Parse date preference
-    date_lower = date_pref.lower().strip()
-    today = datetime.now()
-    
-    if 'tomorrow' in date_lower:
-        target_date = today + timedelta(days=1)
-    elif 'friday' in date_lower:
-        days_ahead = 4 - today.weekday()
-        if days_ahead <= 0:
-            days_ahead += 7
-        target_date = today + timedelta(days=days_ahead)
-    elif 'monday' in date_lower:
-        days_ahead = 0 - today.weekday()
-        if days_ahead <= 0:
-            days_ahead += 7
-        target_date = today + timedelta(days=days_ahead)
-    elif 'next week' in date_lower:
-        target_date = today + timedelta(days=7)
-    else:
-        # Default to tomorrow if can't parse
-        target_date = today + timedelta(days=1)
-    
-    # Parse time preference
-    time_lower = time_pref.lower().strip()
-    
-    if 'morning' in time_lower:
-        target_time = '10:00'
-    elif 'afternoon' in time_lower:
-        target_time = '14:00'
-    elif 'evening' in time_lower:
-        target_time = '17:00'
-    elif any(hour in time_lower for hour in ['1', '2', '3', '4', '5']):
-        # Try to extract specific time
-        if '1' in time_lower and 'pm' in time_lower:
-            target_time = '13:00'
-        elif '2' in time_lower and 'pm' in time_lower:
-            target_time = '14:00'
-        elif '3' in time_lower and 'pm' in time_lower:
-            target_time = '15:00'
-        else:
-            target_time = '10:00'  # Default
-    else:
-        target_time = '10:00'  # Default morning
-    
-    return target_date.strftime('%Y-%m-%d'), target_time
     
     def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
         """Create or update contact in HubSpot"""
@@ -904,131 +784,89 @@ class PhoneCallHandler:
         
         return response
     
-# Add this to PhoneCallHandler class - REPLACE existing collect_booking_info method
-
-def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
-    """Enhanced booking info collection - SIMPLIFIED VERSION"""
-    response = VoiceResponse()
-    call_sid = request.form.get('CallSid', '')
-    from_number = request.form.get('From', '')
-    
-    if step == 'name':
-        # Store name and ask for phone (keeping original flow)
-        session[f'call_{call_sid}_name'] = value
+    def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
+        """Multi-step booking information collection"""
+        response = VoiceResponse()
         
-        gather = Gather(
-            input='speech dtmf',
-            timeout=10,
-            action='/phone/collect-phone',  # Keep existing route
-            method='POST',
-            speechTimeout='auto',
-            numDigits=10,
-            finishOnKey='#'
-        )
-        
-        text = f"Thank you {value}. Now please say or enter your phone number using the keypad."
-        audio_url = self.generate_rachel_audio(text)
-        
-        if audio_url:
-            gather.play(audio_url)
-        else:
-            gather.say(text, voice='Polly.Joanna')
-        
-        response.append(gather)
-        
-    elif step == 'phone':
-        # Enhanced phone processing with more details
-        customer_name = session.get(f'call_{call_sid}_name', 'Customer')
-        
-        # Create enhanced appointment with detailed info
-        success, confirmation_code = self.create_enhanced_simple_appointment(
-            customer_name, 
-            value,  # phone number
-            call_sid,
-            from_number
-        )
-        
-        if success and confirmation_code:
-            text1 = f"Perfect! I've scheduled your consultation for tomorrow at 10 AM Eastern. Your confirmation code is {confirmation_code}. You'll receive detailed confirmations with our team's direct follow-up within 2 hours."
-        else:
-            # Fallback but with better messaging
-            text1 = f"Perfect! I have your information. Our team will call you back within 2 hours to schedule your preferred time. We have your number as {value}."
-            # Still send SMS with better details
-            self.send_enhanced_booking_sms(value, customer_name, call_sid)
-        
-        audio_url = self.generate_rachel_audio(text1)
-        
-        if audio_url:
-            response.play(audio_url)
-        else:
-            response.say(text1, voice='Polly.Joanna')
-        
-        response.pause(length=1)
-        
-        text2 = "Is there anything else I can help you with today?"
-        audio_url2 = self.generate_rachel_audio(text2)
-        
-        if audio_url2:
-            response.play(audio_url2)
-        else:
-            response.say(text2, voice='Polly.Joanna')
-        
-        gather = Gather(
-            input='speech',
-            timeout=5,
-            action='/phone/process-speech',
-            method='POST'
-        )
-        response.append(gather)
-        
-        # Clean up session
-        session.pop(f'call_{call_sid}_name', None)
-    
-    return response
-
-    def send_enhanced_booking_sms(self, phone: str, name: str, call_sid: str):
-    """Send enhanced SMS with call details"""
-    try:
-        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-            return
-        
-        client = Client(twilio_account_sid, twilio_auth_token)
-        
-        current_time = datetime.now().strftime('%I:%M %p EST')
-        
-        message_body = f"""
-🎯 RinglyPro Booking Confirmed!
-
-Hi {name}! Thanks for calling us at {current_time}.
-
-📞 YOUR CALL DETAILS:
-- Call ID: {call_sid[:8]}
-- Phone: {phone}
-- Time Called: {current_time}
-
-⏰ NEXT STEPS:
-Our team will call you within 2 hours to:
-✅ Schedule your preferred date/time
-✅ Send calendar invitation
-✅ Share consultation details
-
-📅 DEFAULT: Tomorrow 10 AM EST (we'll confirm)
-
-📞 Questions? Call back: 888-610-3810
-
-- The RinglyPro Team
-        """.strip()
-        
-        message = client.messages.create(
-            body=message_body,
-            from_=twilio_phone,
-            to=phone
-        )
-        
-        logger.info(f"📱 Enhanced booking SMS sent to {phone}: {message.sid}")
-        
-    except Exception as e:
-        logger.error(f"Failed to send enhanced SMS: {e}")
+        if step == 'name':
+            # Store name and ask for phone
+            gather = Gather(
+                input='speech dtmf',
+                timeout=10,
+                action='/phone/collect-phone',
+                method='POST',
+                speechTimeout='auto',
+                numDigits=10,
+                finishOnKey='#'
+            )
+            
+            text = f"Thank you {value}. Now, please say or enter your phone number using the keypad."
+            audio_url = self.generate_rachel_audio(text)
+            
+            if audio_url:
+                gather.play(audio_url)
+            else:
+                gather.say(text, voice='Polly.Joanna')
+            
+            response.append(gather)
+            
+        elif step == 'phone':
+            # Enhanced: Try to create appointment in database
+            try:
+                # Get call SID and customer name from session
+                import flask
+                call_sid = flask.request.form.get('CallSid', 'unknown')
+                customer_name = flask.session.get(f'call_{call_sid}_name', 'Customer')
+                
+                # Try to create appointment
+                success, confirmation_code = self.create_appointment_from_phone(
+                    customer_name, 
+                    value,  # phone number
+                    call_sid
+                )
+                
+                if success and confirmation_code:
+                    # SUCCESS: Appointment created in database
+                    text1 = f"Perfect! I've scheduled your consultation. Your confirmation code is {confirmation_code}. You'll receive text and email confirmations with all the details including your Zoom meeting link."
+                else:
+                    # FALLBACK: Use original behavior
+                    text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
+                    # Still send the SMS with booking link
+                    self.send_booking_sms(value)
+                    
+            except Exception as e:
+                logger.error(f"Appointment creation error: {e}")
+                # FALLBACK: Use original behavior if anything fails
+                text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
+                self.send_booking_sms(value)
+            
+            audio_url = self.generate_rachel_audio(text1)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(text1, voice='Polly.Joanna')
+            
+            response.pause(length=1)
+            
+            text2 = "Is there anything else I can help you with today?"
+            
+            audio_url2 = self.generate_rachel_audio(text2)
+            
+            if audio_url2:
+                response.play(audio_url2)
+            else:
+                response.say(text2, voice='Polly.Joanna')
+            
+            gather = Gather(
+                input='speech',
+                timeout=5,
+                action='/phone/process-speech',
+                method='POST'
+            )
+            response.append(gather)
+            
+        return response
     
     def send_booking_sms(self, phone_number: str):
         """Send SMS with booking link"""
@@ -1240,113 +1078,6 @@ Customer expects confirmation - please verify ASAP!
                     
         except Exception as e:
             logger.error(f"HubSpot task error: {e}")
-
-# In PhoneCallHandler class - ADD THIS METHOD after the existing create_detailed_hubspot_task method
-
-def create_detailed_phone_booking_task(self, name: str, phone: str, email: str, 
-                                     preferred_date: str, preferred_time: str,
-                                     confirmation_code: str, contact_id: str, call_sid: str):
-    """Create comprehensive HubSpot task for phone bookings"""
-    try:
-        if not hubspot_api_token:
-            logger.warning("HubSpot API token not configured")
-            return
-            
-        headers = {
-            "Authorization": f"Bearer {hubspot_api_token}",
-            "Content-Type": "application/json"
-        }
-        
-        # Create detailed task
-        task_data = {
-            "properties": {
-                "hs_task_subject": f"🔴 URGENT: Phone Booking Follow-up - {name}",
-                "hs_task_body": f"""
-PHONE BOOKING DETAILS - IMMEDIATE ACTION REQUIRED
-
-📞 CUSTOMER INFORMATION:
-- Name: {name}
-- Phone: {phone}
-- Email: {email} (PLACEHOLDER - NEEDS REAL EMAIL)
-- Confirmation Code: {confirmation_code}
-- Call SID: {call_sid}
-
-🗓️ CUSTOMER PREFERENCES:
-- Preferred Date: {preferred_date}
-- Preferred Time: {preferred_time}
-- Booking Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-
-⚡ IMMEDIATE ACTIONS (Within 2 Hours):
-1. 📞 Call customer to confirm appointment
-2. ✅ Verify preferred date and time
-3. 📧 Get real email address
-4. 📅 Send calendar invitation
-5. 💬 Update HubSpot with verified details
-6. 🔄 Change placeholder email to real email
-
-📋 MEETING DETAILS:
-- Type: RinglyPro Consultation
-- Duration: 30 minutes
-- Format: Zoom meeting
-- Zoom Link: {zoom_meeting_url}
-- Meeting ID: {zoom_meeting_id}
-- Password: {zoom_password}
-
-🤖 BOOKING SOURCE:
-- Channel: Phone call to 888-610-3810
-- Assistant: Rachel AI Voice Assistant
-- Booking Method: Live phone conversation
-
-⚠️ PRIORITY: HIGH - Customer expects confirmation call!
-                """.strip(),
-                "hs_task_priority": "HIGH",
-                "hs_task_status": "NOT_STARTED",
-                "hs_task_type": "CALL"
-            }
-        }
-        
-        # Set due date to 2 hours from now
-        due_date = datetime.now() + timedelta(hours=2)
-        task_data["properties"]["hs_timestamp"] = str(int(due_date.timestamp() * 1000))
-        
-        # Add owner if configured
-        if hubspot_owner_id:
-            task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
-        
-        # Create the task
-        response = requests.post(
-            "https://api.hubapi.com/crm/v3/objects/tasks",
-            headers=headers,
-            json=task_data,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201]:
-            task_id = response.json().get("id")
-            logger.info(f"✅ Detailed phone booking task created: {task_id}")
-            
-            # Associate with contact
-            if task_id and contact_id:
-                association_data = {
-                    "inputs": [{
-                        "from": {"id": task_id},
-                        "to": {"id": contact_id},
-                        "type": "task_to_contact"
-                    }]
-                }
-                
-                requests.put(
-                    "https://api.hubapi.com/crm/v4/associations/tasks/contacts/batch/create",
-                    headers=headers,
-                    json=association_data,
-                    timeout=10
-                )
-                logger.info(f"✅ Task associated with contact {contact_id}")
-        else:
-            logger.error(f"HubSpot task creation failed: {response.status_code} - {response.text}")
-            
-    except Exception as e:
-        logger.error(f"Enhanced HubSpot task error: {e}")
     
     # ================ NEW METHODS ADDED BELOW ================
     
@@ -1533,97 +1264,6 @@ Questions? Call us back at 888-610-3810
         logger.error(f"Failed to send subscription SMS: {e}")
 
 # ADD THIS DEBUG ENDPOINT to test HubSpot connection
-# Add these new routes to handle the enhanced flow
-
-@app.route('/phone/collect-date', methods=['POST'])
-def collect_date():
-    """Collect preferred appointment date"""
-    try:
-        speech_result = request.form.get('SpeechResult', '')
-        call_sid = request.form.get('CallSid', '')
-        
-        if not speech_result:
-            response = VoiceResponse()
-            response.say("I didn't catch that. Please say your preferred date again.", voice='Polly.Joanna')
-            response.redirect('/phone/collect-date')
-            return str(response), 200, {'Content-Type': 'text/xml'}
-        
-        handler = PhoneCallHandler()
-        response = handler.collect_booking_info('date', speech_result)
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
-    except Exception as e:
-        logger.error(f"Date collection error: {e}")
-        response = VoiceResponse()
-        response.say("Let me connect you with our team to schedule your appointment.")
-        response.dial('+16566001400')
-        return str(response), 200, {'Content-Type': 'text/xml'}
-
-@app.route('/phone/collect-time', methods=['POST'])
-def collect_time():
-    """Collect preferred appointment time"""
-    try:
-        speech_result = request.form.get('SpeechResult', '')
-        call_sid = request.form.get('CallSid', '')
-        
-        if not speech_result:
-            response = VoiceResponse()
-            response.say("I didn't hear a time preference. Please say morning, afternoon, or a specific time.", voice='Polly.Joanna')
-            response.redirect('/phone/collect-time')
-            return str(response), 200, {'Content-Type': 'text/xml'}
-        
-        handler = PhoneCallHandler()
-        response = handler.collect_booking_info('time', speech_result)
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
-    except Exception as e:
-        logger.error(f"Time collection error: {e}")
-        response = VoiceResponse()
-        response.say("Let me connect you with our team.")
-        response.dial('+16566001400')
-        return str(response), 200, {'Content-Type': 'text/xml'}
-
-@app.route('/phone/collect-phone-final', methods=['POST'])
-def collect_phone_final():
-    """Final phone collection with all appointment details"""
-    try:
-        # Try speech first, then DTMF
-        phone_number = request.form.get('SpeechResult', '')
-        if not phone_number:
-            phone_number = request.form.get('Digits', '')
-        
-        call_sid = request.form.get('CallSid', '')
-        from_number = request.form.get('From', '')
-        
-        # Clean up phone number
-        phone_digits = re.sub(r'\D', '', phone_number)
-        
-        if len(phone_digits) < 10:
-            phone_digits = re.sub(r'\D', '', from_number)
-        
-        # Format phone number
-        if len(phone_digits) == 10:
-            formatted_phone = f"+1{phone_digits}"
-        elif len(phone_digits) == 11 and phone_digits[0] == '1':
-            formatted_phone = f"+{phone_digits}"
-        else:
-            formatted_phone = from_number
-        
-        handler = PhoneCallHandler()
-        response = handler.collect_booking_info('phone_final', formatted_phone)
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
-    except Exception as e:
-        logger.error(f"Final phone collection error: {e}")
-        response = VoiceResponse()
-        response.say("I'll use the number you're calling from and send you the details.")
-        # Fallback logic here
-        return str(response), 200, {'Content-Type': 'text/xml'}
-
-
 @app.route('/test-meeting-only', methods=['GET'])
 def test_meeting_only():
     """Test creating just a meeting"""
