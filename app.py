@@ -907,69 +907,26 @@ class PhoneCallHandler:
 # Add this to PhoneCallHandler class - REPLACE existing collect_booking_info method
 
 def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
-    """Enhanced multi-step booking with date/time collection"""
+    """Enhanced booking info collection - SIMPLIFIED VERSION"""
     response = VoiceResponse()
     call_sid = request.form.get('CallSid', '')
+    from_number = request.form.get('From', '')
     
     if step == 'name':
-        # Store name and ask for preferred date
+        # Store name and ask for phone (keeping original flow)
         session[f'call_{call_sid}_name'] = value
-        
-        gather = Gather(
-            input='speech',
-            timeout=10,
-            action='/phone/collect-date',
-            method='POST',
-            speechTimeout='auto'
-        )
-        
-        text = f"Thank you {value}. When would you prefer your consultation? You can say tomorrow, this Friday, next Monday, or a specific date."
-        audio_url = self.generate_rachel_audio(text)
-        
-        if audio_url:
-            gather.play(audio_url)
-        else:
-            gather.say(text, voice='Polly.Joanna')
-        
-        response.append(gather)
-        
-    elif step == 'date':
-        # Store preferred date and ask for time
-        session[f'call_{call_sid}_date'] = value
-        
-        gather = Gather(
-            input='speech',
-            timeout=10,
-            action='/phone/collect-time',
-            method='POST',
-            speechTimeout='auto'
-        )
-        
-        text = f"Great! For {value}, what time would work best? You can say morning, afternoon, or a specific time like 2 PM."
-        audio_url = self.generate_rachel_audio(text)
-        
-        if audio_url:
-            gather.play(audio_url)
-        else:
-            gather.say(text, voice='Polly.Joanna')
-        
-        response.append(gather)
-        
-    elif step == 'time':
-        # Store time and ask for phone
-        session[f'call_{call_sid}_time'] = value
         
         gather = Gather(
             input='speech dtmf',
             timeout=10,
-            action='/phone/collect-phone-final',
+            action='/phone/collect-phone',  # Keep existing route
             method='POST',
             speechTimeout='auto',
             numDigits=10,
             finishOnKey='#'
         )
         
-        text = f"Perfect! {value} works. Now please say or enter your phone number using the keypad."
+        text = f"Thank you {value}. Now please say or enter your phone number using the keypad."
         audio_url = self.generate_rachel_audio(text)
         
         if audio_url:
@@ -979,22 +936,25 @@ def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
         
         response.append(gather)
         
-    elif step == 'phone_final':
-        # Final step - create appointment with all details
-        customer_name = session.get(f'call_{call_sid}_name', 'Phone Customer')
-        preferred_date = session.get(f'call_{call_sid}_date', 'tomorrow')
-        preferred_time = session.get(f'call_{call_sid}_time', 'morning')
+    elif step == 'phone':
+        # Enhanced phone processing with more details
+        customer_name = session.get(f'call_{call_sid}_name', 'Customer')
         
-        # Create enhanced appointment
-        success, confirmation_code = self.create_enhanced_phone_appointment(
-            customer_name, value, preferred_date, preferred_time, call_sid
+        # Create enhanced appointment with detailed info
+        success, confirmation_code = self.create_enhanced_simple_appointment(
+            customer_name, 
+            value,  # phone number
+            call_sid,
+            from_number
         )
         
-        if success:
-            text1 = f"Excellent! I've scheduled your consultation for {preferred_date} {preferred_time}. Your confirmation code is {confirmation_code}. You'll receive detailed confirmation via text and email."
+        if success and confirmation_code:
+            text1 = f"Perfect! I've scheduled your consultation for tomorrow at 10 AM Eastern. Your confirmation code is {confirmation_code}. You'll receive detailed confirmations with our team's direct follow-up within 2 hours."
         else:
-            text1 = f"I've captured your preferences for {preferred_date} {preferred_time}. Our team will call you back within 2 hours to confirm the exact time slot."
-            self.send_detailed_booking_sms(value, customer_name, preferred_date, preferred_time)
+            # Fallback but with better messaging
+            text1 = f"Perfect! I have your information. Our team will call you back within 2 hours to schedule your preferred time. We have your number as {value}."
+            # Still send SMS with better details
+            self.send_enhanced_booking_sms(value, customer_name, call_sid)
         
         audio_url = self.generate_rachel_audio(text1)
         
@@ -1003,12 +963,72 @@ def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
         else:
             response.say(text1, voice='Polly.Joanna')
         
+        response.pause(length=1)
+        
+        text2 = "Is there anything else I can help you with today?"
+        audio_url2 = self.generate_rachel_audio(text2)
+        
+        if audio_url2:
+            response.play(audio_url2)
+        else:
+            response.say(text2, voice='Polly.Joanna')
+        
+        gather = Gather(
+            input='speech',
+            timeout=5,
+            action='/phone/process-speech',
+            method='POST'
+        )
+        response.append(gather)
+        
         # Clean up session
-        for key in list(session.keys()):
-            if key.startswith(f'call_{call_sid}_'):
-                session.pop(key, None)
+        session.pop(f'call_{call_sid}_name', None)
     
     return response
+
+    def send_enhanced_booking_sms(self, phone: str, name: str, call_sid: str):
+    """Send enhanced SMS with call details"""
+    try:
+        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+            return
+        
+        client = Client(twilio_account_sid, twilio_auth_token)
+        
+        current_time = datetime.now().strftime('%I:%M %p EST')
+        
+        message_body = f"""
+🎯 RinglyPro Booking Confirmed!
+
+Hi {name}! Thanks for calling us at {current_time}.
+
+📞 YOUR CALL DETAILS:
+- Call ID: {call_sid[:8]}
+- Phone: {phone}
+- Time Called: {current_time}
+
+⏰ NEXT STEPS:
+Our team will call you within 2 hours to:
+✅ Schedule your preferred date/time
+✅ Send calendar invitation
+✅ Share consultation details
+
+📅 DEFAULT: Tomorrow 10 AM EST (we'll confirm)
+
+📞 Questions? Call back: 888-610-3810
+
+- The RinglyPro Team
+        """.strip()
+        
+        message = client.messages.create(
+            body=message_body,
+            from_=twilio_phone,
+            to=phone
+        )
+        
+        logger.info(f"📱 Enhanced booking SMS sent to {phone}: {message.sid}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send enhanced SMS: {e}")
     
     def send_booking_sms(self, phone_number: str):
         """Send SMS with booking link"""
