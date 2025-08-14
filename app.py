@@ -2033,140 +2033,7 @@ FAQ_BRAIN = {
     "does ringlypro support call queuing?": "Yes, live call queuing is available with the Office Manager and Business Growth plans, ensuring callers are handled professionally during busy periods.",
 
     # ==================== PRICING & PLANS ====================
-    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Starter (97 $/month), Pro Plan (297 $/month), and Premium Plan (497 $/month). Each plan includes different amounts of minutes, text messages, and online replies.",
-
-    "what is included in the starter plan?": "The Scheduling Assistant plan (97 $/month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
-
-    "what is included in the office manager plan?": "The Office Manager plan (297 $/month) includes 3,000 minutes, 3,000 texts, 3,000 online replies, all Starter features plus assisted onboarding, phone/email/text support, custom voice choices, live call queuing, Zapier integrations, CRM setup, invoice automation, payment gateway setup, and mobile app.",
-
-    "what is included in the business growth plan?": "The Marketing Director plan (497 $/month) includes 7,500 minutes, 7,500 texts, 7,500 online replies, everything in Office Manager plus professional onboarding, dedicated account manager, custom integrations, landing page design, lead capture automation, Google Ads campaign, email marketing, reputation management, conversion reporting, and monthly analytics.",
-
-    "what is the cheapest plan?": "The most affordable plan is the Scheduling Assistant at 97/month, which includes essential features like 1,000 minutes, text messaging, appointment scheduling, and call recording.",
-
-    "what is the most popular plan?": "The Office Manager plan (297/month) is popular with growing businesses as it includes enhanced support, mobile app access, CRM integrations, and expanded capacity.",
-
-    "are there any setup fees?": "Setup fees vary by plan. The Scheduling Assistant includes self-guided setup, while higher plans include assisted or professional onboarding.",
-
-    "can i change plans later?": "Yes, you can upgrade or downgrade your plan as your business needs change. Contact customer service to discuss plan changes.",
-
-    "what happens if i exceed my plan limits?": "RinglyPro offers overage protection and will work with you to find the right plan if you consistently exceed your current limits.",
-
-    "is there a free trial?": "Contact RinglyPro directly for information about trial options and demonstrations of the service.",
-
-    # ==================== TECHNICAL CAPABILITIES ====================
-    "how does the ai work?": "RinglyPro uses advanced natural language processing and machine learning to understand caller intent, provide appropriate responses, and take actions like scheduling appointments or transferring calls.",
-
-    "is the ai voice natural sounding?": "Yes, RinglyPro offers premium voice options that sound natural and professional, with the ability to customize voice choices on higher-tier plans.",
-
-    "can the ai handle complex conversations?": "The AI is designed to handle a wide range of business conversations, from simple inquiries to appointment scheduling and call routing. For complex issues, it can seamlessly transfer to human agents.",
-
-    "what about data security?": "RinglyPro follows industry-standard security practices to protect your business and customer data, including encrypted communications and secure data storage.",
-
-    "how reliable is the service?": "RinglyPro provides 24/7 availability with enterprise-grade reliability and redundancy to ensure your business never misses important calls.",
-
-    "can ringlypro work with my existing phone system?": "Yes, RinglyPro can integrate with most existing phone systems through call forwarding, number porting, or direct integration.",
-
-    "what is call porting?": "Call porting allows you to transfer your existing business phone number to RinglyPro, so customers can continue calling the same number while benefiting from AI answering services.",
-
-    # ==================== INTEGRATION QUESTIONS ====================
-    "what crms does ringlypro work with?": "RinglyPro mentions working with CRMs and offers CRM setup for small businesses. They integrate through online links and Zapier, which supports hundreds of popular CRM systems including Salesforce, HubSpot, and others.",
-
-    "can ringlypro integrate with zapier?": "Yes, Zapier integration is available with the Office Manager and Business Growth plans, allowing connection to thousands of business applications.",
-
-    "does ringlypro work with stripe?": "Yes, Stripe/Payment Gateway Setup is included in the Office Manager and Business Growth plans.",
-
-    "can ringlypro integrate with google calendar?": "Yes, RinglyPro integrates with popular calendar systems through our HubSpot CRM integration, which can sync with Google Calendar and other calendar platforms for seamless appointment scheduling.",
-
-    "does ringlypro work with microsoft office?": "Integration with Microsoft Office tools is available through Zapier connections and direct integrations on higher-tier plans.",
-
-    "can ringlypro connect to my website?": "Yes, RinglyPro offers website integration options including chat widgets, booking forms, and lead capture tools.",
-
-    "what about social media integration?": "Social media management and integration tools are available with the Marketing Director plan.",
-
-    # ==================== BUSINESS BENEFITS ====================
-    "how will ringlypro help my business?": "RinglyPro helps businesses never miss opportunities, reduce staffing costs, improve customer service, automate routine tasks, and provide 24/7 availability without hiring additional staff.",
-
-    "what industries does ringlypro serve?": "RinglyPro serves a wide range of industries including healthcare, legal services, real estate, home services, professional services, retail, and any business that relies on phone communications.",
-
-    "is ringlypro good for small businesses?": "Yes, RinglyPro is specifically designed for small businesses and professionals who need enterprise-level communication tools without the complexity and cost of traditional systems.",
-
-    "can ringlypro replace my receptionist?": "RinglyPro can handle many receptionist duties including answering calls, scheduling appointments, taking messages, and routing calls, while providing 24/7 availability.",
-
-    "will ringlypro save me money?": "Many businesses save money by reducing staffing needs while improving service quality and availability. The cost is often less than hiring part-time reception staff.",
-
-    "how quickly can i get started?": "Implementation time varies by plan. The Scheduling Assistant includes self-guided setup for quick deployment, while higher plans include assisted onboarding for more complex integrations.",
-
-    # ==================== CUSTOMER SUPPORT ====================
-    "how can i contact ringlypro support?": "You can contact RinglyPro customer service at (656) 213-3300 or via email. The level of support (email, phone, text) depends on your plan level.",
-
-    "what are ringlypro business hours?": "RinglyPro provides 24/7 service availability. Their experts are available around the clock to support and grow your business.",
-
-    "do you offer training?": "Yes, training and onboarding support is included with all plans, with more comprehensive training available on higher-tier plans.",
-
-    "what if i need help setting up?": "Setup assistance varies by plan - from self-guided setup on the basic plan to professional onboarding and dedicated account management on premium plans.",
-
-    "can i get a demo?": "Contact RinglyPro directly to schedule a demonstration of the platform and see how it can work for your specific business needs.",
-
-    # ==================== APPOINTMENT BOOKING SPECIFIC ====================
-    "how do i schedule an appointment?": "I can help you schedule an appointment right now! I'll need your name, email, phone number, preferred date, and what you'd like to discuss. Would you like to book an appointment?",
-    
-    "book an appointment": "Perfect! I'd be happy to help you schedule an appointment. Let me guide you through the booking process right now.",
-    
-    "schedule appointment": "Excellent! I can help you schedule an appointment immediately. Let me set up the booking form for you.",
-    
-    "i want to book": "Great! I'm ready to help you book an appointment. Let me get the scheduling process started for you right away.",
-    
-    "what are your available times?": "We're available Monday-Friday 9 AM to 5 PM, and Saturday 10 AM to 2 PM (Eastern Time). I can show you specific available slots once you let me know your preferred date.",
-    
-    "how far in advance can i book?": "You can schedule appointments up to 30 days in advance. For same-day appointments, we require at least 1 hour notice.",
-    
-    "can i reschedule my appointment?": "Yes! You can reschedule by providing your confirmation code. Would you like to reschedule an existing appointment?",
-    
-    "what happens in a consultation?": "Our consultations are 30-minute sessions via Zoom where we discuss your business needs and how RinglyPro can help. You'll receive all meeting details after booking.",
-    
-    "do you charge for consultations?": "Initial consultations are complimentary! This gives us a chance to understand your needs and show you how RinglyPro can benefit your business.",
-
-    "what should i prepare for my appointment?": "Come prepared with information about your business, current communication challenges, call volume, and any specific features you're interested in. We'll tailor our discussion to your needs.",
-
-    "can i bring team members to the consultation?": "Absolutely! Feel free to invite relevant team members to join the Zoom consultation. This can help ensure everyone understands how RinglyPro will benefit your business.",
-
-    "what if i need to cancel my appointment?": "You can cancel or reschedule by contacting us with your confirmation code. We recommend giving at least 24 hours notice when possible.",
-
-    "will i receive reminders about my appointment?": "Yes, you'll receive both email and SMS confirmations immediately after booking, and we typically send reminder notifications before your scheduled appointment."
-
-    "what is ringlypro?": "RinglyPro.com is a 24/7 AI-powered call answering and client booking service designed for small businesses and professionals. It ensures you never miss a call by providing automated phone answering, appointment scheduling, and customer communication through AI technology.",
-
-    "what does ringlypro do?": "RinglyPro provides 24/7 answering service, bilingual virtual receptionists (English/Spanish), AI-powered chat and text messaging, missed-call text-back, appointment scheduling, and integrations with existing business apps like CRMs and calendars.",
-
-    "who owns ringlypro?": "RinglyPro.com is owned and operated by DIGIT2AI LLC, a company focused on building technology solutions that create better business opportunities.",
-
-    "what is the history of ringlypro?": "RinglyPro was founded as part of DIGIT2AI's mission to help small businesses compete with larger companies by providing enterprise-level communication tools through artificial intelligence and automation.",
-
-    # ==================== CORE FEATURES ====================
-    "what are ringlypro main features?": "Key features include: 24/7 AI call answering, bilingual virtual receptionists, AI-powered chat & text, missed-call text-back, appointment scheduling, CRM integrations, call recording, automated booking tools, and mobile app access.",
-
-    "does ringlypro support multiple languages?": "Yes, RinglyPro offers bilingual virtual receptionists that provide professional support in both English and Spanish to help businesses serve a wider audience.",
-
-    "can ringlypro integrate with my existing tools?": "Yes, RinglyPro integrates seamlessly with existing CRMs, schedulers, calendars, and other business apps. Integration is available through online links or using Zapier for broader connectivity.",
-
-    "does ringlypro offer appointment scheduling?": "Yes, clients can schedule appointments through phone, text, or online booking. All appointments sync with your existing calendar system for easy management.",
-
-    "what is ai-powered call answering?": "RinglyPro's AI answering service uses advanced artificial intelligence to answer calls professionally, take messages, schedule appointments, and route calls according to your business needs, all while maintaining a natural conversation flow.",
-
-    "what is missed-call text-back?": "Missed-call text-back is a feature that instantly re-engages callers you couldn't answer by automatically sending them a text message, keeping conversations and opportunities alive.",
-
-    "does ringlypro record calls?": "Yes, call recording is available as a feature across all plans, allowing you to review conversations and maintain records of customer interactions.",
-
-    "can i get a toll-free number?": "Yes, RinglyPro offers toll-free numbers and vanity numbers as part of their service options.",
-
-    "does ringlypro have a mobile app?": "Yes, a mobile app is included with the Office Manager and Business Growth plans, allowing you to manage your service on the go.",
-
-    "what is call forwarding?": "RinglyPro provides intelligent call forwarding that routes calls to the right person or department based on your customized rules and business hours.",
-
-    "does ringlypro support call queuing?": "Yes, live call queuing is available with the Office Manager and Business Growth plans, ensuring callers are handled professionally during busy periods.",
-
-    # ==================== PRICING & PLANS ====================
-    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Scheduling Assistant ($97/month), Office Manager ($297/month), and Marketing Director ($497/month). Each plan includes different amounts of minutes, text messages, and online replies.",
+    "how much does ringlypro cost?": "RinglyPro offers three pricing tiers: Starter ($97/month), Pro Plan ($297/month), and Premium Plan ($497/month). Each plan includes different amounts of minutes, text messages, and online replies.",
 
     "what is included in the starter plan?": "The Scheduling Assistant plan ($97/month) includes 1,000 minutes, 1,000 text messages, 1,000 online replies, self-guided setup, email support, premium voice options, call forwarding/porting, toll-free numbers, call recording, and automated booking tools.",
 
@@ -2240,11 +2107,36 @@ FAQ_BRAIN = {
 
     "can i get a demo?": "Contact RinglyPro directly to schedule a demonstration of the platform and see how it can work for your specific business needs.",
 
+    # ==================== APPOINTMENT BOOKING SPECIFIC ====================
+    "how do i schedule an appointment?": "I can help you schedule an appointment right now! Just say 'book appointment' or click the Book Appointment button. I'll need your name, email, phone number, and preferred date/time.",
+    
+    "book an appointment": "Perfect! I'd be happy to help you schedule an appointment. Let me guide you through the booking process right now.",
+    
+    "schedule appointment": "Excellent! I can help you schedule an appointment immediately. Let me set up the booking form for you.",
+    
+    "i want to book": "Great! I'm ready to help you book an appointment. Let me get the scheduling process started for you right away.",
+    
+    "what are your available times?": "We're available Monday-Friday 9 AM to 5 PM, and Saturday 10 AM to 2 PM (Eastern Time). I can show you specific available slots once you let me know your preferred date.",
+    
+    "how far in advance can i book?": "You can schedule appointments up to 30 days in advance. For same-day appointments, we require at least 1 hour notice.",
+    
+    "can i reschedule my appointment?": "Yes! You can reschedule by providing your confirmation code. Would you like to reschedule an existing appointment?",
+    
+    "what happens in a consultation?": "Our consultations are 30-minute sessions via Zoom where we discuss your business needs and how RinglyPro can help. You'll receive all meeting details after booking.",
+    
+    "do you charge for consultations?": "Initial consultations are complimentary! This gives us a chance to understand your needs and show you how RinglyPro can benefit your business.",
+
+    "what should i prepare for my appointment?": "Come prepared with information about your business, current communication challenges, call volume, and any specific features you're interested in. We'll tailor our discussion to your needs.",
+
+    "can i bring team members to the consultation?": "Absolutely! Feel free to invite relevant team members to join the Zoom consultation. This can help ensure everyone understands how RinglyPro will benefit your business.",
+
+    "what if i need to cancel my appointment?": "You can cancel or reschedule by contacting us with your confirmation code. We recommend giving at least 24 hours notice when possible.",
+
+    "will i receive reminders about my appointment?": "Yes, you'll receive both email and SMS confirmations immediately after booking, and we typically send reminder notifications before your scheduled appointment.",
+
     # ==================== NEW 50 APPOINTMENT & SERVICE FAQs ====================
     
     # APPOINTMENT BOOKING QUESTIONS
-    "how do i schedule an appointment?": "I can help you schedule an appointment right now! Just say 'book appointment' or click the Book Appointment button. I'll need your name, email, phone number, and preferred date/time.",
-    
     "how do i book a consultation?": "To book a free consultation, say 'book appointment' or click the booking button. I'll guide you through selecting a convenient time for your 30-minute Zoom consultation.",
     
     "what times are available for appointments?": "We're available Monday-Friday 9 AM to 5 PM, and Saturday 10 AM to 2 PM (Eastern Time). I can show you specific available slots once you select your preferred date.",
@@ -2254,8 +2146,6 @@ FAQ_BRAIN = {
     "how long is the consultation?": "Our consultations are 30-minute Zoom sessions where we discuss your business needs and demonstrate how RinglyPro can help streamline your communications.",
     
     "is the consultation free?": "Yes! Initial consultations are completely free with no obligation. It's our opportunity to understand your needs and show you how RinglyPro works.",
-    
-    "can i reschedule my appointment?": "Yes, you can reschedule by providing your confirmation code. Contact us at (888) 610-3810 or reply to your confirmation email with your new preferred time.",
     
     "what do i need for the consultation?": "Just bring information about your business, current communication challenges, and any specific questions. We'll handle everything else during the Zoom meeting.",
     
@@ -2347,8 +2237,6 @@ FAQ_BRAIN = {
     
     "what about technical support calls?": "We handle tier-1 support, answer FAQs, create tickets, and escalate complex technical issues to your team with detailed context."
 }
-
-
 
 # ==================== FAQ PROCESSING FUNCTIONS ====================
 
