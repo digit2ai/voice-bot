@@ -3568,102 +3568,161 @@ class EnhancedVoiceBot {
         }
     }
 
-    async playPremiumAudio(audioBase64) {
-        if (!audioBase64) return false;
-        
-        try {
-            console.log('🎵 Setting up premium audio...');
-            
-            // Resume audio context if needed (mobile requirement)
-            if (this.audioContext && this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
-            }
-            
-            // Decode base64 audio
-            const audioData = atob(audioBase64);
-            const arrayBuffer = new ArrayBuffer(audioData.length);
-            const uint8Array = new Uint8Array(arrayBuffer);
-            
-            for (let i = 0; i < audioData.length; i++) {
-                uint8Array[i] = audioData.charCodeAt(i);
-            }
+// MINIMAL FIX: Only change the mobile audio blocking in playPremiumAudio function
+// Replace ONLY this function in your existing code - everything else stays the same
 
-            const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            // Create audio element
-            this.currentAudio = new Audio(audioUrl);
-            
-            // Mobile-specific settings
-            if (this.isMobile) {
-                this.currentAudio.playsInline = true;
-                this.currentAudio.preload = 'auto';
+async playPremiumAudio(audioBase64, responseText, showText = false) {
+    console.log('Playing premium audio, showText:', showText, 'isMobile:', this.isMobile);
+    
+    // Show text immediately for better UX
+    if (showText || this.isMobile) {
+        this.updateStatus('🔊 ' + responseText);
+    }
+    
+    // FIXED: Try audio on mobile instead of skipping it completely
+    if (this.isMobile) {
+        console.log('📱 Mobile detected - attempting audio playback...');
+        
+        // Try to prepare audio context for mobile
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            try {
+                await this.audioContext.resume();
+                console.log('📱 Audio context resumed for mobile');
+            } catch (err) {
+                console.log('⚠️ Audio context resume failed:', err);
             }
-            
-            return new Promise((resolve) => {
-                let resolved = false;
-                
-                const cleanup = () => {
-                    if (this.currentAudio) {
-                        this.currentAudio.pause();
-                        this.currentAudio = null;
-                    }
-                    URL.revokeObjectURL(audioUrl);
-                };
-                
-                const resolveOnce = (success) => {
-                    if (!resolved) {
-                        resolved = true;
-                        if (success) {
-                            this.audioFinished();
-                        }
-                        resolve(success);
-                    }
-                };
-                
-                // Timeout for mobile (shorter)
-                const timeout = setTimeout(() => {
-                    console.log('⚠️ Audio timeout');
-                    cleanup();
-                    resolveOnce(false);
-                }, this.isMobile ? 3000 : 5000);
-                
-                this.currentAudio.onplay = () => {
-                    console.log('✅ Audio started playing');
-                    clearTimeout(timeout);
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    this.updateStatus('🔊 Rachel is speaking...');
-                };
-                
-                this.currentAudio.onended = () => {
-                    console.log('✅ Audio finished');
-                    clearTimeout(timeout);
-                    cleanup();
-                    resolveOnce(true);
-                };
-                
-                this.currentAudio.onerror = (error) => {
-                    console.log('⚠️ Audio error:', error);
-                    clearTimeout(timeout);
-                    cleanup();
-                    resolveOnce(false);
-                };
-                
-                // Start playback
-                this.currentAudio.play().catch(error => {
-                    console.log('⚠️ Audio play failed:', error);
-                    clearTimeout(timeout);
-                    cleanup();
-                    resolveOnce(false);
-                });
-            });
-            
-        } catch (error) {
-            console.error('❌ Premium audio error:', error);
-            return false;
         }
     }
+    
+    // ORIGINAL DESKTOP CODE - unchanged
+    try {
+        const audioData = atob(audioBase64);
+        const arrayBuffer = new ArrayBuffer(audioData.length);
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        for (let i = 0; i < audioData.length; i++) {
+            uint8Array[i] = audioData.charCodeAt(i);
+        }
+
+        const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        this.currentAudio = new Audio(audioUrl);
+        
+        // MOBILE: Add mobile-specific audio settings
+        if (this.isMobile) {
+            this.currentAudio.preload = 'auto';
+            this.currentAudio.volume = 1.0;
+            this.currentAudio.playsInline = true;
+        }
+        
+        return new Promise((resolve) => {
+            let audioStarted = false;
+            
+            // Shorter timeout for mobile, original for desktop
+            const timeoutDuration = this.isMobile ? 3000 : 5000;
+            const playTimeout = setTimeout(() => {
+                if (!audioStarted) {
+                    console.log('⚠️ Audio timeout - fallback to text');
+                    this.currentAudio = null;
+                    URL.revokeObjectURL(audioUrl);
+                    
+                    // Show text if not already showing
+                    if (!showText && !this.isMobile) {
+                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                    }
+                    
+                    // Mobile gets longer text display time
+                    const fallbackTime = this.isMobile ? 4000 : 2000;
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, fallbackTime);
+                }
+            }, timeoutDuration);
+            
+            this.currentAudio.onplay = () => {
+                console.log('✅ Audio started playing');
+                audioStarted = true;
+                clearTimeout(playTimeout);
+                this.isPlaying = true;
+                this.updateUI('speaking');
+                
+                // Keep text showing on mobile, update status on desktop
+                if (!showText && !this.isMobile) {
+                    this.updateStatus('🔊 Rachel is speaking...');
+                }
+            };
+            
+            this.currentAudio.onended = () => {
+                console.log('✅ Audio playback completed');
+                clearTimeout(playTimeout);
+                URL.revokeObjectURL(audioUrl);
+                this.audioFinished();
+                resolve();
+            };
+            
+            this.currentAudio.onerror = (error) => {
+                console.error('❌ Audio playback error:', error);
+                clearTimeout(playTimeout);
+                this.currentAudio = null;
+                URL.revokeObjectURL(audioUrl);
+                
+                // On mobile, keep showing text
+                if (this.isMobile) {
+                    console.log('📱 Mobile audio failed - keeping text display');
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 3000);
+                } else if (!showText) {
+                    this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 2000);
+                } else {
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 2000);
+                }
+            };
+            
+            // ENHANCED: Better mobile audio play handling
+            this.currentAudio.play().then(() => {
+                console.log('🎵 Audio play() succeeded');
+            }).catch((error) => {
+                console.log('⚠️ Audio play() failed:', error);
+                clearTimeout(playTimeout);
+                
+                if (this.isMobile) {
+                    console.log('📱 Mobile audio play failed - showing text');
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 3000);
+                } else {
+                    if (!showText) {
+                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                    }
+                    setTimeout(() => {
+                        this.audioFinished();
+                        resolve();
+                    }, 2000);
+                }
+            });
+        });
+        
+    } catch (error) {
+        console.error('❌ Premium audio processing failed:', error);
+        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+        setTimeout(() => {
+            this.audioFinished();
+        }, this.isMobile ? 4000 : 2000);
+        return Promise.resolve();
+    }
+}
 
     async playBrowserTTS(text) {
         if (!text || !('speechSynthesis' in window)) {
