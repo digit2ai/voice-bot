@@ -3289,6 +3289,9 @@ VOICE_HTML_TEMPLATE = '''
 <script>
     // Enhanced Voice Interface JavaScript with Mobile Text-Only Mode
 // UPDATED: Enhanced Voice Interface JavaScript with Mobile Audio Support
+// ENHANCED MOBILE AUDIO FIX - Version 2.0
+// Addresses clicking sounds and mobile audio playback issues
+
 class EnhancedVoiceBot {
     constructor() {
         this.micBtn = document.getElementById('micBtn');
@@ -3309,70 +3312,17 @@ class EnhancedVoiceBot {
         this.processTimeout = null;
         this.audioContext = null;
         this.recognitionTimeout = null;
-        this.mobileAudioEnabled = false; // NEW: Track if mobile audio is ready
+        this.mobileAudioReady = false;
+        this.audioPlayAttempts = 0;
         
-        // NEW: Enhanced mobile audio initialization
-        if (this.isMobile) {
-            this.initMobileAudio();
-        }
+        // Enhanced mobile detection
+        this.isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+        this.isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        this.isAndroid = /Android/.test(navigator.userAgent);
+        
+        console.log(`🔍 Device Detection: Mobile=${this.isMobile}, Touch=${this.isTouchDevice}, iOS=${this.isIOS}, Android=${this.isAndroid}`);
         
         this.init();
-    }
-
-    // NEW: Enhanced mobile audio initialization
-    initMobileAudio() {
-        console.log('📱 Initializing mobile audio support...');
-        
-        const enableMobileAudio = () => {
-            try {
-                // Create audio context
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (AudioContext && !this.audioContext) {
-                    this.audioContext = new AudioContext();
-                }
-                
-                // Resume suspended audio context
-                if (this.audioContext && this.audioContext.state === 'suspended') {
-                    this.audioContext.resume().then(() => {
-                        console.log('✅ Mobile audio context resumed');
-                        this.mobileAudioEnabled = true;
-                        this.updateStatus('🎤 Mobile audio ready! Tap to talk');
-                    }).catch(err => {
-                        console.log('⚠️ Audio context resume failed:', err);
-                    });
-                } else if (this.audioContext && this.audioContext.state === 'running') {
-                    this.mobileAudioEnabled = true;
-                    console.log('✅ Mobile audio context already running');
-                }
-                
-                // Test audio playability with a silent audio
-                const testAudio = new Audio();
-                testAudio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N+VQAoUXrTp66hVFApGn+H38GccBz2a2/LCdSMFLIHO8tiJOQcZZ7zs7KFODgtPqOPwtmQdBjuO2fDNeSsF';
-                testAudio.volume = 0.01;
-                testAudio.play().then(() => {
-                    console.log('✅ Mobile audio test successful');
-                    this.mobileAudioEnabled = true;
-                }).catch(err => {
-                    console.log('⚠️ Mobile audio test failed:', err);
-                });
-                
-            } catch (error) {
-                console.log('⚠️ Mobile audio init error:', error);
-            }
-            
-            // Remove listeners after first successful interaction
-            document.removeEventListener('touchstart', enableMobileAudio);
-            document.removeEventListener('click', enableMobileAudio);
-        };
-        
-        // Add listeners for first user interaction
-        document.addEventListener('touchstart', enableMobileAudio, { once: true });
-        document.addEventListener('click', enableMobileAudio, { once: true });
-        
-        // Also try to enable on mic button click
-        if (this.micBtn) {
-            this.micBtn.addEventListener('touchstart', enableMobileAudio, { once: true });
-        }
     }
 
     async init() {
@@ -3385,6 +3335,91 @@ class EnhancedVoiceBot {
 
         this.setupEventListeners();
         this.initSpeechRecognition();
+        
+        // Initialize mobile audio on first interaction
+        if (this.isMobile || this.isTouchDevice) {
+            this.prepareMobileAudio();
+        }
+    }
+
+    // ENHANCED: Mobile audio preparation with better error handling
+    prepareMobileAudio() {
+        console.log('📱 Preparing mobile audio...');
+        
+        const enableAudio = async () => {
+            try {
+                console.log('🎵 User interaction detected - enabling audio...');
+                
+                // Create and test audio context
+                if (!this.audioContext) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext) {
+                        this.audioContext = new AudioContext();
+                        console.log('🎵 Audio context created:', this.audioContext.state);
+                    }
+                }
+                
+                // Resume if suspended
+                if (this.audioContext && this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                    console.log('🎵 Audio context resumed:', this.audioContext.state);
+                }
+                
+                // Test audio playability with minimal audio
+                await this.testMobileAudio();
+                
+                this.mobileAudioReady = true;
+                this.updateStatus('🎤 Mobile audio ready! Tap mic to talk');
+                console.log('✅ Mobile audio fully initialized');
+                
+            } catch (error) {
+                console.log('⚠️ Mobile audio initialization failed:', error);
+                this.updateStatus('🎤 Audio setup - tap mic to talk (text mode if needed)');
+            }
+        };
+        
+        // Add event listeners for user interaction
+        const events = ['touchstart', 'touchend', 'click', 'tap'];
+        const enableOnce = () => {
+            enableAudio();
+            events.forEach(event => {
+                document.removeEventListener(event, enableOnce);
+            });
+        };
+        
+        events.forEach(event => {
+            document.addEventListener(event, enableOnce, { once: true, passive: true });
+        });
+    }
+
+    // NEW: Test mobile audio capability
+    async testMobileAudio() {
+        return new Promise((resolve, reject) => {
+            try {
+                // Create a very short silent audio to test playback
+                const audioBuffer = this.audioContext.createBuffer(1, 1, 22050);
+                const source = this.audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(this.audioContext.destination);
+                
+                source.onended = () => {
+                    console.log('✅ Mobile audio test passed');
+                    resolve(true);
+                };
+                
+                source.start(0);
+                
+                // Fallback timeout
+                setTimeout(() => {
+                    console.log('⚠️ Mobile audio test timeout');
+                    resolve(false);
+                }, 1000);
+                
+            } catch (error) {
+                console.log('⚠️ Mobile audio test failed:', error);
+                reject(error);
+            }
+        });
     }
 
     initSpeechRecognition() {
@@ -3396,23 +3431,23 @@ class EnhancedVoiceBot {
         this.recognition.lang = this.currentLanguage;
 
         this.recognition.onstart = () => {
-            console.log('Recognition started');
+            console.log('🎤 Recognition started');
             this.isListening = true;
             this.updateUI('listening');
             this.updateStatus('🎙️ Listening... Speak now');
         };
 
         this.recognition.onresult = (event) => {
-            console.log('Recognition result received');
+            console.log('🎤 Recognition result received');
             if (event.results && event.results.length > 0) {
                 const transcript = event.results[0][0].transcript.trim();
-                console.log('Transcript:', transcript);
+                console.log('📝 Transcript:', transcript);
                 this.processTranscript(transcript);
             }
         };
 
         this.recognition.onerror = (event) => {
-            console.error('Recognition error:', event.error);
+            console.error('❌ Recognition error:', event.error);
             
             if (event.error === 'no-speech') {
                 this.isListening = false;
@@ -3425,7 +3460,7 @@ class EnhancedVoiceBot {
         };
 
         this.recognition.onend = () => {
-            console.log('Recognition ended');
+            console.log('🎤 Recognition ended');
             this.isListening = false;
             if (!this.isProcessing) {
                 this.updateUI('ready');
@@ -3440,10 +3475,11 @@ class EnhancedVoiceBot {
             return;
         }
 
-        console.log('Processing transcript:', transcript);
+        console.log('🔄 Processing transcript:', transcript);
         this.isProcessing = true;
         this.updateUI('processing');
         this.updateStatus('🤖 Processing...');
+        this.audioPlayAttempts = 0; // Reset attempts counter
         
         if (this.processTimeout) {
             clearTimeout(this.processTimeout);
@@ -3451,7 +3487,7 @@ class EnhancedVoiceBot {
         
         this.processTimeout = setTimeout(() => {
             if (this.isProcessing) {
-                console.log('Processing timeout - resetting UI');
+                console.log('⏰ Processing timeout - resetting UI');
                 this.handleError('Processing took too long. Please try again.');
             }
         }, 15000);
@@ -3474,59 +3510,28 @@ class EnhancedVoiceBot {
             const data = await response.json();
             if (data.error) throw new Error(data.error);
 
-            console.log('Received data:', data);
+            console.log('📨 Received server response:', data);
 
-            // Always show text if available
-            if (data.show_text && data.response) {
+            // Always show text immediately
+            if (data.response) {
                 this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
             }
 
-            // Handle subscription popup
+            // Handle special actions
             if (data.action === 'show_subscription_popup') {
-                console.log('🎯 Subscription popup triggered');
-                
-                if (data.audio) {
-                    console.log('Playing audio response');
-                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                } else {
-                    console.log('No audio, using browser TTS');
-                    await this.playBrowserTTS(data.response);
-                }
-                
-                setTimeout(() => {
-                    showSubscriptionPopup();
-                }, 500);
+                await this.handleAudioResponse(data);
+                setTimeout(() => showSubscriptionPopup(), 500);
                 return;
             }
 
-            // Handle booking redirect
             if (data.action === 'redirect_to_booking') {
-                console.log('🎯 Booking redirect detected');
-                
-                if (data.audio) {
-                    console.log('Playing audio response');
-                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                } else {
-                    console.log('No audio, using browser TTS');
-                    await this.playBrowserTTS(data.response);
-                }
-                
-                setTimeout(() => {
-                    this.showInlineBookingForm();
-                }, 500);
+                await this.handleAudioResponse(data);
+                setTimeout(() => this.showInlineBookingForm(), 500);
                 return;
             }
 
-            // Regular responses
-            if (data.audio) {
-                console.log('Playing Rachel audio response');
-                await this.playPremiumAudio(data.audio, data.response, data.show_text);
-            } else if (data.response) {
-                console.log('Using browser TTS');
-                await this.playBrowserTTS(data.response);
-            } else {
-                this.audioFinished();
-            }
+            // Handle regular responses
+            await this.handleAudioResponse(data);
 
         } catch (error) {
             clearTimeout(this.processTimeout);
@@ -3534,40 +3539,39 @@ class EnhancedVoiceBot {
         }
     }
 
-    // UPDATED: Enhanced mobile audio playback with proper error handling
-    async playPremiumAudio(audioBase64, responseText, showText = false) {
-        console.log('🔊 Playing premium audio - Mobile:', this.isMobile, 'Audio Enabled:', this.mobileAudioEnabled);
+    // NEW: Enhanced audio response handler with better mobile support
+    async handleAudioResponse(data) {
+        console.log('🔊 Handling audio response...');
         
-        // Show text immediately
-        if (showText || this.isMobile) {
-            this.updateStatus('🔊 ' + responseText);
-        }
-        
-        // MOBILE: Try to play audio if enabled, fallback to extended text display
-        if (this.isMobile) {
-            // If mobile audio is not enabled, show text with better timing
-            if (!this.mobileAudioEnabled) {
-                console.log('📱 Mobile audio not ready - using enhanced text mode');
-                this.isPlaying = true;
-                this.updateUI('speaking');
-                
-                // Enhanced reading time for mobile
-                const readingTime = Math.min(Math.max(responseText.length * 80, 4000), 12000);
-                console.log(`📱 Mobile reading time: ${readingTime}ms for ${responseText.length} characters`);
-                
-                return new Promise((resolve) => {
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, readingTime);
-                });
+        if (data.audio && (this.mobileAudioReady || !this.isMobile)) {
+            console.log('🎵 Attempting premium audio playback...');
+            const success = await this.playPremiumAudioMobile(data.audio, data.response);
+            if (success) {
+                return; // Audio played successfully
             }
-            
-            // Try to play audio on mobile with enhanced error handling
-            console.log('📱 Attempting mobile audio playback...');
         }
+        
+        // Fallback to browser TTS
+        console.log('🔊 Falling back to browser TTS...');
+        const ttsSuccess = await this.playBrowserTTSMobile(data.response);
+        if (!ttsSuccess) {
+            // Final fallback - enhanced text display
+            console.log('📝 Using text-only mode...');
+            this.displayTextResponse(data.response);
+        }
+    }
+
+    // ENHANCED: Mobile-optimized premium audio playback
+    async playPremiumAudioMobile(audioBase64, responseText) {
+        console.log('🎵 Starting mobile premium audio playback...');
         
         try {
+            // Prepare audio context if needed
+            if (this.audioContext && this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+                console.log('🎵 Audio context resumed for playback');
+            }
+            
             // Decode audio data
             const audioData = atob(audioBase64);
             const arrayBuffer = new ArrayBuffer(audioData.length);
@@ -3580,234 +3584,246 @@ class EnhancedVoiceBot {
             const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
             const audioUrl = URL.createObjectURL(audioBlob);
             
-            this.currentAudio = new Audio(audioUrl);
+            // Create and configure audio element
+            this.currentAudio = new Audio();
+            this.currentAudio.preload = 'auto';
+            this.currentAudio.volume = 1.0;
+            this.currentAudio.crossOrigin = 'anonymous';
             
-            // NEW: Enhanced mobile audio configuration
+            // Mobile-specific audio configuration
             if (this.isMobile) {
-                this.currentAudio.preload = 'auto';
-                this.currentAudio.volume = 1.0;
-                
-                // Try to resume audio context if needed
-                if (this.audioContext && this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
+                this.currentAudio.playsInline = true;
+                this.currentAudio.autoplay = false; // Never use autoplay on mobile
             }
             
             return new Promise((resolve) => {
                 let audioStarted = false;
+                let playbackComplete = false;
                 
                 // Shorter timeout for mobile
-                const timeoutDuration = this.isMobile ? 3000 : 5000;
+                const timeoutDuration = this.isMobile ? 2000 : 5000;
                 const playTimeout = setTimeout(() => {
-                    if (!audioStarted) {
-                        console.log('⚠️ Audio timeout - fallback to text');
-                        this.currentAudio = null;
-                        URL.revokeObjectURL(audioUrl);
-                        
-                        if (!showText && !this.isMobile) {
-                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        }
-                        
-                        // Show text for longer on mobile
-                        const fallbackTime = this.isMobile ? 3000 : 2000;
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, fallbackTime);
+                    if (!audioStarted && !playbackComplete) {
+                        console.log('⚠️ Audio playback timeout');
+                        this.cleanupAudio(audioUrl);
+                        resolve(false);
                     }
                 }, timeoutDuration);
                 
+                this.currentAudio.oncanplay = () => {
+                    console.log('🎵 Audio can play - attempting playback...');
+                };
+                
                 this.currentAudio.onplay = () => {
-                    console.log('✅ Audio started playing');
+                    console.log('✅ Audio playback started');
                     audioStarted = true;
                     clearTimeout(playTimeout);
                     this.isPlaying = true;
                     this.updateUI('speaking');
-                    
-                    if (!showText && !this.isMobile) {
-                        this.updateStatus('🔊 Rachel is speaking...');
-                    }
+                    this.updateStatus('🔊 Rachel is speaking...');
                 };
                 
                 this.currentAudio.onended = () => {
                     console.log('✅ Audio playback completed');
+                    playbackComplete = true;
                     clearTimeout(playTimeout);
-                    URL.revokeObjectURL(audioUrl);
+                    this.cleanupAudio(audioUrl);
                     this.audioFinished();
-                    resolve();
+                    resolve(true);
                 };
                 
                 this.currentAudio.onerror = (error) => {
                     console.error('❌ Audio playback error:', error);
                     clearTimeout(playTimeout);
-                    this.currentAudio = null;
-                    URL.revokeObjectURL(audioUrl);
-                    
-                    // On mobile, show a user-friendly message
-                    if (this.isMobile) {
-                        this.updateStatus('💬 ' + responseText);
-                        console.log('📱 Mobile audio failed - showing text instead');
-                    } else if (!showText) {
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                    }
-                    
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, this.isMobile ? 3000 : 2000);
+                    this.cleanupAudio(audioUrl);
+                    resolve(false);
                 };
                 
-                // Play audio with enhanced mobile handling
-                this.currentAudio.play().then(() => {
-                    console.log('🎵 Audio play() succeeded');
-                }).catch((error) => {
-                    console.log('⚠️ Audio play() failed:', error);
+                this.currentAudio.onabort = () => {
+                    console.log('⚠️ Audio playback aborted');
                     clearTimeout(playTimeout);
-                    
-                    // Enhanced mobile fallback
-                    if (this.isMobile) {
-                        console.log('📱 Mobile audio play failed - trying alternative approach');
-                        
-                        // Try playing after a short delay (sometimes helps on mobile)
-                        setTimeout(() => {
-                            if (this.currentAudio) {
-                                this.currentAudio.play().catch(() => {
-                                    console.log('📱 Mobile audio retry failed - using text mode');
-                                    this.updateStatus('💬 ' + responseText);
-                                    setTimeout(() => {
-                                        this.audioFinished();
-                                        resolve();
-                                    }, 3000);
-                                });
-                            }
-                        }, 100);
-                    } else {
-                        if (!showText) {
-                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        }
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 2000);
-                    }
-                });
+                    this.cleanupAudio(audioUrl);
+                    resolve(false);
+                };
+                
+                // Load and attempt to play
+                this.currentAudio.src = audioUrl;
+                this.currentAudio.load();
+                
+                // Attempt playback with retry logic
+                this.attemptAudioPlay(resolve, playTimeout, audioUrl);
             });
             
         } catch (error) {
-            console.error('❌ Premium audio processing failed:', error);
-            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-            setTimeout(() => {
-                this.audioFinished();
-            }, this.isMobile ? 3000 : 2000);
-            return Promise.resolve();
+            console.error('❌ Premium audio setup failed:', error);
+            return false;
         }
     }
 
-    // UPDATED: Enhanced browser TTS with mobile support
-    async playBrowserTTS(text) {
-        console.log('🔊 Playing browser TTS - Mobile:', this.isMobile);
+    // NEW: Enhanced audio play with retry logic
+    async attemptAudioPlay(resolve, playTimeout, audioUrl, attempt = 1) {
+        console.log(`🎵 Audio play attempt ${attempt}...`);
         
-        // Don't skip TTS on mobile - try to make it work
+        try {
+            await this.currentAudio.play();
+            console.log('✅ Audio play() succeeded');
+        } catch (error) {
+            console.log(`⚠️ Audio play attempt ${attempt} failed:`, error.name, error.message);
+            
+            // Retry logic for mobile
+            if (attempt < 3 && this.isMobile) {
+                setTimeout(() => {
+                    if (this.currentAudio && !this.currentAudio.ended) {
+                        this.attemptAudioPlay(resolve, playTimeout, audioUrl, attempt + 1);
+                    }
+                }, 100 * attempt); // Progressive delay
+            } else {
+                console.log('❌ All audio play attempts failed');
+                clearTimeout(playTimeout);
+                this.cleanupAudio(audioUrl);
+                resolve(false);
+            }
+        }
+    }
+
+    // NEW: Enhanced browser TTS for mobile
+    async playBrowserTTSMobile(text) {
+        console.log('🔊 Starting mobile browser TTS...');
+        
         return new Promise((resolve) => {
             try {
-                // Check if speech synthesis is available
                 if (!('speechSynthesis' in window)) {
                     console.log('⚠️ Speech synthesis not available');
-                    this.updateStatus('💬 ' + text);
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, this.isMobile ? 4000 : 3000);
+                    resolve(false);
                     return;
                 }
                 
-                // Enhanced mobile TTS handling
-                if (this.isMobile) {
-                    console.log('📱 Configuring mobile TTS...');
+                // Cancel any existing speech
+                speechSynthesis.cancel();
+                
+                // Wait for voices to load on mobile
+                const speakWhenReady = () => {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = this.currentLanguage;
+                    utterance.rate = 0.85; // Slightly slower for mobile
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
                     
-                    // Ensure audio context is ready
-                    if (this.audioContext && this.audioContext.state === 'suspended') {
-                        this.audioContext.resume().catch(err => {
-                            console.log('⚠️ Audio context resume failed:', err);
-                        });
-                    }
-                }
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = this.currentLanguage;
-                utterance.rate = 0.9; // Slightly slower for better clarity
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0;
-                
-                // Enhanced mobile voice selection
-                if (this.isMobile) {
+                    // Select best voice for mobile
                     const voices = speechSynthesis.getVoices();
                     if (voices.length > 0) {
-                        // Try to find a good female voice
-                        const femaleVoice = voices.find(voice => 
-                            voice.name.toLowerCase().includes('female') || 
-                            voice.name.toLowerCase().includes('woman') ||
-                            voice.name.toLowerCase().includes('samantha') ||
-                            voice.name.toLowerCase().includes('karen')
-                        );
+                        // Prefer female voices for Rachel-like experience
+                        const preferredVoice = voices.find(voice => {
+                            const name = voice.name.toLowerCase();
+                            return (
+                                name.includes('samantha') ||
+                                name.includes('karen') ||
+                                name.includes('susan') ||
+                                name.includes('female') ||
+                                (voice.gender && voice.gender.toLowerCase() === 'female')
+                            );
+                        });
                         
-                        if (femaleVoice) {
-                            utterance.voice = femaleVoice;
-                            console.log('📱 Using voice:', femaleVoice.name);
+                        if (preferredVoice) {
+                            utterance.voice = preferredVoice;
+                            console.log('🎵 Selected voice:', preferredVoice.name);
                         }
                     }
-                }
-                
-                utterance.onstart = () => {
-                    console.log('🔊 TTS started');
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    this.updateStatus('🔊 Speaking...');
-                };
-                
-                utterance.onend = () => {
-                    console.log('✅ TTS completed');
-                    this.audioFinished();
-                    resolve();
-                };
-                
-                utterance.onerror = (error) => {
-                    console.log('⚠️ TTS error:', error);
-                    this.updateStatus('💬 ' + text.substring(0, 150) + '...');
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, this.isMobile ? 4000 : 3000);
-                };
-                
-                // Enhanced mobile TTS initiation
-                if (this.isMobile) {
-                    // Cancel any existing speech first
-                    speechSynthesis.cancel();
                     
-                    // Wait a bit for the cancel to take effect
-                    setTimeout(() => {
-                        speechSynthesis.speak(utterance);
-                        console.log('📱 Mobile TTS initiated');
-                    }, 100);
-                } else {
+                    let speechStarted = false;
+                    
+                    utterance.onstart = () => {
+                        console.log('🔊 TTS started');
+                        speechStarted = true;
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        this.updateStatus('🔊 Speaking...');
+                    };
+                    
+                    utterance.onend = () => {
+                        console.log('✅ TTS completed');
+                        this.audioFinished();
+                        resolve(true);
+                    };
+                    
+                    utterance.onerror = (error) => {
+                        console.log('⚠️ TTS error:', error);
+                        if (!speechStarted) {
+                            resolve(false);
+                        }
+                    };
+                    
+                    // Speak with timeout fallback
                     speechSynthesis.speak(utterance);
+                    
+                    // Fallback timeout
+                    setTimeout(() => {
+                        if (!speechStarted) {
+                            console.log('⚠️ TTS timeout - speech never started');
+                            speechSynthesis.cancel();
+                            resolve(false);
+                        }
+                    }, 3000);
+                };
+                
+                // Handle mobile voice loading
+                if (speechSynthesis.getVoices().length === 0) {
+                    console.log('🔄 Waiting for voices to load...');
+                    speechSynthesis.onvoiceschanged = () => {
+                        speakWhenReady();
+                    };
+                    
+                    // Fallback timeout for voice loading
+                    setTimeout(() => {
+                        if (speechSynthesis.getVoices().length === 0) {
+                            console.log('⚠️ Voice loading timeout');
+                            speakWhenReady(); // Try anyway
+                        }
+                    }, 1000);
+                } else {
+                    speakWhenReady();
                 }
                 
             } catch (error) {
                 console.error('❌ Browser TTS error:', error);
-                this.updateStatus('💬 ' + text.substring(0, 150) + '...');
-                setTimeout(() => {
-                    this.audioFinished();
-                    resolve();
-                }, this.isMobile ? 4000 : 3000);
+                resolve(false);
             }
         });
     }
 
-    // Rest of the methods remain the same...
+    // NEW: Enhanced text display with better mobile UX
+    displayTextResponse(text) {
+        console.log('📝 Displaying text response');
+        this.isPlaying = true;
+        this.updateUI('speaking');
+        this.updateStatus('💬 ' + text);
+        
+        // Calculate reading time based on text length
+        const wordsPerMinute = 180;
+        const words = text.split(' ').length;
+        const readingTimeMs = Math.max((words / wordsPerMinute) * 60 * 1000, 3000);
+        
+        console.log(`📖 Text reading time: ${readingTimeMs}ms for ${words} words`);
+        
+        setTimeout(() => {
+            this.audioFinished();
+        }, readingTimeMs);
+    }
+
+    // NEW: Clean up audio resources
+    cleanupAudio(audioUrl) {
+        if (this.currentAudio) {
+            this.currentAudio.pause();
+            this.currentAudio.src = '';
+            this.currentAudio = null;
+        }
+        if (audioUrl) {
+            URL.revokeObjectURL(audioUrl);
+        }
+    }
+
     audioFinished() {
-        console.log('Audio finished');
+        console.log('🏁 Audio/speech finished');
         this.isPlaying = false;
         this.isProcessing = false;
         this.updateUI('ready');
@@ -3815,16 +3831,24 @@ class EnhancedVoiceBot {
     }
 
     setupEventListeners() {
-        this.micBtn.addEventListener('click', () => {
-            console.log('Mic button clicked');
+        this.micBtn.addEventListener('click', async () => {
+            console.log('🎤 Mic button clicked');
             
-            // Enable mobile audio on first click if not already enabled
-            if (this.isMobile && !this.mobileAudioEnabled) {
-                this.initMobileAudio();
+            // Enable mobile audio on first click if needed
+            if ((this.isMobile || this.isTouchDevice) && !this.mobileAudioReady) {
+                await this.prepareMobileAudio();
             }
             
             this.toggleListening();
         });
+        
+        // Enhanced mobile touch handling
+        if (this.isMobile || this.isTouchDevice) {
+            this.micBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent double-tap zoom
+                console.log('👆 Touch start on mic button');
+            }, { passive: false });
+        }
         
         this.stopBtn.addEventListener('click', () => {
             if (this.isListening) this.stopListening();
@@ -3859,26 +3883,26 @@ class EnhancedVoiceBot {
 
     async startListening() {
         if (this.isProcessing || !this.recognition) {
-            console.log('Cannot start: processing or no recognition');
+            console.log('❌ Cannot start: processing or no recognition');
             return;
         }
         
         try {
-            console.log('Starting speech recognition...');
+            console.log('🎤 Starting speech recognition...');
             
-            // Ensure audio context is active on mobile
-            if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
+            // Ensure audio context is active
+            if (this.audioContext && this.audioContext.state === 'suspended') {
                 await this.audioContext.resume();
-                console.log('Audio context resumed before listening');
+                console.log('🎵 Audio context resumed before listening');
             }
             
             this.clearError();
-            speechSynthesis.cancel();
+            speechSynthesis.cancel(); // Stop any ongoing speech
             this.recognition.start();
             this.stopBtn.disabled = false;
             
         } catch (error) {
-            console.error('Failed to start:', error);
+            console.error('❌ Failed to start listening:', error);
             this.handleError('Failed to start listening: ' + error.message);
         }
     }
@@ -3926,7 +3950,7 @@ class EnhancedVoiceBot {
     }
 
     handleError(message) {
-        console.error('Error:', message);
+        console.error('❌ Error:', message);
         this.showError(message);
         this.isProcessing = false;
         this.isListening = false;
