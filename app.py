@@ -506,111 +506,94 @@ class PhoneCallHandler:
         
         return response
     
-    def process_speech_input(self, speech_result: str) -> VoiceResponse:
-        """Process the caller's speech and route accordingly"""
-        response = VoiceResponse()
-        speech_lower = speech_result.lower().strip()
-        
-        logger.info(f"📞 Phone speech input: {speech_result}")
-
-# Replace the 10 lines with this debugging version
-try:
-    caller_phone = request.form.get('From', '')
-    call_sid = request.form.get('CallSid', '')
-    logger.info(f"DEBUG: About to log call - Phone: {caller_phone}, CallSid: {call_sid}")
+def process_speech_input(self, speech_result: str) -> VoiceResponse:
+    """Process the caller's speech and route accordingly"""
+    response = VoiceResponse()
+    speech_lower = speech_result.lower().strip()
     
-    if caller_phone:
-        response = requests.post("https://ringlypro-crm.onrender.com/api/calls/webhook/voice", 
-                     json={
-                         "From": caller_phone,
-                         "To": "+18886103810", 
-                         "CallSid": call_sid,
-                         "Direction": "inbound",
-                         "CallStatus": "in-progress"
-                     }, timeout=10)
-        logger.info(f"DEBUG: CRM response status: {response.status_code}")
-        logger.info(f"DEBUG: CRM response: {response.text}")
-except Exception as e:
-    logger.error(f"DEBUG: CRM logging failed: {e}")
-        
-        # Detect intent from speech
-        if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
-            return self.handle_demo_booking()
-        elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
-            return self.handle_pricing_inquiry()
-        elif any(word in speech_lower for word in ['subscribe', 'subscription', 'sign up', 'signup', 'get started', 'start service', 'want to subscribe', 'i want to subscribe']):
-            return self.handle_subscription()
-        elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
-            return self.handle_support_transfer()
-        else:
-            # Try FAQ system - FIXED: Use the global function, not self method
-            faq_response, is_faq = get_faq_response(speech_result)
-            
-            if is_faq and not is_no_answer_response(faq_response):
-                # Limit response length for phone
-                if len(faq_response) > 300:
-                    faq_response = faq_response[:297] + "..."
-                
-                # Use Rachel's voice for FAQ response
-                audio_url = self.generate_rachel_audio(faq_response)
-                
-                if audio_url:
-                    response.play(audio_url)
-                else:
-                    response.say(faq_response, voice='Polly.Joanna')
-                
-                response.pause(length=1)
-                
-                followup = Gather(
-                    input='speech',
-                    timeout=5,
-                    action='/phone/process-speech',
-                    method='POST',
-                    speechTimeout='auto'
-                )
-                
-                followup_text = "Is there anything else I can help you with today?"
-                followup_audio = self.generate_rachel_audio(followup_text)
-                
-                if followup_audio:
-                    followup.play(followup_audio)
-                else:
-                    followup.say(followup_text, voice='Polly.Joanna')
-                
-                response.append(followup)
-            else:
-                # Can't answer, offer to transfer
-                transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
-                
-                audio_url = self.generate_rachel_audio(transfer_text)
-                
-                if audio_url:
-                    response.play(audio_url)
-                else:
-                    response.say(transfer_text, voice='Polly.Joanna')
-                
-                dial = Dial(action='/phone/call-complete', timeout=30)
-                dial.number('+16566001400')
-                response.append(dial)
-            
-            return response
-
-        # ADD THESE 10 LINES FOR SIMPLE CRM LOGGING
+    logger.info(f"📞 Phone speech input: {speech_result}")
+    
+    # CRM LOGGING - PROPERLY INDENTED
     try:
         caller_phone = request.form.get('From', '')
         call_sid = request.form.get('CallSid', '')
+        logger.info(f"DEBUG: About to log call - Phone: {caller_phone}, CallSid: {call_sid}")
+        
         if caller_phone:
-            requests.post(f"{os.getenv('CRM_URL', 'http://localhost:3000')}/api/call-log", 
+            crm_response = requests.post("https://ringlypro-crm.onrender.com/api/calls/webhook/voice", 
                          json={
-                             "phone": caller_phone,
-                             "speech": speech_result,
-                             "call_sid": call_sid,
-                             "timestamp": datetime.now().isoformat()
-                         }, timeout=5)
-    except:
-        pass  # Don't break call flow if CRM is down
+                             "From": caller_phone,
+                             "To": "+18886103810", 
+                             "CallSid": call_sid,
+                             "Direction": "inbound",
+                             "CallStatus": "in-progress"
+                         }, timeout=10)
+            logger.info(f"DEBUG: CRM response status: {crm_response.status_code}")
+            logger.info(f"DEBUG: CRM response: {crm_response.text}")
+    except Exception as e:
+        logger.error(f"DEBUG: CRM logging failed: {e}")
     
-    # ... rest of existing code continues unchanged ...
+    # Detect intent from speech
+    if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
+        return self.handle_demo_booking()
+    elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
+        return self.handle_pricing_inquiry()
+    elif any(word in speech_lower for word in ['subscribe', 'subscription', 'sign up', 'signup', 'get started', 'start service', 'want to subscribe', 'i want to subscribe']):
+        return self.handle_subscription()
+    elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
+        return self.handle_support_transfer()
+    else:
+        # Try FAQ system
+        faq_response, is_faq = get_faq_response(speech_result)
+        
+        if is_faq and not is_no_answer_response(faq_response):
+            # Limit response length for phone
+            if len(faq_response) > 300:
+                faq_response = faq_response[:297] + "..."
+            
+            # Use Rachel's voice for FAQ response
+            audio_url = self.generate_rachel_audio(faq_response)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(faq_response, voice='Polly.Joanna')
+            
+            response.pause(length=1)
+            
+            followup = Gather(
+                input='speech',
+                timeout=5,
+                action='/phone/process-speech',
+                method='POST',
+                speechTimeout='auto'
+            )
+            
+            followup_text = "Is there anything else I can help you with today?"
+            followup_audio = self.generate_rachel_audio(followup_text)
+            
+            if followup_audio:
+                followup.play(followup_audio)
+            else:
+                followup.say(followup_text, voice='Polly.Joanna')
+            
+            response.append(followup)
+        else:
+            # Can't answer, offer to transfer
+            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
+            
+            audio_url = self.generate_rachel_audio(transfer_text)
+            
+            if audio_url:
+                response.play(audio_url)
+            else:
+                response.say(transfer_text, voice='Polly.Joanna')
+            
+            dial = Dial(action='/phone/call-complete', timeout=30)
+            dial.number('+16566001400')
+            response.append(dial)
+        
+        return response
     
     def handle_demo_booking(self) -> VoiceResponse:
         """Handle demo booking request"""
