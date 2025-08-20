@@ -512,6 +512,28 @@ class PhoneCallHandler:
         speech_lower = speech_result.lower().strip()
         
         logger.info(f"📞 Phone speech input: {speech_result}")
+
+            try:
+        caller_phone = request.form.get('From', '')
+        call_sid = request.form.get('CallSid', '')
+        if caller_phone:
+            requests.post("https://ringlypro-crm.onrender.com/api/calls/webhook/voice", 
+                         json={
+                             "phone": caller_phone,
+                             "speech": speech_result,
+                             "call_sid": call_sid,
+                             "timestamp": datetime.now().isoformat(),
+                             "From": caller_phone,
+                             "To": "+18886103810",
+                             "CallSid": call_sid,
+                             "Direction": "inbound"
+                         }, timeout=5)
+    except:
+        pass  # Don't break call flow if CRM is down
+    
+    # Detect intent from speech (rest of existing code continues unchanged)
+    if any(word in speech_lower for word in ['demo', 'consultation', 'appointment']):
+        return self.handle_demo_booking()
         
         # Detect intent from speech
         if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
