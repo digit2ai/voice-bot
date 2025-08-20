@@ -513,27 +513,25 @@ class PhoneCallHandler:
         
         logger.info(f"📞 Phone speech input: {speech_result}")
 
-            try:
-        caller_phone = request.form.get('From', '')
-        call_sid = request.form.get('CallSid', '')
-        if caller_phone:
-            requests.post("https://ringlypro-crm.onrender.com/api/calls/webhook/voice", 
-                         json={
-                             "phone": caller_phone,
-                             "speech": speech_result,
-                             "call_sid": call_sid,
-                             "timestamp": datetime.now().isoformat(),
-                             "From": caller_phone,
-                             "To": "+18886103810",
-                             "CallSid": call_sid,
-                             "Direction": "inbound"
-                         }, timeout=5)
-    except:
-        pass  # Don't break call flow if CRM is down
+# Replace the 10 lines with this debugging version
+try:
+    caller_phone = request.form.get('From', '')
+    call_sid = request.form.get('CallSid', '')
+    logger.info(f"DEBUG: About to log call - Phone: {caller_phone}, CallSid: {call_sid}")
     
-    # Detect intent from speech (rest of existing code continues unchanged)
-    if any(word in speech_lower for word in ['demo', 'consultation', 'appointment']):
-        return self.handle_demo_booking()
+    if caller_phone:
+        response = requests.post("https://ringlypro-crm.onrender.com/api/calls/webhook/voice", 
+                     json={
+                         "From": caller_phone,
+                         "To": "+18886103810", 
+                         "CallSid": call_sid,
+                         "Direction": "inbound",
+                         "CallStatus": "in-progress"
+                     }, timeout=10)
+        logger.info(f"DEBUG: CRM response status: {response.status_code}")
+        logger.info(f"DEBUG: CRM response: {response.text}")
+except Exception as e:
+    logger.error(f"DEBUG: CRM logging failed: {e}")
         
         # Detect intent from speech
         if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
