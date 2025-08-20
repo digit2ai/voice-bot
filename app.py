@@ -574,6 +574,23 @@ class PhoneCallHandler:
                 response.append(dial)
             
             return response
+
+        # ADD THESE 10 LINES FOR SIMPLE CRM LOGGING
+    try:
+        caller_phone = request.form.get('From', '')
+        call_sid = request.form.get('CallSid', '')
+        if caller_phone:
+            requests.post(f"{os.getenv('CRM_URL', 'http://localhost:3000')}/api/call-log", 
+                         json={
+                             "phone": caller_phone,
+                             "speech": speech_result,
+                             "call_sid": call_sid,
+                             "timestamp": datetime.now().isoformat()
+                         }, timeout=5)
+    except:
+        pass  # Don't break call flow if CRM is down
+    
+    # ... rest of existing code continues unchanged ...
     
     def handle_demo_booking(self) -> VoiceResponse:
         """Handle demo booking request"""
