@@ -58,6 +58,8 @@ twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
 # Twilio Webhook Configuration
 TWILIO_PHONE_NUMBER = "+18886103810"  # Your business number
 TWILIO_WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
+# CRM Configuration - NEW
+CRM_WEBHOOK_URL = "https://ringlypro-crm.onrender.com/api/calls/webhook/voice"
 
 # Email Configuration
 smtp_server = os.getenv("SMTP_SERVER", "smtp.gmail.com")
@@ -86,6 +88,7 @@ business_hours = {
     'friday': {'start': '09:00', 'end': '17:00'},
     'saturday': {'start': '10:00', 'end': '14:00'},
     'sunday': {'start': 'closed', 'end': 'closed'}
+
 }
 
 if not anthropic_api_key:
@@ -1526,6 +1529,47 @@ def create_contact(self, name: str, email: str = "", phone: str = "", company: s
         logger.error(f"Error creating HubSpot contact: {e}")
         return {"success": False, "error": f"Error creating contact: {str(e)}"}
             # Don't break the flow if HubSpot fails
+
+def send_call_data_to_crm(call_data):
+    """
+    Send call data to CRM webhook asynchronously
+    This runs in background and doesn't affect Rachel's functionality
+    """
+    try:
+        logger.info(f"📊 Sending call data to CRM: {call_data.get('CallSid', 'Unknown')}")
+        
+        # Prepare data for CRM webhook
+        crm_payload = {
+            'CallSid': call_data.get('CallSid'),
+            'From': call_data.get('From'),
+            'To': call_data.get('To'),
+            'CallStatus': call_data.get('CallStatus'),
+            'Direction': call_data.get('Direction', 'inbound'),
+            'AccountSid': call_data.get('AccountSid'),
+            'SpeechResult': call_data.get('SpeechResult'),
+            'Timestamp': datetime.now().isoformat(),
+            'Source': 'Rachel-AI-Assistant',
+            'Notes': 'Call handled by Rachel AI Assistant'
+        }
+        
+        # Remove None values
+        crm_payload = {k: v for k, v in crm_payload.items() if v is not None}
+        
+        # Send to CRM webhook with timeout
+        response = requests.post(
+            CRM_WEBHOOK_URL,
+            headers={'Content-Type': 'application/json'},
+            json=crm_payload,
+            timeout=5  # Short timeout so it doesn't delay Rachel
+        )
+        
+        if response.status_code in [200, 201, 204]:
+            logger.info(f"✅ CRM webhook successful: {response.status_code}")
+        else:
+            logger.warning(f"⚠️ CRM webhook failed: {response.status_code}")
+            
+    except Exception as e:
+        logger.warning(f"⚠️ CRM webhook error: {str(e)} - continuing without CRM logging")
 
 # END OF PhoneCallHandler CLASS
 
@@ -5875,6 +5919,21 @@ def phone_webhook():
         to_number = request.form.get('To', '')
         call_sid = request.form.get('CallSid', '')
         
+        # === INSERT THIS NEW CRM CODE HERE ===
+        call_data = {
+            'CallSid': call_sid,
+            'From': from_number,
+            'To': to_number,
+            'CallStatus': request.form.get('CallStatus', ''),
+            'Direction': 'inbound'
+        }
+        
+        try:
+            send_call_data_to_crm(call_data)
+        except Exception as crm_error:
+            logger.warning(f"CRM integration error (non-blocking): {crm_error}")
+        # === END NEW CRM CODE ===
+        
         logger.info(f"Call from {from_number} to {to_number} (SID: {call_sid})")
         
         # Log the call in database
@@ -5888,6 +5947,8 @@ def phone_webhook():
             conn.close()
         except Exception as e:
             logger.error(f"Failed to log call: {e}")
+        
+        # ... rest of your existing function continues unchanged ...
         
         # Create greeting response
         handler = PhoneCallHandler()
@@ -5907,7 +5968,18 @@ def process_phone_speech():
     try:
         speech_result = request.form.get('SpeechResult', '')
         confidence = request.form.get('Confidence', '0')
-        
+
+        # === ADD THIS BLOCK ===
+        try:
+            speech_data = {
+                'CallSid': request.form.get('CallSid', ''),
+                'SpeechResult': speech_result,
+                'From': request.form.get('From', ''),
+                'CallStatus': 'in-progress'
+            }
+            send_call_data_to_crm(speech_data)
+        except Exception as crm_error:
+            logger.warning(f"⚠️ CRM speech logging error: {crm_error}")        
         logger.info(f"🎤 Speech detected: '{speech_result}' (confidence: {confidence})")
         
         if not speech_result:
@@ -6046,6 +6118,19 @@ def call_complete():
         call_sid = request.form.get('CallSid', '')
         dial_status = request.form.get('DialCallStatus', '')
         duration = request.form.get('DialCallDuration', '0')
+
+         # === ADD THIS BLOCK ===
+        try:
+            completion_data = {
+                'CallSid': call_sid,
+                'CallStatus': 'completed',
+                'CallDuration': duration,
+                'From': request.form.get('From', '')
+            }
+            send_call_data_to_crm(completion_data)
+        except Exception as crm_error:
+            logger.warning(f"⚠️ CRM completion logging error: {crm_error}")
+        # === END ADD ===
         
         logger.info(f"📞 Call completed: {call_sid} - Status: {dial_status}, Duration: {duration}s")
         
