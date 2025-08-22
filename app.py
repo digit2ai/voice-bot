@@ -20,7 +20,6 @@ import time
 import base64
 import asyncio
 from datetime import datetime, timedelta
-import sqlite3
 from typing import Optional, Tuple, Dict, Any, List
 import smtplib
 from email.mime.text import MIMEText
@@ -55,10 +54,12 @@ elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
 twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID")
 twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 twilio_phone = os.getenv("TWILIO_PHONE_NUMBER")
+
 # Twilio Webhook Configuration
-TWILIO_PHONE_NUMBER = "+18886103810"  # Your business number
+TWILIO_PHONE_NUMBER = "+18886103810"
 TWILIO_WEBHOOK_BASE_URL = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
-# CRM Configuration - NEW
+
+# CRM Configuration - PostgreSQL Backend
 CRM_WEBHOOK_URL = "https://ringlypro-crm.onrender.com/api/calls/webhook/voice"
 
 # Email Configuration
@@ -88,68 +89,152 @@ business_hours = {
     'friday': {'start': '09:00', 'end': '17:00'},
     'saturday': {'start': '10:00', 'end': '14:00'},
     'sunday': {'start': 'closed', 'end': 'closed'}
-
 }
 
 if not anthropic_api_key:
     logger.error("ANTHROPIC_API_KEY not found in environment variables")
     raise ValueError("ANTHROPIC_API_KEY not found in environment variables")
 
-# ==================== ENHANCED DATABASE SETUP ====================
+# ==================== CRM API CONFIGURATION (POSTGRESQL) ====================
+CRM_BASE_URL = "https://ringlypro-crm.onrender.com/api"
+CRM_HEADERS = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'Rachel-Voice-AI/2.0'
+}
 
-def init_database():
-    """Initialize SQLite database for customers and appointments"""
+class CRMAPIClient:
+    """Client for RinglyPro CRM API integration with PostgreSQL backend"""
+    
+    def __init__(self):
+        self.base_url = CRM_BASE_URL
+        self.headers = CRM_HEADERS
+        self.timeout = 10
+    
+    def _make_request(self, method, endpoint, data=None, params=None):
+        """Make HTTP request to CRM API with PostgreSQL backend"""
+        try:
+            url = f"{self.base_url}/{endpoint.lstrip('/')}"
+            
+            if method.upper() == 'GET':
+                response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
+            elif method.upper() == 'POST':
+                response = requests.post(url, headers=self.headers, json=data, timeout=self.timeout)
+            elif method.upper() == 'PUT':
+                response = requests.put(url, headers=self.headers, json=data, timeout=self.timeout)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
+            
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.Timeout:
+            logger.error(f"CRM API timeout for {endpoint}")
+            return None
+        except requests.exceptions.ConnectionError:
+            logger.error(f"CRM API connection error for {endpoint}")
+            return None
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"CRM API HTTP error for {endpoint}: {e.response.status_code}")
+            return None
+        except Exception as e:
+            logger.error(f"CRM API unexpected error for {endpoint}: {e}")
+            return None
+
+# Global CRM client instance
+crm_client = CRMAPIClient()
+
+def init_crm_connection():
+    """Initialize CRM API connection and verify PostgreSQL connectivity"""
     try:
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
+        logger.info("Testing CRM API connection to PostgreSQL...")
         
-        # Original customer inquiries table
-        cursor.execute('''CREATE TABLE IF NOT EXISTS inquiries (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          phone TEXT NOT NULL,
-                          question TEXT NOT NULL,
-                          timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                          status TEXT DEFAULT 'new',
-                          sms_sent BOOLEAN DEFAULT FALSE,
-                          sms_sid TEXT,
-                          source TEXT DEFAULT 'chat',
-                          notes TEXT)''')
+        # Test CRM API connectivity to PostgreSQL
+        result = crm_client._make_request('GET', '/appointments/today')
         
-        # Enhanced appointments table
-        cursor.execute('''CREATE TABLE IF NOT EXISTS appointments (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          customer_name TEXT NOT NULL,
-                          customer_email TEXT NOT NULL,
-                          customer_phone TEXT NOT NULL,
-                          appointment_date DATE NOT NULL,
-                          appointment_time TIME NOT NULL,
-                          duration INTEGER DEFAULT 30,
-                          purpose TEXT,
-                          status TEXT DEFAULT 'scheduled',
-                          zoom_meeting_url TEXT,
-                          hubspot_contact_id TEXT,
-                          hubspot_meeting_id TEXT,
-                          confirmation_code TEXT UNIQUE,
-                          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                          timezone TEXT DEFAULT 'Eastern',
-                          notes TEXT)''')
-        
-        # Calendar availability table (for blocked times)
-        cursor.execute('''CREATE TABLE IF NOT EXISTS availability_blocks (
-                          id INTEGER PRIMARY KEY AUTOINCREMENT,
-                          date DATE NOT NULL,
-                          start_time TIME NOT NULL,
-                          end_time TIME NOT NULL,
-                          is_available BOOLEAN DEFAULT TRUE,
-                          reason TEXT,
-                          created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-        
-        conn.commit()
-        conn.close()
-        logger.info("✅ Enhanced database initialized successfully")
+        if result:
+            logger.info("CRM API connection to PostgreSQL successful")
+            return True
+        else:
+            logger.warning("CRM API connection failed - will use fallbacks")
+            return False
+            
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        logger.error(f"CRM connection test failed: {e}")
+        return False
+
+def log_call_to_crm(call_data: dict):
+    """Log call data to PostgreSQL via CRM API"""
+    try:
+        logger.info(f"Logging call to PostgreSQL: {call_data.get('CallSid', 'Unknown')}")
+        
+        crm_call_data = {
+            'callSid': call_data.get('CallSid'),
+            'fromNumber': call_data.get('From'),
+            'toNumber': call_data.get('To'),
+            'callStatus': call_data.get('CallStatus'),
+            'direction': 'inbound',
+            'source': 'Rachel-AI-Assistant',
+            'notes': call_data.get('notes', 'Call handled by Rachel AI'),
+            'speechResult': call_data.get('SpeechResult')
+        }
+        
+        # Send to PostgreSQL via CRM webhook
+        result = crm_client._make_request('POST', '/calls/webhook', data=crm_call_data)
+        
+        if result:
+            logger.info("Call logged to PostgreSQL successfully")
+        else:
+            logger.warning("Call logging to PostgreSQL failed")
+            
+    except Exception as e:
+        logger.warning(f"PostgreSQL call logging error: {e}")
+
+def log_inquiry_to_crm(phone: str, question: str, source: str = "phone"):
+    """Log customer inquiry to PostgreSQL via CRM API"""
+    try:
+        inquiry_data = {
+            'customerPhone': phone,
+            'inquiry': question,
+            'source': source,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'new'
+        }
+        
+        result = crm_client._make_request('POST', '/inquiries', data=inquiry_data)
+        
+        if result:
+            logger.info(f"Inquiry logged to PostgreSQL: {phone}")
+        else:
+            logger.warning(f"Inquiry logging to PostgreSQL failed: {phone}")
+            
+    except Exception as e:
+        logger.warning(f"PostgreSQL inquiry logging error: {e}")
+
+def save_customer_inquiry_to_crm(phone: str, question: str, sms_sent: bool, sms_sid: str = "", source: str = "chat") -> bool:
+    """Save customer inquiry to PostgreSQL via CRM API"""
+    try:
+        inquiry_data = {
+            'customerPhone': phone,
+            'inquiry': question,
+            'source': source,
+            'timestamp': datetime.now().isoformat(),
+            'status': 'new',
+            'smsSent': sms_sent,
+            'smsSid': sms_sid
+        }
+        
+        result = crm_client._make_request('POST', '/inquiries', data=inquiry_data)
+        
+        if result:
+            logger.info(f"Customer inquiry saved to PostgreSQL: {phone}")
+            return True
+        else:
+            logger.warning(f"Failed to save inquiry to PostgreSQL: {phone}")
+            return False
+            
+    except Exception as e:
+        logger.error(f"PostgreSQL save error: {e}")
+        return False
 
 # ==================== HUBSPOT SERVICE ====================
 
@@ -167,9 +252,9 @@ class HubSpotService:
         }
         
         if self.api_token:
-            logger.info(f"✅ HubSpot service initialized - Token: {self.api_token[:12]}...")
+            logger.info(f"HubSpot service initialized - Token: {self.api_token[:12]}...")
         else:
-            logger.warning("⚠️ HubSpot not configured - missing HUBSPOT_ACCESS_TOKEN")
+            logger.warning("HubSpot not configured - missing HUBSPOT_ACCESS_TOKEN")
     
     def test_connection(self) -> Dict[str, Any]:
         """Test HubSpot API connection"""
@@ -215,7 +300,6 @@ class HubSpotService:
                 "phone": phone,
                 "company": company,
                 "lifecyclestage": "lead"
-                # REMOVED: "lead_source" - THIS PROPERTY DOESN'T EXIST IN HUBSPOT
             }
             
             # Remove empty values
@@ -232,7 +316,7 @@ class HubSpotService:
             
             if response.status_code in [200, 201]:
                 contact = response.json()
-                logger.info(f"✅ HubSpot contact created: {contact.get('id')} - {name}")
+                logger.info(f"HubSpot contact created: {contact.get('id')} - {name}")
                 return {
                     "success": True,
                     "message": f"Contact created: {name}",
@@ -240,11 +324,11 @@ class HubSpotService:
                     "contact": contact
                 }
             else:
-                logger.error(f"❌ HubSpot contact creation failed: {response.status_code} - {response.text}")
+                logger.error(f"HubSpot contact creation failed: {response.status_code} - {response.text}")
                 return {"success": False, "error": f"Failed to create contact: {response.text}"}
                 
         except Exception as e:
-            logger.error(f"❌ Error creating contact: {str(e)}")
+            logger.error(f"Error creating contact: {str(e)}")
             return {"success": False, "error": f"Error creating contact: {str(e)}"}
     
     def search_contact_by_email(self, email: str) -> Dict[str, Any]:
@@ -313,9 +397,8 @@ class HubSpotService:
             return {"success": False, "error": f"Error updating contact: {str(e)}"}
     
     def create_meeting(self, title: str, contact_id: str, start_time: datetime, duration_minutes: int = 30) -> Dict[str, Any]:
-        """Create meeting using Engagement API (WORKING VERSION)"""
+        """Create meeting using Engagement API"""
         try:
-            # Use the Engagement API that works!
             end_time = start_time + timedelta(minutes=duration_minutes)
             
             meeting_data = {
@@ -348,68 +431,370 @@ class HubSpotService:
             
             if response.status_code in [200, 201]:
                 engagement = response.json()
-                # Get the engagement ID correctly from the response structure
                 engagement_id = engagement.get("engagement", {}).get("id")
                 
-                logger.info(f"✅ Meeting created via Engagement API: {engagement_id}")
+                logger.info(f"Meeting created via Engagement API: {engagement_id}")
                 
                 return {
                     "success": True,
                     "message": f"Meeting created: {title}",
-                    "meeting_id": str(engagement_id),  # Convert to string for consistency
+                    "meeting_id": str(engagement_id),
                     "meeting": engagement
                 }
             else:
-                logger.error(f"❌ Failed to create meeting: {response.status_code} - {response.text}")
+                logger.error(f"Failed to create meeting: {response.status_code} - {response.text}")
                 return {"success": False, "error": f"Failed to create meeting: {response.text}"}
                 
         except Exception as e:
-            logger.error(f"❌ Error creating meeting: {str(e)}")
+            logger.error(f"Error creating meeting: {str(e)}")
             return {"success": False, "error": f"Error creating meeting: {str(e)}"}
+
+# ==================== APPOINTMENT MANAGEMENT CLASS (POSTGRESQL VIA CRM API) ====================
+
+class AppointmentManager:
+    """PostgreSQL-based appointment management via CRM API (NO MORE SQLITE)"""
     
-    def associate_meeting_with_contact(self, meeting_id: str, contact_id: str) -> Dict[str, Any]:
-        """Associate meeting with contact"""
+    def __init__(self):
+        self.hubspot_service = HubSpotService()
+        self.crm_client = crm_client
+    
+    @staticmethod
+    def generate_confirmation_code():
+        """Generate unique confirmation code"""
+        return str(uuid.uuid4())[:8].upper()
+    
+    def get_available_slots(self, date_str: str, timezone_str: str = 'America/New_York') -> List[str]:
+        """Get available appointment slots from PostgreSQL via CRM API"""
         try:
-            association_data = {
-                "inputs": [{
-                    "from": {
-                        "id": meeting_id
-                    },
-                    "to": {
-                        "id": contact_id
-                    },
-                    "type": "meeting_to_contact"
-                }]
+            logger.info(f"Getting available slots from PostgreSQL for {date_str}")
+            
+            data = {
+                'date': date_str,
+                'timezone': timezone_str
             }
             
-            response = requests.put(
-                f"{self.base_url}/crm/v4/associations/meetings/contacts/batch/create",
-                headers=self.headers,
-                json=association_data,
-                timeout=10
-            )
+            result = self.crm_client._make_request('POST', '/appointments/available-slots', data=data)
             
-            if response.status_code in [200, 201]:
-                return {"success": True, "message": "Meeting associated with contact"}
+            if result and result.get('success'):
+                slots = result.get('slots', [])
+                logger.info(f"Got {len(slots)} available slots from PostgreSQL")
+                return slots
             else:
-                return {"success": False, "error": f"Failed to associate meeting: {response.text}"}
+                logger.warning("PostgreSQL API failed, falling back to default slots")
+                return self._get_fallback_slots(date_str)
                 
         except Exception as e:
-            return {"success": False, "error": f"Error associating meeting: {str(e)}"}
+            logger.error(f"Error getting slots from PostgreSQL: {e}")
+            return self._get_fallback_slots(date_str)
+    
+    def _get_fallback_slots(self, date_str: str) -> List[str]:
+        """Fallback slot generation when PostgreSQL API is unavailable"""
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            day_name = target_date.strftime('%A').lower()
+            
+            if day_name not in business_hours or business_hours[day_name]['start'] == 'closed':
+                return []
+            
+            basic_slots = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+                          '14:00', '14:30', '15:00', '15:30', '16:00', '16:30']
+            
+            if target_date == datetime.now().date():
+                current_hour = datetime.now().hour
+                return [slot for slot in basic_slots if int(slot.split(':')[0]) > current_hour]
+            
+            return basic_slots
+            
+        except Exception as e:
+            logger.error(f"Fallback slots error: {e}")
+            return ['10:00', '14:00', '15:00']
+    
+    def is_slot_available(self, date_str: str, time_str: str) -> bool:
+        """Check if slot is available via PostgreSQL API"""
+        try:
+            available_slots = self.get_available_slots(date_str)
+            return time_str in available_slots
+        except Exception as e:
+            logger.error(f"Error checking slot availability: {e}")
+            return True
+    
+    def book_appointment(self, customer_data: dict) -> Tuple[bool, str, dict]:
+        """Book appointment via PostgreSQL API (NO MORE SQLITE)"""
+        try:
+            confirmation_code = self.generate_confirmation_code()
+            logger.info(f"Starting PostgreSQL appointment booking with code: {confirmation_code}")
+            
+            # Validate required fields
+            required_fields = ['name', 'email', 'phone', 'date', 'time']
+            for field in required_fields:
+                if not customer_data.get(field):
+                    logger.error(f"Missing required field: {field}")
+                    return False, f"Missing required field: {field}", {}
+            
+            # Format phone number
+            phone_input = customer_data['phone']
+            phone_digits = re.sub(r'\D', '', phone_input)
+            
+            if len(phone_digits) == 10:
+                formatted_phone = f"+1{phone_digits}"
+            elif len(phone_digits) == 11 and phone_digits[0] == '1':
+                formatted_phone = f"+{phone_digits}"
+            else:
+                logger.error(f"Invalid phone format: {phone_input}")
+                return False, "Invalid phone number format", {}
+            
+            logger.info(f"Formatted phone: {phone_input} -> {formatted_phone}")
+            
+            # Prepare data for PostgreSQL via CRM API
+            crm_appointment_data = {
+                'customerName': customer_data['name'],
+                'customerEmail': customer_data['email'],
+                'customerPhone': formatted_phone,
+                'appointmentDate': customer_data['date'],
+                'appointmentTime': customer_data['time'],
+                'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
+                'confirmationCode': confirmation_code,
+                'source': 'voice_booking',
+                'duration': 30,
+                'timezone': customer_data.get('timezone', 'America/New_York')
+            }
+            
+            # Send to PostgreSQL via CRM API
+            logger.info("Sending appointment to PostgreSQL database...")
+            result = self.crm_client._make_request('POST', '/appointments', data=crm_appointment_data)
+            
+            if result and result.get('success'):
+                logger.info("Appointment successfully created in PostgreSQL database")
+                crm_appointment = result.get('appointment', {})
+                
+                # HubSpot integration
+                hubspot_contact_id = None
+                hubspot_meeting_id = None
+                
+                if self.hubspot_service.api_token:
+                    logger.info("Attempting HubSpot integration...")
+                    try:
+                        appointment_datetime = datetime.combine(
+                            datetime.strptime(customer_data['date'], '%Y-%m-%d').date(),
+                            datetime.strptime(customer_data['time'], '%H:%M').time()
+                        )
+                        
+                        contact_result = self.hubspot_service.create_contact(
+                            customer_data['name'], 
+                            customer_data['email'], 
+                            formatted_phone,
+                            "RinglyPro Voice Prospect"
+                        )
+                        
+                        if contact_result.get("success"):
+                            hubspot_contact_id = contact_result.get("contact_id")
+                            logger.info(f"HubSpot contact created/updated: {hubspot_contact_id}")
+                            
+                            meeting_title = f"RinglyPro Voice Consultation - {customer_data.get('purpose', 'General consultation')}"
+                            meeting_result = self.hubspot_service.create_meeting(
+                                meeting_title, 
+                                hubspot_contact_id, 
+                                appointment_datetime,
+                                30
+                            )
+                            
+                            if meeting_result.get("success"):
+                                hubspot_meeting_id = meeting_result.get("meeting_id")
+                                logger.info(f"HubSpot meeting created: {hubspot_meeting_id}")
+                        
+                    except Exception as hubspot_error:
+                        logger.error(f"HubSpot integration error: {hubspot_error}")
+                
+                # Create response appointment object
+                appointment = {
+                    'id': crm_appointment.get('id'),
+                    'confirmation_code': confirmation_code,
+                    'customer_name': customer_data['name'],
+                    'customer_email': customer_data['email'],
+                    'customer_phone': formatted_phone,
+                    'date': customer_data['date'],
+                    'time': customer_data['time'],
+                    'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
+                    'zoom_url': zoom_meeting_url,
+                    'zoom_id': zoom_meeting_id,
+                    'zoom_password': zoom_password,
+                    'hubspot_contact_id': hubspot_contact_id,
+                    'hubspot_meeting_id': hubspot_meeting_id
+                }
+                
+                # Send confirmations
+                confirmation_results = self.send_appointment_confirmations(appointment)
+                
+                logger.info(f"""
+                APPOINTMENT BOOKING SUMMARY:
+                - Confirmation Code: {confirmation_code}
+                - PostgreSQL Database: Saved
+                - HubSpot: {'Integrated' if hubspot_meeting_id else 'Failed/Skipped'}
+                - Email: {confirmation_results.get('email', 'Failed')}
+                - SMS: {confirmation_results.get('sms', 'Failed')}
+                """)
+                
+                return True, "Appointment booked successfully in PostgreSQL", appointment
+                
+            else:
+                logger.error("PostgreSQL API failed to create appointment")
+                return False, "Failed to book appointment in PostgreSQL system", {}
+                
+        except Exception as e:
+            logger.error(f"Critical error booking appointment via PostgreSQL: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False, f"Booking error: {str(e)}", {}
+    
+    def get_appointment_by_code(self, confirmation_code: str) -> Optional[dict]:
+        """Get appointment by confirmation code from PostgreSQL API"""
+        try:
+            logger.info(f"Looking up appointment {confirmation_code} in PostgreSQL")
+            
+            result = self.crm_client._make_request('GET', f'/appointments/confirmation/{confirmation_code}')
+            
+            if result and result.get('success'):
+                appointment = result.get('appointment', {})
+                logger.info(f"Found appointment in PostgreSQL: {appointment.get('customerName', 'Unknown')}")
+                return appointment
+            else:
+                logger.warning(f"Appointment {confirmation_code} not found in PostgreSQL")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting appointment from PostgreSQL: {e}")
+            return None
+            @staticmethod
+    def send_appointment_confirmations(appointment: dict) -> dict:
+        """Send email and SMS confirmations"""
+        results = {'email': 'Failed', 'sms': 'Failed'}
+        
+        try:
+            email_result = AppointmentManager.send_email_confirmation(appointment)
+            results['email'] = 'Sent' if email_result else 'Failed'
+            
+            sms_result = AppointmentManager.send_sms_confirmation(appointment)
+            results['sms'] = 'Sent' if sms_result else 'Failed'
+            
+        except Exception as e:
+            logger.error(f"Error in send_appointment_confirmations: {e}")
+        
+        return results
+    
+    @staticmethod
+    def send_email_confirmation(appointment: dict) -> bool:
+        """Send detailed email confirmation"""
+        try:
+            if not all([email_user, email_password]):
+                logger.warning("Email credentials not configured")
+                return False
+            
+            logger.info(f"Attempting to send email to: {appointment['customer_email']}")
+            
+            date_obj = datetime.strptime(appointment['date'], '%Y-%m-%d')
+            formatted_date = date_obj.strftime('%A, %B %d, %Y')
+            
+            time_obj = datetime.strptime(appointment['time'], '%H:%M')
+            formatted_time = time_obj.strftime('%I:%M %p')
+            
+            subject = f"RinglyPro Appointment Confirmation - {formatted_date}"
+            
+            body = f"""
+Dear {appointment['customer_name']},
 
+Your appointment with RinglyPro has been successfully scheduled!
+
+APPOINTMENT DETAILS:
+- Date: {formatted_date}
+- Time: {formatted_time} EST
+- Duration: 30 minutes
+- Purpose: {appointment['purpose']}
+- Confirmation Code: {appointment['confirmation_code']}
+
+ZOOM MEETING DETAILS:
+- Meeting Link: {appointment['zoom_url']}
+- Meeting ID: {appointment['zoom_id']}
+- Password: {appointment['zoom_password']}
+
+WHAT TO EXPECT:
+Our team will discuss your specific needs and how RinglyPro can help streamline your business communications.
+
+NEED TO RESCHEDULE?
+Reply to this email or call us at (888) 610-3810 with your confirmation code.
+
+We look forward to speaking with you!
+
+Best regards,
+The RinglyPro Team
+Email: support@ringlypro.com
+Phone: (888) 610-3810
+Website: https://ringlypro.com
+            """.strip()
+            
+            msg = MIMEMultipart()
+            msg['From'] = from_email
+            msg['To'] = appointment['customer_email']
+            msg['Subject'] = subject
+            msg.attach(MIMEText(body, 'plain'))
+            
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            server.login(email_user, email_password)
+            server.send_message(msg)
+            server.quit()
+            
+            logger.info(f"Email confirmation sent to {appointment['customer_email']}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Email sending failed: {e}")
+            return False
+    
+    @staticmethod
+    def send_sms_confirmation(appointment: dict) -> bool:
+        """Send SMS confirmation"""
+        try:
+            if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
+                logger.warning("Twilio credentials not configured")
+                return False
+            
+            logger.info(f"Attempting to send SMS to: {appointment['customer_phone']}")
+            
+            client = Client(twilio_account_sid, twilio_auth_token)
+            
+            date_obj = datetime.strptime(appointment['date'], '%Y-%m-%d')
+            formatted_date = date_obj.strftime('%m/%d/%Y')
+            
+            time_obj = datetime.strptime(appointment['time'], '%H:%M')
+            formatted_time = time_obj.strftime('%I:%M %p')
+            
+            message_body = f"""
+RinglyPro Appointment Confirmed
+
+{formatted_date} at {formatted_time} EST
+Join: {appointment['zoom_url']}
+Code: {appointment['confirmation_code']}
+
+Meeting ID: {appointment['zoom_id']}
+Password: {appointment['zoom_password']}
+
+Need help? Reply to this message or call (888) 610-3810.
+            """.strip()
+            
+            message = client.messages.create(
+                body=message_body,
+                from_=twilio_phone,
+                to=appointment['customer_phone']
+            )
+            
+            logger.info(f"SMS confirmation sent. SID: {message.sid}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"SMS sending failed: {e}")
+            return False
 
 # ==================== TELEPHONY CALL HANDLER ====================
-
-def say_with_rachel(self, response: VoiceResponse, text: str) -> None:
-    """Helper to use Rachel's voice or fallback to Polly"""
-    audio_url = self.generate_rachel_audio(text)
-    
-    if audio_url:
-        response.play(audio_url)
-        logger.info("✅ Using Rachel's voice")
-    else:
-        response.say(text, voice='Polly.Joanna')
-        logger.info("⚠️ Using Polly fallback")
 
 class PhoneCallHandler:
     """Handle incoming phone calls with IVR and Rachel's voice"""
@@ -433,7 +818,6 @@ class PhoneCallHandler:
                 "xi-api-key": self.elevenlabs_api_key
             }
             
-            # Optimize text for speech
             speech_text = text.replace("RinglyPro", "Ringly Pro")
             speech_text = speech_text.replace("AI", "A.I.")
             speech_text = speech_text.replace("$", " dollars")
@@ -450,16 +834,14 @@ class PhoneCallHandler:
             response = requests.post(url, json=tts_data, headers=headers, timeout=10)
             
             if response.status_code == 200:
-                # Save audio temporarily
                 audio_filename = f"rachel_{uuid.uuid4()}.mp3"
                 audio_path = f"/tmp/{audio_filename}"
                 
                 with open(audio_path, 'wb') as f:
                     f.write(response.content)
                 
-                # Return URL that Twilio can access
                 audio_url = f"{self.webhook_base_url}/audio/{audio_filename}"
-                logger.info(f"✅ Rachel audio generated: {audio_url}")
+                logger.info(f"Rachel audio generated: {audio_url}")
                 return audio_url
             else:
                 logger.warning(f"ElevenLabs TTS failed: {response.status_code}")
@@ -492,17 +874,14 @@ class PhoneCallHandler:
             language='en-US'
         )
         
-        # Try to use Rachel's voice first
         audio_url = self.generate_rachel_audio(greeting_text)
         
         if audio_url:
-            # Use Rachel's premium voice
             gather.play(audio_url)
-            logger.info("✅ Using Rachel's premium voice from ElevenLabs")
+            logger.info("Using Rachel's premium voice from ElevenLabs")
         else:
-            # Fallback to Twilio's voice
             gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
-            logger.info("⚠️ Falling back to Twilio's Polly voice")
+            logger.info("Falling back to Twilio's Polly voice")
         
         response.append(gather)
         response.redirect('/phone/webhook')
@@ -514,9 +893,8 @@ class PhoneCallHandler:
         response = VoiceResponse()
         speech_lower = speech_result.lower().strip()
         
-        logger.info(f"📞 Phone speech input: {speech_result}")
+        logger.info(f"Phone speech input: {speech_result}")
         
-        # Detect intent from speech
         if any(word in speech_lower for word in ['demo', 'consultation', 'appointment', 'meeting', 'schedule']):
             return self.handle_demo_booking()
         elif any(word in speech_lower for word in ['price', 'pricing', 'cost', 'plan', 'package']):
@@ -526,15 +904,12 @@ class PhoneCallHandler:
         elif any(word in speech_lower for word in ['support', 'help', 'customer service', 'agent', 'representative']):
             return self.handle_support_transfer()
         else:
-            # Try FAQ system - FIXED: Use the global function, not self method
             faq_response, is_faq = get_faq_response(speech_result)
             
             if is_faq and not is_no_answer_response(faq_response):
-                # Limit response length for phone
                 if len(faq_response) > 300:
                     faq_response = faq_response[:297] + "..."
                 
-                # Use Rachel's voice for FAQ response
                 audio_url = self.generate_rachel_audio(faq_response)
                 
                 if audio_url:
@@ -562,7 +937,6 @@ class PhoneCallHandler:
                 
                 response.append(followup)
             else:
-                # Can't answer, offer to transfer
                 transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
                 
                 audio_url = self.generate_rachel_audio(transfer_text)
@@ -597,15 +971,14 @@ class PhoneCallHandler:
             speechTimeout='auto'
         )
         
-        # Try to use Rachel's voice first
         audio_url = self.generate_rachel_audio(booking_text)
         
         if audio_url:
             gather.play(audio_url)
-            logger.info("✅ Using Rachel's voice for booking")
+            logger.info("Using Rachel's voice for booking")
         else:
             gather.say(booking_text, voice='Polly.Joanna')
-            logger.info("⚠️ Falling back to Polly voice")
+            logger.info("Falling back to Polly voice")
         
         response.append(gather)
         
@@ -641,15 +1014,14 @@ class PhoneCallHandler:
             speechTimeout='auto'
         )
         
-        # Try to use Rachel's voice first
         audio_url = self.generate_rachel_audio(pricing_text)
         
         if audio_url:
             gather.play(audio_url)
-            logger.info("✅ Using Rachel's voice for pricing")
+            logger.info("Using Rachel's voice for pricing")
         else:
             gather.say(pricing_text, voice='Polly.Joanna')
-            logger.info("⚠️ Falling back to Polly voice")
+            logger.info("Falling back to Polly voice")
         
         response.append(gather)
         
@@ -660,9 +1032,8 @@ class PhoneCallHandler:
         response = VoiceResponse()
         
         try:
-            # Get caller's phone number from the Twilio request
             caller_phone = request.form.get('From', '')
-            logger.info(f"📱 Subscription request from: {caller_phone}")
+            logger.info(f"Subscription request from: {caller_phone}")
             
             subscribe_text = """
             Wonderful! I'm excited to help you get started with Ringly Pro. 
@@ -673,7 +1044,6 @@ class PhoneCallHandler:
             Please hold while I transfer you.
             """
             
-            # Use Rachel's voice
             audio_url = self.generate_rachel_audio(subscribe_text)
             
             if audio_url:
@@ -681,13 +1051,11 @@ class PhoneCallHandler:
             else:
                 response.say(subscribe_text, voice='Polly.Joanna')
             
-            # Send SMS with subscription link
             if caller_phone:
                 self.send_subscription_sms(caller_phone)
             
             response.pause(length=1)
             
-            # Transfer to sales/onboarding number
             dial = Dial(
                 action='/phone/call-complete',
                 timeout=30,
@@ -699,8 +1067,7 @@ class PhoneCallHandler:
             return response
             
         except Exception as e:
-            logger.error(f"❌ Error in handle_subscription: {e}")
-            # Fallback response
+            logger.error(f"Error in handle_subscription: {e}")
             response.say("I'll connect you with our team to help with your subscription.", voice='Polly.Joanna')
             dial = Dial()
             dial.number('+16566001400')
@@ -713,7 +1080,6 @@ class PhoneCallHandler:
         
         transfer_text = "I'll connect you with our customer support team right away. Please hold."
         
-        # Use Rachel's voice
         audio_url = self.generate_rachel_audio(transfer_text)
         
         if audio_url:
@@ -731,68 +1097,11 @@ class PhoneCallHandler:
         
         return response
     
-    def handle_general_inquiry(self, question: str) -> VoiceResponse:
-        """Handle general questions using FAQ system"""
-        response = VoiceResponse()
-        
-        # Use existing FAQ system
-        faq_response, is_faq = get_faq_response(question)
-        
-        if is_faq and not is_no_answer_response(faq_response):
-            # Limit response length for phone
-            if len(faq_response) > 300:
-                faq_response = faq_response[:297] + "..."
-            
-            # Use Rachel's voice for FAQ response
-            audio_url = self.generate_rachel_audio(faq_response)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(faq_response, voice='Polly.Joanna')
-            
-            response.pause(length=1)
-            
-            followup = Gather(
-                input='speech',
-                timeout=5,
-                action='/phone/process-speech',
-                method='POST',
-                speechTimeout='auto'
-            )
-            
-            followup_text = "Is there anything else I can help you with today?"
-            followup_audio = self.generate_rachel_audio(followup_text)
-            
-            if followup_audio:
-                followup.play(followup_audio)
-            else:
-                followup.say(followup_text, voice='Polly.Joanna')
-            
-            response.append(followup)
-        else:
-            # Can't answer, offer to transfer
-            transfer_text = "I'd be happy to help with that. Let me connect you with someone who can provide more specific information."
-            
-            audio_url = self.generate_rachel_audio(transfer_text)
-            
-            if audio_url:
-                response.play(audio_url)
-            else:
-                response.say(transfer_text, voice='Polly.Joanna')
-            
-            dial = Dial(action='/phone/call-complete', timeout=30)
-            dial.number('+16566001400')
-            response.append(dial)
-        
-        return response
-    
     def collect_booking_info(self, step: str, value: str = None) -> VoiceResponse:
         """Multi-step booking information collection"""
         response = VoiceResponse()
         
         if step == 'name':
-            # Store name and ask for phone
             gather = Gather(
                 input='speech dtmf',
                 timeout=10,
@@ -814,32 +1123,25 @@ class PhoneCallHandler:
             response.append(gather)
             
         elif step == 'phone':
-            # Enhanced: Try to create appointment in database
             try:
-                # Get call SID and customer name from session
                 import flask
                 call_sid = flask.request.form.get('CallSid', 'unknown')
                 customer_name = flask.session.get(f'call_{call_sid}_name', 'Customer')
                 
-                # Try to create appointment
                 success, confirmation_code = self.create_appointment_from_phone(
                     customer_name, 
-                    value,  # phone number
+                    value,
                     call_sid
                 )
                 
                 if success and confirmation_code:
-                    # SUCCESS: Appointment created in database
                     text1 = f"Perfect! I've scheduled your consultation. Your confirmation code is {confirmation_code}. You'll receive text and email confirmations with all the details including your Zoom meeting link."
                 else:
-                    # FALLBACK: Use original behavior
                     text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
-                    # Still send the SMS with booking link
                     self.send_booking_sms(value)
                     
             except Exception as e:
                 logger.error(f"Appointment creation error: {e}")
-                # FALLBACK: Use original behavior if anything fails
                 text1 = f"Perfect! I have your phone number as {value}. I'll send you a text message with a link to schedule your consultation online at your convenience."
                 self.send_booking_sms(value)
             
@@ -881,9 +1183,9 @@ class PhoneCallHandler:
             client = Client(twilio_account_sid, twilio_auth_token)
             
             message_body = f"""
-Thank you for calling RinglyPro! 🎯
+Thank you for calling RinglyPro!
 
-📅 Schedule your FREE consultation:
+Schedule your FREE consultation:
 {self.webhook_base_url}/chat-enhanced
 
 Or reply to this message with your preferred date/time.
@@ -899,7 +1201,7 @@ Questions? Call us back at 888-610-3810
                 to=phone_number
             )
             
-            logger.info(f"📱 Booking SMS sent to {phone_number}: {message.sid}")
+            logger.info(f"Booking SMS sent to {phone_number}: {message.sid}")
             
         except Exception as e:
             logger.error(f"Failed to send booking SMS: {e}")
@@ -914,9 +1216,9 @@ Questions? Call us back at 888-610-3810
             client = Client(twilio_account_sid, twilio_auth_token)
             
             message_body = f"""
-🎉 Thanks for wanting to subscribe to RinglyPro!
+Thanks for wanting to subscribe to RinglyPro!
 
-🔗 Complete your subscription here:
+Complete your subscription here:
 https://ringlypro.com/subscribe
 
 You're also being connected to our specialist now.
@@ -932,613 +1234,50 @@ Questions? Call us back at 888-610-3810
                 to=phone_number
             )
             
-            logger.info(f"📱 Subscription SMS sent to {phone_number}: {message.sid}")
+            logger.info(f"Subscription SMS sent to {phone_number}: {message.sid}")
             
         except Exception as e:
             logger.error(f"Failed to send subscription SMS: {e}")
     
     def create_appointment_from_phone(self, name: str, phone: str, call_sid: str) -> Tuple[bool, Optional[str]]:
-        """Create appointment after phone collection"""
+        """Create appointment via PostgreSQL API after phone collection"""
         try:
-            # Use a valid email format that HubSpot will accept
-            phone_digits = re.sub(r'\D', '', phone)[-10:]  # Last 10 digits
+            phone_digits = re.sub(r'\D', '', phone)[-10:]
             email = f"phone.{phone_digits}@booking.ringlypro.com"
             
-            # Get tomorrow's date and default morning slot
             from datetime import datetime, timedelta
             tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
             
-            # Log the attempt
-            logger.info(f"📞 Creating phone appointment for {name} ({phone}) with email {email}")
+            logger.info(f"Creating phone appointment for {name} ({phone}) via PostgreSQL API")
             
             appointment_data = {
                 'name': name,
                 'email': email,
                 'phone': phone,
                 'date': tomorrow,
-                'time': '10:00',  # Default morning slot
+                'time': '10:00',
                 'purpose': f'Phone booking - Call {call_sid[:8]} - NEEDS EMAIL VERIFICATION'
             }
             
-            # Use existing AppointmentManager
             appointment_manager = AppointmentManager()
             success, message, appointment = appointment_manager.book_appointment(appointment_data)
             
             if success:
-                logger.info(f"✅ Phone appointment created: {appointment.get('confirmation_code')}")
-                logger.info(f"📊 HubSpot Contact ID: {appointment.get('hubspot_contact_id')}")
-                logger.info(f"📊 HubSpot Meeting ID: {appointment.get('hubspot_meeting_id')}")
-                
-                # Create detailed HubSpot task for follow-up
-                if appointment.get('hubspot_contact_id'):
-                    self.create_detailed_hubspot_task(
-                        name, 
-                        phone, 
-                        email,
-                        appointment.get('confirmation_code'),
-                        appointment.get('hubspot_contact_id')
-                    )
-                
+                logger.info(f"Phone appointment created via PostgreSQL: {appointment.get('confirmation_code')}")
                 return True, appointment.get('confirmation_code', 'PENDING')
             else:
-                logger.warning(f"Failed to create appointment: {message}")
+                logger.warning(f"Failed to create appointment via PostgreSQL: {message}")
                 return False, None
                 
         except Exception as e:
-            logger.error(f"Failed to create phone appointment: {e}")
+            logger.error(f"Failed to create phone appointment via PostgreSQL: {e}")
             return False, None
-
-    def create_detailed_hubspot_task(self, name: str, phone: str, email: str, confirmation_code: str, contact_id: str):
-        """Create detailed HubSpot task with contact association"""
-        try:
-            if not hubspot_api_token:
-                logger.warning("HubSpot API token not configured")
-                return
-                
-            headers = {
-                "Authorization": f"Bearer {hubspot_api_token}",
-                "Content-Type": "application/json"
-            }
-            
-            # Create task with detailed information
-            task_data = {
-                "properties": {
-                    "hs_task_subject": f"🔴 URGENT: Verify Phone Booking - {name}",
-                    "hs_task_body": f"""
-PHONE BOOKING FOLLOW-UP REQUIRED
-
-Customer Information:
-- Name: {name}
-- Phone: {phone}
-- Placeholder Email: {email}
-- Confirmation Code: {confirmation_code}
-- Booking Source: Phone Call (Rachel AI)
-
-IMMEDIATE ACTIONS NEEDED:
-1. ✉️ Get correct email address from customer
-2. 📧 Update HubSpot contact with real email
-3. 📅 Confirm appointment date/time works
-4. 📑 Send pre-meeting materials
-5. 💬 Add notes about customer's specific needs
-
-APPOINTMENT DETAILS:
-- Scheduled for: Tomorrow at 10:00 AM EST
-- Meeting Type: RinglyPro Consultation (30 min)
-- Zoom Link: Already sent via SMS
-
-⚠️ NOTE: This was booked via phone, so email is a placeholder.
-Customer expects confirmation - please verify ASAP!
-                    """.strip(),
-                    "hs_task_priority": "HIGH",
-                    "hs_task_status": "NOT_STARTED",
-                    "hs_task_type": "CALL"
-                }
-            }
-            
-            # Add owner if configured
-            if hubspot_owner_id:
-                task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
-            
-            # Set due date to 2 hours from now (urgent!)
-            due_date = datetime.now() + timedelta(hours=2)
-            task_data["properties"]["hs_timestamp"] = str(int(due_date.timestamp() * 1000))
-            
-            # Create the task
-            response = requests.post(
-                "https://api.hubapi.com/crm/v3/objects/tasks",
-                headers=headers,
-                json=task_data,
-                timeout=10
-            )
-            
-            if response.status_code in [200, 201]:
-                task_id = response.json().get("id")
-                logger.info(f"✅ HubSpot task created: {task_id}")
-                
-                # Associate task with contact
-                if task_id and contact_id:
-                    association_data = {
-                        "inputs": [{
-                            "from": {"id": task_id},
-                            "to": {"id": contact_id},
-                            "type": "task_to_contact"
-                        }]
-                    }
-                    
-                    assoc_response = requests.put(
-                        "https://api.hubapi.com/crm/v4/associations/tasks/contacts/batch/create",
-                        headers=headers,
-                        json=association_data,
-                        timeout=10
-                    )
-                    
-                    if assoc_response.status_code in [200, 201, 204]:
-                        logger.info(f"✅ Task associated with contact {contact_id}")
-                    else:
-                        logger.warning(f"Failed to associate task: {assoc_response.status_code}")
-            else:
-                logger.error(f"HubSpot task creation failed: {response.status_code} - {response.text}")
-                    
-        except Exception as e:
-            logger.error(f"HubSpot task error: {e}")
-    
-    # ================ NEW METHODS ADDED BELOW ================
-    
-# ENHANCED create_appointment_from_phone method with better HubSpot integration
-# Replace the existing method in PhoneCallHandler class
-
-def create_appointment_from_phone(self, name: str, phone: str, call_sid: str) -> Tuple[bool, Optional[str]]:
-    """Create appointment after phone collection - FIXED HUBSPOT VERSION"""
-    try:
-        # IMPORTANT: Use a valid email format that HubSpot will accept
-        # Using the phone number as part of the email ensures uniqueness
-        phone_digits = re.sub(r'\D', '', phone)[-10:]  # Last 10 digits
-        email = f"phone.{phone_digits}@booking.ringlypro.com"  # More legitimate looking email
-        
-        # Get tomorrow's date and default morning slot
-        from datetime import datetime, timedelta
-        tomorrow = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        # Log the attempt
-        logger.info(f"📞 Creating phone appointment for {name} ({phone}) with email {email}")
-        
-        appointment_data = {
-            'name': name,
-            'email': email,
-            'phone': phone,
-            'date': tomorrow,
-            'time': '10:00',  # Default morning slot
-            'purpose': f'Phone booking - Call {call_sid[:8]} - NEEDS EMAIL VERIFICATION'
-        }
-        
-        # Use existing AppointmentManager
-        appointment_manager = AppointmentManager()
-        success, message, appointment = appointment_manager.book_appointment(appointment_data)
-        
-        if success:
-            logger.info(f"✅ Phone appointment created: {appointment.get('confirmation_code')}")
-            logger.info(f"📊 HubSpot Contact ID: {appointment.get('hubspot_contact_id')}")
-            logger.info(f"📊 HubSpot Meeting ID: {appointment.get('hubspot_meeting_id')}")
-            
-            # Create detailed HubSpot task for follow-up
-            if appointment.get('hubspot_contact_id'):
-                self.create_detailed_hubspot_task(
-                    name, 
-                    phone, 
-                    email,
-                    appointment.get('confirmation_code'),
-                    appointment.get('hubspot_contact_id')
-                )
-            
-            return True, appointment.get('confirmation_code', 'PENDING')
-        else:
-            logger.warning(f"Failed to create appointment: {message}")
-            return False, None
-            
-    except Exception as e:
-        logger.error(f"Failed to create phone appointment: {e}")
-        return False, None
-
-def create_detailed_hubspot_task(self, name: str, phone: str, email: str, confirmation_code: str, contact_id: str):
-    """Create detailed HubSpot task with contact association - NEW METHOD"""
-    try:
-        if not hubspot_api_token:
-            logger.warning("HubSpot API token not configured")
-            return
-            
-        headers = {
-            "Authorization": f"Bearer {hubspot_api_token}",
-            "Content-Type": "application/json"
-        }
-        
-        # Create task with detailed information
-        task_data = {
-            "properties": {
-                "hs_task_subject": f"🔴 URGENT: Verify Phone Booking - {name}",
-                "hs_task_body": f"""
-PHONE BOOKING FOLLOW-UP REQUIRED
-
-Customer Information:
-- Name: {name}
-- Phone: {phone}
-- Placeholder Email: {email}
-- Confirmation Code: {confirmation_code}
-- Booking Source: Phone Call (Rachel AI)
-
-IMMEDIATE ACTIONS NEEDED:
-1. ✉️ Get correct email address from customer
-2. 📧 Update HubSpot contact with real email
-3. 📅 Confirm appointment date/time works
-4. 📑 Send pre-meeting materials
-5. 💬 Add notes about customer's specific needs
-
-APPOINTMENT DETAILS:
-- Scheduled for: Tomorrow at 10:00 AM EST
-- Meeting Type: RinglyPro Consultation (30 min)
-- Zoom Link: Already sent via SMS
-
-⚠️ NOTE: This was booked via phone, so email is a placeholder.
-Customer expects confirmation - please verify ASAP!
-                """.strip(),
-                "hs_task_priority": "HIGH",
-                "hs_task_status": "NOT_STARTED",
-                "hs_task_type": "CALL"
-            }
-        }
-        
-        # Add owner if configured
-        if hubspot_owner_id:
-            task_data["properties"]["hubspot_owner_id"] = hubspot_owner_id
-        
-        # Set due date to 2 hours from now (urgent!)
-        due_date = datetime.now() + timedelta(hours=2)
-        task_data["properties"]["hs_timestamp"] = str(int(due_date.timestamp() * 1000))
-        
-        # Create the task
-        response = requests.post(
-            "https://api.hubapi.com/crm/v3/objects/tasks",
-            headers=headers,
-            json=task_data,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201]:
-            task_id = response.json().get("id")
-            logger.info(f"✅ HubSpot task created: {task_id}")
-            
-            # Associate task with contact
-            if task_id and contact_id:
-                association_data = {
-                    "inputs": [{
-                        "from": {"id": task_id},
-                        "to": {"id": contact_id},
-                        "type": "task_to_contact"
-                    }]
-                }
-                
-                assoc_response = requests.put(
-                    "https://api.hubapi.com/crm/v4/associations/tasks/contacts/batch/create",
-                    headers=headers,
-                    json=association_data,
-                    timeout=10
-                )
-                
-                if assoc_response.status_code in [200, 201, 204]:
-                    logger.info(f"✅ Task associated with contact {contact_id}")
-                else:
-                    logger.warning(f"Failed to associate task: {assoc_response.status_code}")
-        else:
-            logger.error(f"HubSpot task creation failed: {response.status_code} - {response.text}")
-                
-    except Exception as e:
-        logger.error(f"HubSpot task error: {e}")
-
-def send_subscription_sms(self, phone_number: str):
-    """Send SMS with subscription link"""
-    try:
-        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-            logger.warning("Twilio not configured for subscription SMS")
-            return
-        
-        client = Client(twilio_account_sid, twilio_auth_token)
-        
-        message_body = f"""
-🎉 Thanks for wanting to subscribe to RinglyPro!
-
-🔗 Complete your subscription here:
-https://ringlypro.com/subscribe
-
-You're also being connected to our specialist now.
-
-Questions? Call us back at 888-610-3810
-
-- The RinglyPro Team
-        """.strip()
-        
-        message = client.messages.create(
-            body=message_body,
-            from_=twilio_phone,
-            to=phone_number
-        )
-        
-        logger.info(f"📱 Subscription SMS sent to {phone_number}: {message.sid}")
-        
-    except Exception as e:
-        logger.error(f"Failed to send subscription SMS: {e}")
-
-# ADD THIS DEBUG ENDPOINT to test HubSpot connection
-@app.route('/test-meeting-only', methods=['GET'])
-def test_meeting_only():
-    """Test creating just a meeting"""
-    try:
-        headers = {
-            "Authorization": f"Bearer {hubspot_api_token}",
-            "Content-Type": "application/json"
-        }
-        
-        # Create a meeting using the engagement API (older but more reliable)
-        meeting_data = {
-            "engagement": {
-                "active": True,
-                "type": "MEETING",
-                "timestamp": int(time.time() * 1000)
-            },
-            "associations": {
-                "contactIds": [],  # We'll leave empty for test
-                "companyIds": [],
-                "dealIds": []
-            },
-            "metadata": {
-                "title": "Test RinglyPro Meeting",
-                "body": "Test meeting from RinglyPro system",
-                "startTime": int((datetime.now() + timedelta(days=1)).timestamp() * 1000),
-                "endTime": int((datetime.now() + timedelta(days=1, minutes=30)).timestamp() * 1000),
-                "location": "https://us06web.zoom.us/j/7269045564"
-            }
-        }
-        
-        # Try the older engagement API
-        response = requests.post(
-            "https://api.hubapi.com/engagements/v1/engagements",
-            headers=headers,
-            json=meeting_data,
-            timeout=10
-        )
-        
-        return jsonify({
-            "status": response.status_code,
-            "response": response.json() if response.status_code != 204 else "Success"
-        })
-        
-    except Exception as e:
-        import traceback
-        return jsonify({"error": str(e), "trace": traceback.format_exc()})
-
-
-
-@app.route('/test-hubspot', methods=['GET'])
-def test_hubspot():
-    """Test HubSpot integration and show recent contacts/meetings"""
-    try:
-        if not hubspot_api_token:
-            return jsonify({"error": "HubSpot not configured"}), 500
-        
-        headers = {
-            "Authorization": f"Bearer {hubspot_api_token}",
-            "Content-Type": "application/json"
-        }
-        
-        results = {
-            "token_configured": bool(hubspot_api_token),
-            "token_preview": hubspot_api_token[:20] + "..." if hubspot_api_token else None,
-            "contacts": [],
-            "meetings": [],
-            "tasks": []
-        }
-        
-        # Test 1: Get recent contacts
-        contacts_response = requests.get(
-            "https://api.hubapi.com/crm/v3/objects/contacts",
-            headers=headers,
-            params={"limit": 5, "sorts": "-createdAt"},
-            timeout=10
-        )
-        
-        if contacts_response.status_code == 200:
-            contacts = contacts_response.json().get("results", [])
-            for contact in contacts:
-                props = contact.get("properties", {})
-                results["contacts"].append({
-                    "id": contact.get("id"),
-                    "name": f"{props.get('firstname', '')} {props.get('lastname', '')}".strip(),
-                    "email": props.get("email"),
-                    "phone": props.get("phone"),
-                    "created": props.get("createdate")
-                })
-        else:
-            results["contacts_error"] = f"Status {contacts_response.status_code}: {contacts_response.text[:200]}"
-        
-        # Test 2: Get recent meetings
-        meetings_response = requests.get(
-            "https://api.hubapi.com/crm/v3/objects/meetings",
-            headers=headers,
-            params={"limit": 5, "sorts": "-createdAt"},
-            timeout=10
-        )
-        
-        if meetings_response.status_code == 200:
-            meetings = meetings_response.json().get("results", [])
-            for meeting in meetings:
-                props = meeting.get("properties", {})
-                results["meetings"].append({
-                    "id": meeting.get("id"),
-                    "title": props.get("hs_meeting_title"),
-                    "start_time": props.get("hs_meeting_start_time"),
-                    "created": props.get("createdate")
-                })
-        else:
-            results["meetings_error"] = f"Status {meetings_response.status_code}: {meetings_response.text[:200]}"
-        
-        # Test 3: Get recent tasks
-        tasks_response = requests.get(
-            "https://api.hubapi.com/crm/v3/objects/tasks",
-            headers=headers,
-            params={"limit": 5, "sorts": "-createdAt"},
-            timeout=10
-        )
-        
-        if tasks_response.status_code == 200:
-            tasks = tasks_response.json().get("results", [])
-            for task in tasks:
-                props = task.get("properties", {})
-                results["tasks"].append({
-                    "id": task.get("id"),
-                    "subject": props.get("hs_task_subject"),
-                    "priority": props.get("hs_task_priority"),
-                    "status": props.get("hs_task_status"),
-                    "created": props.get("createdate")
-                })
-        else:
-            results["tasks_error"] = f"Status {tasks_response.status_code}: {tasks_response.text[:200]}"
-        
-        # Test 4: Check our phone booking emails
-        search_response = requests.post(
-            "https://api.hubapi.com/crm/v3/objects/contacts/search",
-            headers=headers,
-            json={
-                "filterGroups": [{
-                    "filters": [{
-                        "propertyName": "email",
-                        "operator": "CONTAINS_TOKEN",
-                        "value": "booking.ringlypro"
-                    }]
-                }],
-                "limit": 10
-            },
-            timeout=10
-        )
-        
-        if search_response.status_code == 200:
-            phone_bookings = search_response.json().get("results", [])
-            results["phone_bookings"] = []
-            for booking in phone_bookings:
-                props = booking.get("properties", {})
-                results["phone_bookings"].append({
-                    "id": booking.get("id"),
-                    "name": f"{props.get('firstname', '')} {props.get('lastname', '')}".strip(),
-                    "email": props.get("email"),
-                    "phone": props.get("phone")
-                })
-        
-        return jsonify(results)
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# ALSO UPDATE the HubSpotService.create_contact method to handle phone bookings better
-def create_contact(self, name: str, email: str = "", phone: str = "", company: str = "") -> Dict[str, Any]:
-    """Create or update contact in HubSpot - ENHANCED FOR PHONE BOOKINGS"""
-    try:
-        # For phone bookings, search by phone first since email is placeholder
-        if email and "booking.ringlypro" in email and phone:
-            # Try to find existing contact by phone
-            search_data = {
-                "filterGroups": [{
-                    "filters": [{
-                        "propertyName": "phone",
-                        "operator": "EQ",
-                        "value": phone
-                    }]
-                }],
-                "properties": ["email", "firstname", "lastname", "phone", "company"],
-                "limit": 1
-            }
-            
-            search_response = requests.post(
-                f"{self.base_url}/crm/v3/objects/contacts/search",
-                headers=self.headers,
-                json=search_data,
-                timeout=10
-            )
-            
-            if search_response.status_code == 200:
-                results = search_response.json()
-                if results.get("results"):
-                    # Contact exists with this phone - update it
-                    existing_contact = results["results"][0]
-                    contact_id = existing_contact["id"]
-                    
-                    # Update with new information
-                    update_data = {
-                        "firstname": name.split()[0] if name.split() else "",
-                        "lastname": " ".join(name.split()[1:]) if len(name.split()) > 1 else "",
-                        "lifecyclestage": "lead",
-                        "hs_lead_status": "NEW"  # CHANGED: Using valid HubSpot property
-                    }
-                    
-                    # Only update email if the existing one is also a placeholder
-                    existing_email = existing_contact.get("properties", {}).get("email", "")
-                    if not existing_email or "booking.ringlypro" in existing_email:
-                        update_data["email"] = email
-                    
-                    return self.update_contact(contact_id, update_data)
-        
-        # Standard contact creation for non-phone bookings or if no existing contact found
-        name_parts = name.strip().split()
-        properties = {
-            "firstname": name_parts[0] if name_parts else "",
-            "lastname": " ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-            "email": email,
-            "phone": phone,
-            "company": company or "Phone Booking - Needs Follow-up",
-            "lifecyclestage": "lead"
-            # REMOVED: "lead_source" - this property doesn't exist in HubSpot
-        }
-        
-        # Add note for phone bookings
-        if email and "booking.ringlypro" in email:
-            properties["hs_lead_status"] = "NEW"  # CHANGED: Using valid property
-            # REMOVED: "notes" property - use description instead if needed
-        
-        # Remove empty values
-        properties = {k: v for k, v in properties.items() if v}
-        
-        contact_data = {"properties": properties}
-        
-        response = requests.post(
-            f"{self.base_url}/crm/v3/objects/contacts",
-            headers=self.headers,
-            json=contact_data,
-            timeout=10
-        )
-        
-        if response.status_code in [200, 201]:
-            contact = response.json()
-            logger.info(f"✅ HubSpot contact created: {contact.get('id')} - {name}")
-            return {
-                "success": True,
-                "message": f"Contact created: {name}",
-                "contact_id": contact.get("id"),
-                "contact": contact
-            }
-        else:
-            logger.error(f"HubSpot contact creation failed: {response.status_code} - {response.text}")
-            return {"success": False, "error": f"Failed to create contact: {response.text}"}
-            
-    except Exception as e:
-        logger.error(f"Error creating HubSpot contact: {e}")
-        return {"success": False, "error": f"Error creating contact: {str(e)}"}
-            # Don't break the flow if HubSpot fails
 
 def send_call_data_to_crm(call_data):
-    """
-    Send call data to CRM webhook asynchronously
-    This runs in background and doesn't affect Rachel's functionality
-    """
+    """Send call data to PostgreSQL via CRM webhook"""
     try:
-        logger.info(f"📊 Sending call data to CRM: {call_data.get('CallSid', 'Unknown')}")
+        logger.info(f"Sending call data to PostgreSQL: {call_data.get('CallSid', 'Unknown')}")
         
-        # Prepare data for CRM webhook
         crm_payload = {
             'CallSid': call_data.get('CallSid'),
             'From': call_data.get('From'),
@@ -1552,430 +1291,31 @@ def send_call_data_to_crm(call_data):
             'Notes': 'Call handled by Rachel AI Assistant'
         }
         
-        # Remove None values
         crm_payload = {k: v for k, v in crm_payload.items() if v is not None}
         
-        # Send to CRM webhook with timeout
         response = requests.post(
             CRM_WEBHOOK_URL,
             headers={'Content-Type': 'application/json'},
             json=crm_payload,
-            timeout=5  # Short timeout so it doesn't delay Rachel
+            timeout=5
         )
         
         if response.status_code in [200, 201, 204]:
-            logger.info(f"✅ CRM webhook successful: {response.status_code}")
+            logger.info(f"PostgreSQL webhook successful: {response.status_code}")
         else:
-            logger.warning(f"⚠️ CRM webhook failed: {response.status_code}")
+            logger.warning(f"PostgreSQL webhook failed: {response.status_code}")
             
     except Exception as e:
-        logger.warning(f"⚠️ CRM webhook error: {str(e)} - continuing without CRM logging")
+        logger.warning(f"PostgreSQL webhook error: {str(e)} - continuing without PostgreSQL logging")
 
-# END OF PhoneCallHandler CLASS
-
-# ==================== APPOINTMENT MANAGEMENT CLASS ====================
-
-class AppointmentManager:
-    
-    def __init__(self):
-        self.hubspot_service = HubSpotService()
-    
-    @staticmethod
-    def generate_confirmation_code():
-        """Generate unique confirmation code"""
-        return str(uuid.uuid4())[:8].upper()
-    
-    @staticmethod
-    def get_available_slots(date_str: str, timezone_str: str = 'Eastern') -> List[str]:
-        """Get available appointment slots for a given date"""
-        try:
-            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-            target_tz = timezone(timedelta(hours=-5))
-            
-            day_name = target_date.strftime('%A').lower()
-            
-            if day_name not in business_hours or business_hours[day_name]['start'] == 'closed':
-                return []
-            
-            start_time = datetime.strptime(business_hours[day_name]['start'], '%H:%M').time()
-            end_time = datetime.strptime(business_hours[day_name]['end'], '%H:%M').time()
-            
-            slots = []
-            current_time = datetime.combine(target_date, start_time)
-            end_datetime = datetime.combine(target_date, end_time)
-            
-            while current_time < end_datetime:
-                slot_time = current_time.strftime('%H:%M')
-                
-                if not AppointmentManager.is_slot_available(date_str, slot_time):
-                    current_time += timedelta(minutes=30)
-                    continue
-                
-                if target_date == datetime.now().date():
-                    now = datetime.now(target_tz)
-                    slot_datetime = datetime.combine(target_date, current_time.time()).replace(tzinfo=target_tz)
-                    if slot_datetime <= now + timedelta(hours=1):
-                        current_time += timedelta(minutes=30)
-                        continue
-                
-                slots.append(slot_time)
-                current_time += timedelta(minutes=30)
-            
-            return slots[:10]
-            
-        except Exception as e:
-            logger.error(f"Error getting available slots: {e}")
-            return []
-    
-    @staticmethod
-    def is_slot_available(date_str: str, time_str: str) -> bool:
-        """Check if a specific time slot is available"""
-        try:
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''SELECT COUNT(*) FROM appointments 
-                              WHERE appointment_date = ? AND appointment_time = ? AND status != 'cancelled' ''',
-                           (date_str, time_str))
-            
-            count = cursor.fetchone()[0]
-            conn.close()
-            
-            return count == 0
-        except Exception as e:
-            logger.error(f"Error checking slot availability: {e}")
-            return False
-    
-    def book_appointment(self, customer_data: dict) -> Tuple[bool, str, dict]:
-        """Book a new appointment with ENHANCED HubSpot integration and notifications"""
-        try:
-            confirmation_code = self.generate_confirmation_code()
-            logger.info(f"📅 Starting appointment booking with confirmation code: {confirmation_code}")
-            
-            # Validate required fields
-            required_fields = ['name', 'email', 'phone', 'date', 'time']
-            for field in required_fields:
-                if not customer_data.get(field):
-                    logger.error(f"Missing required field: {field}")
-                    return False, f"Missing required field: {field}", {}
-            
-            # Fix phone number format
-            phone_input = customer_data['phone']
-            # Remove all non-digits
-            phone_digits = re.sub(r'\D', '', phone_input)
-            
-            # Ensure proper format for US numbers
-            if len(phone_digits) == 10:
-                formatted_phone = f"+1{phone_digits}"
-            elif len(phone_digits) == 11 and phone_digits[0] == '1':
-                formatted_phone = f"+{phone_digits}"
-            else:
-                logger.error(f"Invalid phone format: {phone_input}")
-                return False, "Invalid phone number format", {}
-            
-            logger.info(f"📞 Formatted phone: {phone_input} -> {formatted_phone}")
-            
-            # Check slot availability
-            if not self.is_slot_available(customer_data['date'], customer_data['time']):
-                return False, "Selected time slot is no longer available", {}
-            
-            # Create appointment datetime for HubSpot
-            appointment_datetime = datetime.combine(
-                datetime.strptime(customer_data['date'], '%Y-%m-%d').date(),
-                datetime.strptime(customer_data['time'], '%H:%M').time()
-            )
-            
-            # Initialize tracking variables
-            hubspot_contact_id = None
-            hubspot_meeting_id = None
-            hubspot_success = False
-            
-            # Try HubSpot integration with better error handling
-            if self.hubspot_service.api_token:
-                logger.info("🔄 Attempting HubSpot integration...")
-                
-                try:
-                    # Create/update contact in HubSpot
-                    contact_result = self.hubspot_service.create_contact(
-                        customer_data['name'], 
-                        customer_data['email'], 
-                        formatted_phone,  # Use formatted phone
-                        "RinglyPro Prospect"
-                    )
-                    
-                    if contact_result.get("success"):
-                        hubspot_contact_id = contact_result.get("contact_id")
-                        logger.info(f"✅ HubSpot contact created/updated: {hubspot_contact_id}")
-                        
-                        # Create meeting in HubSpot
-                        meeting_title = f"RinglyPro Consultation - {customer_data.get('purpose', 'General consultation')}"
-                        meeting_result = self.hubspot_service.create_meeting(
-                            meeting_title, 
-                            hubspot_contact_id, 
-                            appointment_datetime,
-                            30
-                        )
-                        
-                        if meeting_result.get("success"):
-                            hubspot_meeting_id = meeting_result.get("meeting_id")
-                            hubspot_success = True
-                            logger.info(f"✅ HubSpot meeting created: {hubspot_meeting_id}")
-                        else:
-                            logger.error(f"❌ HubSpot meeting creation failed: {meeting_result.get('error')}")
-                    else:
-                        logger.error(f"❌ HubSpot contact creation failed: {contact_result.get('error')}")
-                        
-                except Exception as hubspot_error:
-                    logger.error(f"❌ HubSpot integration error: {hubspot_error}")
-                    # Continue anyway - don't fail the booking
-                    
-            else:
-                logger.warning("⚠️ HubSpot API token not configured - skipping CRM integration")
-            
-            # Save to local database (always do this)
-            try:
-                conn = sqlite3.connect('ringlypro.db')
-                cursor = conn.cursor()
-                
-                cursor.execute('''INSERT INTO appointments 
-                                  (customer_name, customer_email, customer_phone, appointment_date, 
-                                   appointment_time, purpose, zoom_meeting_url, confirmation_code, 
-                                   timezone, hubspot_contact_id, hubspot_meeting_id)
-                                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''', (
-                    customer_data['name'],
-                    customer_data['email'],
-                    formatted_phone,  # Save formatted phone
-                    customer_data['date'],
-                    customer_data['time'],
-                    customer_data.get('purpose', 'General consultation'),
-                    zoom_meeting_url,
-                    confirmation_code,
-                    customer_data.get('timezone', 'Eastern'),
-                    hubspot_contact_id,
-                    hubspot_meeting_id
-                ))
-                
-                appointment_id = cursor.lastrowid
-                conn.commit()
-                conn.close()
-                logger.info(f"✅ Appointment saved to database with ID: {appointment_id}")
-                
-            except Exception as db_error:
-                logger.error(f"❌ Database save error: {db_error}")
-                return False, f"Database error: {str(db_error)}", {}
-            
-            # Create appointment object
-            appointment = {
-                'id': appointment_id,
-                'confirmation_code': confirmation_code,
-                'customer_name': customer_data['name'],
-                'customer_email': customer_data['email'],
-                'customer_phone': formatted_phone,
-                'date': customer_data['date'],
-                'time': customer_data['time'],
-                'purpose': customer_data.get('purpose', 'General consultation'),
-                'zoom_url': zoom_meeting_url,
-                'zoom_id': zoom_meeting_id,
-                'zoom_password': zoom_password,
-                'hubspot_contact_id': hubspot_contact_id,
-                'hubspot_meeting_id': hubspot_meeting_id
-            }
-            
-            # Send confirmations with better error handling
-            confirmation_results = self.send_appointment_confirmations(appointment)
-            
-            # Log final status
-            logger.info(f"""
-            📊 APPOINTMENT BOOKING SUMMARY:
-            - Confirmation Code: {confirmation_code}
-            - Database: ✅ Saved
-            - HubSpot: {'✅ Integrated' if hubspot_success else '⚠️ Failed/Skipped'}
-            - Email: {confirmation_results.get('email', '❌ Failed')}
-            - SMS: {confirmation_results.get('sms', '❌ Failed')}
-            """)
-            
-            return True, "Appointment booked successfully", appointment
-            
-        except Exception as e:
-            logger.error(f"❌ Critical error booking appointment: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return False, f"Booking error: {str(e)}", {}
-    
-    @staticmethod
-    def send_appointment_confirmations(appointment: dict) -> dict:
-        """Send email and SMS confirmations with better error handling"""
-        results = {'email': '❌ Failed', 'sms': '❌ Failed'}
-        
-        try:
-            # Send email confirmation
-            email_result = AppointmentManager.send_email_confirmation(appointment)
-            results['email'] = '✅ Sent' if email_result else '❌ Failed'
-            
-            # Send SMS confirmation
-            sms_result = AppointmentManager.send_sms_confirmation(appointment)
-            results['sms'] = '✅ Sent' if sms_result else '❌ Failed'
-            
-        except Exception as e:
-            logger.error(f"Error in send_appointment_confirmations: {e}")
-        
-        return results
-    
-    @staticmethod
-    def send_email_confirmation(appointment: dict) -> bool:
-        """Send detailed email confirmation with better error handling"""
-        try:
-            if not all([email_user, email_password]):
-                logger.warning("⚠️ Email credentials not configured")
-                return False
-            
-            logger.info(f"📧 Attempting to send email to: {appointment['customer_email']}")
-            
-            # Format date and time
-            date_obj = datetime.strptime(appointment['date'], '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%A, %B %d, %Y')
-            
-            time_obj = datetime.strptime(appointment['time'], '%H:%M')
-            formatted_time = time_obj.strftime('%I:%M %p')
-            
-            subject = f"RinglyPro Appointment Confirmation - {formatted_date}"
-            
-            body = f"""
-Dear {appointment['customer_name']},
-
-Your appointment with RinglyPro has been successfully scheduled!
-
-📅 APPOINTMENT DETAILS:
-- Date: {formatted_date}
-- Time: {formatted_time} EST
-- Duration: 30 minutes
-- Purpose: {appointment['purpose']}
-- Confirmation Code: {appointment['confirmation_code']}
-
-💻 ZOOM MEETING DETAILS:
-- Meeting Link: {appointment['zoom_url']}
-- Meeting ID: {appointment['zoom_id']}
-- Password: {appointment['zoom_password']}
-
-📋 WHAT TO EXPECT:
-Our team will discuss your specific needs and how RinglyPro can help streamline your business communications. Come prepared with any questions about our services.
-
-📱 NEED TO RESCHEDULE?
-Reply to this email or call us at (888) 610-3810 with your confirmation code.
-
-We look forward to speaking with you!
-
-Best regards,
-The RinglyPro Team
-Email: support@ringlypro.com
-Phone: (888) 610-3810
-Website: https://ringlypro.com
-            """.strip()
-            
-            # Create message
-            msg = MIMEMultipart()
-            msg['From'] = from_email
-            msg['To'] = appointment['customer_email']
-            msg['Subject'] = subject
-            msg.attach(MIMEText(body, 'plain'))
-            
-            # Send email
-            server = smtplib.SMTP(smtp_server, smtp_port)
-            server.starttls()
-            server.login(email_user, email_password)
-            server.send_message(msg)
-            server.quit()
-            
-            logger.info(f"✅ Email confirmation sent to {appointment['customer_email']}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ Email sending failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return False
-    
-    @staticmethod
-    def send_sms_confirmation(appointment: dict) -> bool:
-        """Send SMS confirmation with better error handling"""
-        try:
-            if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-                logger.warning("⚠️ Twilio credentials not configured")
-                return False
-            
-            logger.info(f"📱 Attempting to send SMS to: {appointment['customer_phone']}")
-            
-            client = Client(twilio_account_sid, twilio_auth_token)
-            
-            # Format date and time
-            date_obj = datetime.strptime(appointment['date'], '%Y-%m-%d')
-            formatted_date = date_obj.strftime('%m/%d/%Y')
-            
-            time_obj = datetime.strptime(appointment['time'], '%H:%M')
-            formatted_time = time_obj.strftime('%I:%M %p')
-            
-            message_body = f"""
-✅ RinglyPro Appointment Confirmed
-
-📅 {formatted_date} at {formatted_time} EST
-🔗 Join: {appointment['zoom_url']}
-📋 Code: {appointment['confirmation_code']}
-
-Meeting ID: {appointment['zoom_id']}
-Password: {appointment['zoom_password']}
-
-Need help? Reply to this message or call (888) 610-3810.
-            """.strip()
-            
-            message = client.messages.create(
-                body=message_body,
-                from_=twilio_phone,
-                to=appointment['customer_phone']
-            )
-            
-            logger.info(f"✅ SMS confirmation sent. SID: {message.sid}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"❌ SMS sending failed: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-            return False
-    
-    @staticmethod
-    def get_appointment_by_code(confirmation_code: str) -> Optional[dict]:
-        """Get appointment by confirmation code"""
-        try:
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''SELECT * FROM appointments WHERE confirmation_code = ? AND status != 'cancelled' ''',
-                           (confirmation_code,))
-            
-            row = cursor.fetchone()
-            conn.close()
-            
-            if row:
-                columns = [description[0] for description in cursor.description]
-                return dict(zip(columns, row))
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error getting appointment: {e}")
-            return None
-
-# END OF AppointmentManager CLASS
 # ==================== SMS/PHONE HELPER FUNCTIONS ====================
 
 def validate_phone_number(phone_str: str) -> Optional[str]:
     """Validate and format phone number"""
     try:
-        # Parse the number (assuming US if no country code)
         number = phonenumbers.parse(phone_str, "US")
         
-        # Check if valid
         if phonenumbers.is_valid_number(number):
-            # Return formatted number
             return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
         else:
             return None
@@ -1986,18 +1326,18 @@ def send_sms_notification(customer_phone: str, customer_question: str, source: s
     """Send SMS notification to customer service"""
     try:
         if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-            logger.warning("⚠️ Twilio credentials not configured - SMS notification skipped")
+            logger.warning("Twilio credentials not configured - SMS notification skipped")
             return False, "SMS credentials not configured"
             
         client = Client(twilio_account_sid, twilio_auth_token)
         
         message_body = f"""
-🔔 New RinglyPro Customer Inquiry
+New RinglyPro Customer Inquiry
 
-📞 Phone: {customer_phone}
-💬 Question: {customer_question}
-📱 Source: {source}
-🕐 Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Phone: {customer_phone}
+Question: {customer_question}
+Source: {source}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
 Please follow up with this customer.
         """.strip()
@@ -2008,26 +1348,19 @@ Please follow up with this customer.
             to='+16566001400'
         )
         
-        logger.info(f"✅ SMS sent successfully. SID: {message.sid}")
+        logger.info(f"SMS sent successfully. SID: {message.sid}")
         return True, message.sid
         
     except Exception as e:
-        logger.error(f"❌ SMS sending failed: {str(e)}")
+        logger.error(f"SMS sending failed: {str(e)}")
         return False, str(e)
 
 def save_customer_inquiry(phone: str, question: str, sms_sent: bool, sms_sid: str = "", source: str = "chat") -> bool:
-    """Save customer inquiry to database"""
+    """Save customer inquiry to PostgreSQL via CRM API"""
     try:
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
-        cursor.execute('''INSERT INTO inquiries (phone, question, sms_sent, sms_sid, source)
-                          VALUES (?, ?, ?, ?, ?)''', (phone, question, sms_sent, sms_sid, source))
-        conn.commit()
-        conn.close()
-        logger.info(f"💾 Customer inquiry saved: {phone}")
-        return True
+        return save_customer_inquiry_to_crm(phone, question, sms_sent, sms_sid, source)
     except Exception as e:
-        logger.error(f"❌ Database save failed: {e}")
+        logger.error(f"PostgreSQL save failed: {e}")
         return False
 
 def is_no_answer_response(response: str) -> bool:
@@ -2040,8 +1373,7 @@ def is_no_answer_response(response: str) -> bool:
         "contact our support team"
     ]
     return any(indicator in response.lower() for indicator in no_answer_indicators)
-
-# ==================== EXTENSIVE FAQ BRAIN ====================
+    # ==================== EXTENSIVE FAQ BRAIN ====================
 
 FAQ_BRAIN = {
     # ==================== BASIC PLATFORM INFORMATION ====================
@@ -2178,7 +1510,7 @@ FAQ_BRAIN = {
 
     "will i receive reminders about my appointment?": "Yes, you'll receive both email and SMS confirmations immediately after booking, and we typically send reminder notifications before your scheduled appointment.",
 
-    # ==================== NEW 50 APPOINTMENT & SERVICE FAQs ====================
+    # ==================== ADDITIONAL 50 APPOINTMENT & SERVICE FAQs ====================
     
     # APPOINTMENT BOOKING QUESTIONS
     "how do i book a consultation?": "To book a free consultation, say 'book appointment' or click the booking button. I'll guide you through selecting a convenient time for your 30-minute Zoom consultation.",
@@ -2208,7 +1540,7 @@ FAQ_BRAIN = {
     
     "can you transfer calls to me?": "Absolutely! We can transfer urgent calls to you or your team members based on customizable rules and availability schedules you set.",
     
-    "do you handle spanish calls?": "Sí! We offer bilingual support in English and Spanish, helping you serve a wider customer base with professional service in both languages.",
+    "do you handle spanish calls?": "Si! We offer bilingual support in English and Spanish, helping you serve a wider customer base with professional service in both languages.",
     
     "can you book appointments for my business?": "Yes! We handle appointment scheduling through phone, text, or online booking, and sync everything with your existing calendar system.",
     
@@ -2353,8 +1685,7 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     """
     user_text_lower = user_text.lower().strip()
     
-    # Log for debugging
-    logger.info(f"🔍 Enhanced FAQ processing: '{user_text_lower}'")
+    logger.info(f"Enhanced FAQ processing: '{user_text_lower}'")
     
     # Check for appointment booking intent - PRIORITY CHECK
     booking_keywords = [
@@ -2363,10 +1694,10 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
     ]
     
     booking_detected = any(keyword in user_text_lower for keyword in booking_keywords)
-    logger.info(f"🎯 Booking keywords detected: {booking_detected}")
+    logger.info(f"Booking keywords detected: {booking_detected}")
     
     if booking_detected:
-        logger.info("✅ Returning booking action")
+        logger.info("Returning booking action")
         return ("I'd be happy to help you schedule an appointment! Let me guide you through the booking process.", 
                 True, "start_booking")
     
@@ -2377,7 +1708,7 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
                 True, "manage_appointment")
     
     # Only check FAQ if no booking intent detected
-    logger.info("📋 Checking FAQ database")
+    logger.info("Checking FAQ database")
     
     # Try exact match first
     if user_text_lower in FAQ_BRAIN:
@@ -2394,12 +1725,10 @@ def get_enhanced_faq_response(user_text: str) -> Tuple[str, bool, str]:
         return response, True, "none"
     
     # Fallback with booking option
-    logger.info("❌ No FAQ match, offering booking")
+    logger.info("No FAQ match, offering booking")
     return ("I don't have a specific answer to that question, but I'd be happy to connect you with our team. Would you like to schedule a consultation or provide your phone number for a callback?", 
             False, "offer_booking")
     # ==================== EXTENSIVE HTML TEMPLATES ====================
-
-# ==================== EXTENSIVE HTML TEMPLATES ====================
 
 VOICE_HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -2412,7 +1741,7 @@ VOICE_HTML_TEMPLATE = '''
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#2c3e50">
   <meta http-equiv="Permissions-Policy" content="microphone=*">
-  <title>Talk to RinglyPro AI — Your Business Assistant</title>
+  <title>Talk to RinglyPro AI – Your Business Assistant</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
     * { 
@@ -2441,14 +1770,12 @@ VOICE_HTML_TEMPLATE = '''
       overflow: hidden;
     }
 
-    /* Mobile-specific background - Navy Blue */
     @media (max-width: 768px) {
       html, body {
         background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
       }
     }
 
-    /* Additional mobile detection for touch devices */
     @media (pointer: coarse) {
       html, body {
         background: linear-gradient(135deg, #1a237e 0%, #0d47a1 50%, #01579b 100%);
@@ -2467,7 +1794,6 @@ VOICE_HTML_TEMPLATE = '''
       position: relative;
     }
 
-    /* Enhance container for mobile with navy theme */
     @media (max-width: 768px) {
       .container {
         background: rgba(255, 255, 255, 0.12);
@@ -2539,6 +1865,11 @@ VOICE_HTML_TEMPLATE = '''
       transform: translateY(-2px);
       box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
       animation: none;
+    }
+
+    @keyframes bookingPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
     }
 
     .booking-form-overlay {
@@ -2873,6 +2204,226 @@ VOICE_HTML_TEMPLATE = '''
       transform: translateY(0);
     }
 
+    .subscription-popup-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+      padding: 20px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .subscription-popup-container {
+      background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+      border-radius: 25px;
+      padding: 40px;
+      max-width: 1200px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+      position: relative;
+      animation: slideUp 0.4s ease;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .close-subscription-popup {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(0, 0, 0, 0.1);
+      border: none;
+      color: #333;
+      font-size: 28px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .close-subscription-popup:hover {
+      background: rgba(0, 0, 0, 0.2);
+      transform: rotate(90deg);
+    }
+
+    .subscription-header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .subscription-header h2 {
+      color: #2196F3;
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      background: linear-gradient(45deg, #2196F3, #4CAF50);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .subscription-header p {
+      color: #666;
+      font-size: 1.2rem;
+    }
+
+    .subscription-plans {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin-bottom: 30px;
+    }
+
+    .plan-card {
+      background: white;
+      border-radius: 20px;
+      padding: 30px;
+      position: relative;
+      border: 2px solid #e0e0e0;
+      transition: all 0.3s ease;
+    }
+
+    .plan-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+    }
+
+    .plan-card.featured {
+      border-color: #4CAF50;
+      transform: scale(1.05);
+    }
+
+    .plan-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+      color: white;
+      padding: 5px 20px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      font-weight: bold;
+    }
+
+    .plan-card.featured .plan-badge {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+    }
+
+    .plan-card h3 {
+      color: #333;
+      font-size: 1.5rem;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    .plan-price {
+      font-size: 3rem;
+      font-weight: bold;
+      color: #2196F3;
+      text-align: center;
+      margin: 20px 0;
+    }
+
+    .plan-price span {
+      font-size: 1rem;
+      color: #666;
+      font-weight: normal;
+    }
+
+    .plan-features {
+      list-style: none;
+      padding: 0;
+      margin: 20px 0;
+    }
+
+    .plan-features li {
+      padding: 10px 0;
+      color: #555;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .plan-features li:last-child {
+      border-bottom: none;
+    }
+
+    .plan-btn {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #2196F3, #1976D2);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .plan-btn:hover {
+      background: linear-gradient(135deg, #1976D2, #1565C0);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(33, 150, 243, 0.3);
+    }
+
+    .plan-btn.featured-btn {
+      background: linear-gradient(135deg, #4CAF50, #45a049);
+    }
+
+    .plan-btn.featured-btn:hover {
+      background: linear-gradient(135deg, #45a049, #388e3c);
+      box-shadow: 0 10px 20px rgba(76, 175, 80, 0.3);
+    }
+
+    .subscription-footer {
+      text-align: center;
+      padding-top: 20px;
+      border-top: 1px solid #e0e0e0;
+    }
+
+    .subscription-footer p {
+      color: #666;
+      margin-bottom: 15px;
+    }
+
+    .contact-sales-btn {
+      padding: 12px 30px;
+      background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+      color: white;
+      border: none;
+      border-radius: 25px;
+      font-size: 1rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .contact-sales-btn:hover {
+      background: linear-gradient(135deg, #FF8E53, #FF6B6B);
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
+    }
+
     @media (max-width: 480px) {
       .container {
         margin: 1rem;
@@ -2928,332 +2479,41 @@ VOICE_HTML_TEMPLATE = '''
         flex-direction: column;
         gap: 10px;
       }
+
+      .subscription-popup-container {
+        padding: 20px;
+      }
+      
+      .subscription-header h2 {
+        font-size: 1.8rem;
+      }
+      
+      .subscription-plans {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      
+      .plan-card.featured {
+        transform: scale(1);
+      }
+      
+      .plan-card {
+        padding: 20px;
+      }
+      
+      .plan-price {
+        font-size: 2.5rem;
+      }
     }
   </style>
 </head>
-<!-- Add this right before </body> in VOICE_HTML_TEMPLATE -->
-
-<!-- Subscription Popup Overlay -->
-<div id="subscriptionPopup" class="subscription-popup-overlay" style="display: none;">
-    <div class="subscription-popup-container">
-        <button class="close-subscription-popup" onclick="closeSubscriptionPopup()">×</button>
-        
-        <div class="subscription-header">
-            <h2>🚀 Start Your RinglyPro Journey</h2>
-            <p>Choose the perfect plan for your business</p>
-        </div>
-        
-        <div class="subscription-plans">
-            <div class="plan-card">
-                <div class="plan-badge">Most Popular</div>
-                <h3>Scheduling Assistant</h3>
-                <div class="plan-price">$97<span>/month</span></div>
-                <ul class="plan-features">
-                    <li>✅ 1,000 minutes</li>
-                    <li>✅ 1,000 text messages</li>
-                    <li>✅ Appointment scheduling</li>
-                    <li>✅ Call recording</li>
-                    <li>✅ Email support</li>
-                </ul>
-                <button class="plan-btn" onclick="selectPlan('starter')">Get Started</button>
-            </div>
-            
-            <div class="plan-card featured">
-                <div class="plan-badge">Best Value</div>
-                <h3>Office Manager</h3>
-                <div class="plan-price">$297<span>/month</span></div>
-                <ul class="plan-features">
-                    <li>✅ 3,000 minutes</li>
-                    <li>✅ 3,000 text messages</li>
-                    <li>✅ Everything in Starter</li>
-                    <li>✅ CRM integrations</li>
-                    <li>✅ Mobile app</li>
-                    <li>✅ Priority support</li>
-                </ul>
-                <button class="plan-btn featured-btn" onclick="selectPlan('pro')">Get Started</button>
-            </div>
-            
-            <div class="plan-card">
-                <div class="plan-badge">Premium</div>
-                <h3>Marketing Director</h3>
-                <div class="plan-price">$497<span>/month</span></div>
-                <ul class="plan-features">
-                    <li>✅ 7,500 minutes</li>
-                    <li>✅ 7,500 text messages</li>
-                    <li>✅ Everything in Office Manager</li>
-                    <li>✅ Dedicated account manager</li>
-                    <li>✅ Marketing automation</li>
-                    <li>✅ Custom integrations</li>
-                </ul>
-                <button class="plan-btn" onclick="selectPlan('premium')">Get Started</button>
-            </div>
-        </div>
-        
-        <div class="subscription-footer">
-            <p>Questions? Call us at <strong>(888) 610-3810</strong></p>
-            <button class="contact-sales-btn" onclick="contactSales()">💬 Talk to Sales</button>
-        </div>
-    </div>
-</div>
-
-<!-- Add this CSS in the <style> section of VOICE_HTML_TEMPLATE -->
-<style>
-/* Subscription Popup Styles */
-.subscription-popup-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.8);
-    backdrop-filter: blur(10px);
-    display: none;
-    justify-content: center;
-    align-items: center;
-    z-index: 2000;
-    padding: 20px;
-    animation: fadeIn 0.3s ease;
-}
-
-.subscription-popup-container {
-    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-    border-radius: 25px;
-    padding: 40px;
-    max-width: 1200px;
-    width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
-    position: relative;
-    animation: slideUp 0.4s ease;
-}
-
-@keyframes slideUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.close-subscription-popup {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    background: rgba(0, 0, 0, 0.1);
-    border: none;
-    color: #333;
-    font-size: 28px;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.3s ease;
-}
-
-.close-subscription-popup:hover {
-    background: rgba(0, 0, 0, 0.2);
-    transform: rotate(90deg);
-}
-
-.subscription-header {
-    text-align: center;
-    margin-bottom: 40px;
-}
-
-.subscription-header h2 {
-    color: #2196F3;
-    font-size: 2.5rem;
-    margin-bottom: 10px;
-    background: linear-gradient(45deg, #2196F3, #4CAF50);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.subscription-header p {
-    color: #666;
-    font-size: 1.2rem;
-}
-
-.subscription-plans {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-    margin-bottom: 30px;
-}
-
-.plan-card {
-    background: white;
-    border-radius: 20px;
-    padding: 30px;
-    position: relative;
-    border: 2px solid #e0e0e0;
-    transition: all 0.3s ease;
-}
-
-.plan-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-}
-
-.plan-card.featured {
-    border-color: #4CAF50;
-    transform: scale(1.05);
-}
-
-.plan-badge {
-    position: absolute;
-    top: -12px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: linear-gradient(135deg, #FF6B6B, #FF8E53);
-    color: white;
-    padding: 5px 20px;
-    border-radius: 20px;
-    font-size: 0.85rem;
-    font-weight: bold;
-}
-
-.plan-card.featured .plan-badge {
-    background: linear-gradient(135deg, #4CAF50, #45a049);
-}
-
-.plan-card h3 {
-    color: #333;
-    font-size: 1.5rem;
-    margin: 20px 0;
-    text-align: center;
-}
-
-.plan-price {
-    font-size: 3rem;
-    font-weight: bold;
-    color: #2196F3;
-    text-align: center;
-    margin: 20px 0;
-}
-
-.plan-price span {
-    font-size: 1rem;
-    color: #666;
-    font-weight: normal;
-}
-
-.plan-features {
-    list-style: none;
-    padding: 0;
-    margin: 20px 0;
-}
-
-.plan-features li {
-    padding: 10px 0;
-    color: #555;
-    border-bottom: 1px solid #f0f0f0;
-}
-
-.plan-features li:last-child {
-    border-bottom: none;
-}
-
-.plan-btn {
-    width: 100%;
-    padding: 15px;
-    background: linear-gradient(135deg, #2196F3, #1976D2);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 1.1rem;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.plan-btn:hover {
-    background: linear-gradient(135deg, #1976D2, #1565C0);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(33, 150, 243, 0.3);
-}
-
-.plan-btn.featured-btn {
-    background: linear-gradient(135deg, #4CAF50, #45a049);
-}
-
-.plan-btn.featured-btn:hover {
-    background: linear-gradient(135deg, #45a049, #388e3c);
-    box-shadow: 0 10px 20px rgba(76, 175, 80, 0.3);
-}
-
-.subscription-footer {
-    text-align: center;
-    padding-top: 20px;
-    border-top: 1px solid #e0e0e0;
-}
-
-.subscription-footer p {
-    color: #666;
-    margin-bottom: 15px;
-}
-
-.contact-sales-btn {
-    padding: 12px 30px;
-    background: linear-gradient(135deg, #FF6B6B, #FF8E53);
-    color: white;
-    border: none;
-    border-radius: 25px;
-    font-size: 1rem;
-    font-weight: bold;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.contact-sales-btn:hover {
-    background: linear-gradient(135deg, #FF8E53, #FF6B6B);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(255, 107, 107, 0.3);
-}
-
-/* Mobile Responsive */
-@media (max-width: 768px) {
-    .subscription-popup-container {
-        padding: 20px;
-    }
-    
-    .subscription-header h2 {
-        font-size: 1.8rem;
-    }
-    
-    .subscription-plans {
-        grid-template-columns: 1fr;
-        gap: 20px;
-    }
-    
-    .plan-card.featured {
-        transform: scale(1);
-    }
-    
-    .plan-card {
-        padding: 20px;
-    }
-    
-    .plan-price {
-        font-size: 2.5rem;
-    }
-}
-</style>
 <body>
   <div class="container">
-    <button class="booking-button" onclick="window.location.href='/chat-enhanced'">📅 Book Appointment</button>
-    <button class="interface-switcher" onclick="window.location.href='/chat'">💬 Try Text Chat</button>
+    <button class="booking-button" onclick="window.location.href='/chat-enhanced'">Book Appointment</button>
+    <button class="interface-switcher" onclick="window.location.href='/chat'">Try Text Chat</button>
     
     <h1>RinglyPro AI</h1>
-    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" for instant inline booking • Ask questions • Click "📅 Book"</small></div>
+    <div class="subtitle">Your Intelligent Business Assistant<br><small style="opacity: 0.8;">Say "book appointment" for instant inline booking • Ask questions • Click "Book"</small></div>
     
     <div class="language-selector">
       <button class="lang-btn active" data-lang="en-US">🇺🇸 English</button>
@@ -3330,715 +2590,736 @@ VOICE_HTML_TEMPLATE = '''
     </div>
   </div>
 
+  <!-- Subscription Popup Overlay -->
+  <div id="subscriptionPopup" class="subscription-popup-overlay" style="display: none;">
+    <div class="subscription-popup-container">
+      <button class="close-subscription-popup" onclick="closeSubscriptionPopup()">×</button>
+      
+      <div class="subscription-header">
+        <h2>🚀 Start Your RinglyPro Journey</h2>
+        <p>Choose the perfect plan for your business</p>
+      </div>
+      
+      <div class="subscription-plans">
+        <div class="plan-card">
+          <div class="plan-badge">Most Popular</div>
+          <h3>Scheduling Assistant</h3>
+          <div class="plan-price">$97<span>/month</span></div>
+          <ul class="plan-features">
+            <li>✅ 1,000 minutes</li>
+            <li>✅ 1,000 text messages</li>
+            <li>✅ Appointment scheduling</li>
+            <li>✅ Call recording</li>
+            <li>✅ Email support</li>
+          </ul>
+          <button class="plan-btn" onclick="selectPlan('starter')">Get Started</button>
+        </div>
+        
+        <div class="plan-card featured">
+          <div class="plan-badge">Best Value</div>
+          <h3>Office Manager</h3>
+          <div class="plan-price">$297<span>/month</span></div>
+          <ul class="plan-features">
+            <li>✅ 3,000 minutes</li>
+            <li>✅ 3,000 text messages</li>
+            <li>✅ Everything in Starter</li>
+            <li>✅ CRM integrations</li>
+            <li>✅ Mobile app</li>
+            <li>✅ Priority support</li>
+          </ul>
+          <button class="plan-btn featured-btn" onclick="selectPlan('pro')">Get Started</button>
+        </div>
+        
+        <div class="plan-card">
+          <div class="plan-badge">Premium</div>
+          <h3>Marketing Director</h3>
+          <div class="plan-price">$497<span>/month</span></div>
+          <ul class="plan-features">
+            <li>✅ 7,500 minutes</li>
+            <li>✅ 7,500 text messages</li>
+            <li>✅ Everything in Office Manager</li>
+            <li>✅ Dedicated account manager</li>
+            <li>✅ Marketing automation</li>
+            <li>✅ Custom integrations</li>
+          </ul>
+          <button class="plan-btn" onclick="selectPlan('premium')">Get Started</button>
+        </div>
+      </div>
+      
+      <div class="subscription-footer">
+        <p>Questions? Call us at <strong>(888) 610-3810</strong></p>
+        <button class="contact-sales-btn" onclick="contactSales()">💬 Talk to Sales</button>
+      </div>
+    </div>
+  </div>
+
 <script>
-    // Enhanced Voice Interface JavaScript with Mobile Text-Only Mode
-// UPDATED: Enhanced Voice Interface JavaScript with Mobile Audio Support
-class EnhancedVoiceBot {
-    constructor() {
-        this.micBtn = document.getElementById('micBtn');
-        this.status = document.getElementById('status');
-        this.stopBtn = document.getElementById('stopBtn');
-        this.clearBtn = document.getElementById('clearBtn');
-        this.errorMessage = document.getElementById('errorMessage');
-        this.langBtns = document.querySelectorAll('.lang-btn');
-        
-        this.isListening = false;
-        this.isProcessing = false;
-        this.isPlaying = false;
-        this.currentLanguage = 'en-US';
-        this.recognition = null;
-        this.currentAudio = null;
-        this.userInteracted = false;
-        this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        this.processTimeout = null;
-        this.audioContext = null;
-        this.recognitionTimeout = null;
-        this.mobileAudioEnabled = false; // NEW: Track if mobile audio is ready
-        
-        // NEW: Enhanced mobile audio initialization
-        if (this.isMobile) {
-            this.initMobileAudio();
-        }
-        
-        this.init();
-    }
-
-    // NEW: Enhanced mobile audio initialization
-    initMobileAudio() {
-        console.log('📱 Initializing mobile audio support...');
-        
-        const enableMobileAudio = () => {
-            try {
-                // Create audio context
-                const AudioContext = window.AudioContext || window.webkitAudioContext;
-                if (AudioContext && !this.audioContext) {
-                    this.audioContext = new AudioContext();
-                }
-                
-                // Resume suspended audio context
-                if (this.audioContext && this.audioContext.state === 'suspended') {
-                    this.audioContext.resume().then(() => {
-                        console.log('✅ Mobile audio context resumed');
-                        this.mobileAudioEnabled = true;
-                        this.updateStatus('🎤 Mobile audio ready! Tap to talk');
-                    }).catch(err => {
-                        console.log('⚠️ Audio context resume failed:', err);
-                    });
-                } else if (this.audioContext && this.audioContext.state === 'running') {
-                    this.mobileAudioEnabled = true;
-                    console.log('✅ Mobile audio context already running');
-                }
-                
-                // Test audio playability with a silent audio
-                const testAudio = new Audio();
-                testAudio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N+VQAoUXrTp66hVFApGn+H38GccBz2a2/LCdSMFLIHO8tiJOQcZZ7zs7KFODgtPqOPwtmQdBjuO2fDNeSsF';
-                testAudio.volume = 0.01;
-                testAudio.play().then(() => {
-                    console.log('✅ Mobile audio test successful');
-                    this.mobileAudioEnabled = true;
-                }).catch(err => {
-                    console.log('⚠️ Mobile audio test failed:', err);
-                });
-                
-            } catch (error) {
-                console.log('⚠️ Mobile audio init error:', error);
-            }
+    // Enhanced Voice Interface JavaScript with PostgreSQL Integration
+    class EnhancedVoiceBot {
+        constructor() {
+            this.micBtn = document.getElementById('micBtn');
+            this.status = document.getElementById('status');
+            this.stopBtn = document.getElementById('stopBtn');
+            this.clearBtn = document.getElementById('clearBtn');
+            this.errorMessage = document.getElementById('errorMessage');
+            this.langBtns = document.querySelectorAll('.lang-btn');
             
-            // Remove listeners after first successful interaction
-            document.removeEventListener('touchstart', enableMobileAudio);
-            document.removeEventListener('click', enableMobileAudio);
-        };
-        
-        // Add listeners for first user interaction
-        document.addEventListener('touchstart', enableMobileAudio, { once: true });
-        document.addEventListener('click', enableMobileAudio, { once: true });
-        
-        // Also try to enable on mic button click
-        if (this.micBtn) {
-            this.micBtn.addEventListener('touchstart', enableMobileAudio, { once: true });
-        }
-    }
-
-    async init() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        if (!SpeechRecognition) {
-            this.showError('Speech recognition not supported. Please use Chrome or Edge.');
-            return;
-        }
-
-        this.setupEventListeners();
-        this.initSpeechRecognition();
-    }
-
-    initSpeechRecognition() {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        
-        this.recognition = new SpeechRecognition();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = false;
-        this.recognition.lang = this.currentLanguage;
-
-        this.recognition.onstart = () => {
-            console.log('Recognition started');
-            this.isListening = true;
-            this.updateUI('listening');
-            this.updateStatus('🎙️ Listening... Speak now');
-        };
-
-        this.recognition.onresult = (event) => {
-            console.log('Recognition result received');
-            if (event.results && event.results.length > 0) {
-                const transcript = event.results[0][0].transcript.trim();
-                console.log('Transcript:', transcript);
-                this.processTranscript(transcript);
-            }
-        };
-
-        this.recognition.onerror = (event) => {
-            console.error('Recognition error:', event.error);
-            
-            if (event.error === 'no-speech') {
-                this.isListening = false;
-                this.updateUI('ready');
-                this.updateStatus('🎙️ No speech detected. Tap to try again');
-                return;
-            }
-            
-            this.handleError('Speech recognition error: ' + event.error);
-        };
-
-        this.recognition.onend = () => {
-            console.log('Recognition ended');
             this.isListening = false;
-            if (!this.isProcessing) {
-                this.updateUI('ready');
-                this.updateStatus('🎙️ Tap to talk');
-            }
-        };
-    }
-
-    async processTranscript(transcript) {
-        if (!transcript || transcript.length < 2) {
-            this.handleError('No speech detected');
-            return;
-        }
-
-        console.log('Processing transcript:', transcript);
-        this.isProcessing = true;
-        this.updateUI('processing');
-        this.updateStatus('🤖 Processing...');
-        
-        if (this.processTimeout) {
-            clearTimeout(this.processTimeout);
-        }
-        
-        this.processTimeout = setTimeout(() => {
-            if (this.isProcessing) {
-                console.log('Processing timeout - resetting UI');
-                this.handleError('Processing took too long. Please try again.');
-            }
-        }, 15000);
-
-        try {
-            const response = await fetch('/process-text-enhanced', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: transcript,
-                    language: this.currentLanguage,
-                    mobile: this.isMobile
-                })
-            });
-
-            clearTimeout(this.processTimeout);
-
-            if (!response.ok) throw new Error('Server error: ' + response.status);
-
-            const data = await response.json();
-            if (data.error) throw new Error(data.error);
-
-            console.log('Received data:', data);
-
-            // Always show text if available
-            if (data.show_text && data.response) {
-                this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
-            }
-
-            // Handle subscription popup
-            if (data.action === 'show_subscription_popup') {
-                console.log('🎯 Subscription popup triggered');
-                
-                if (data.audio) {
-                    console.log('Playing audio response');
-                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                } else {
-                    console.log('No audio, using browser TTS');
-                    await this.playBrowserTTS(data.response);
-                }
-                
-                setTimeout(() => {
-                    showSubscriptionPopup();
-                }, 500);
-                return;
-            }
-
-            // Handle booking redirect
-            if (data.action === 'redirect_to_booking') {
-                console.log('🎯 Booking redirect detected');
-                
-                if (data.audio) {
-                    console.log('Playing audio response');
-                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
-                } else {
-                    console.log('No audio, using browser TTS');
-                    await this.playBrowserTTS(data.response);
-                }
-                
-                setTimeout(() => {
-                    this.showInlineBookingForm();
-                }, 500);
-                return;
-            }
-
-            // Regular responses
-            if (data.audio) {
-                console.log('Playing Rachel audio response');
-                await this.playPremiumAudio(data.audio, data.response, data.show_text);
-            } else if (data.response) {
-                console.log('Using browser TTS');
-                await this.playBrowserTTS(data.response);
-            } else {
-                this.audioFinished();
-            }
-
-        } catch (error) {
-            clearTimeout(this.processTimeout);
-            this.handleError('Processing error: ' + error.message);
-        }
-    }
-
-    // UPDATED: Enhanced mobile audio playback with proper error handling
-    async playPremiumAudio(audioBase64, responseText, showText = false) {
-        console.log('🔊 Playing premium audio - Mobile:', this.isMobile, 'Audio Enabled:', this.mobileAudioEnabled);
-        
-        // Show text immediately
-        if (showText || this.isMobile) {
-            this.updateStatus('🔊 ' + responseText);
-        }
-        
-        // MOBILE: Try to play audio if enabled, fallback to extended text display
-        if (this.isMobile) {
-            // If mobile audio is not enabled, show text with better timing
-            if (!this.mobileAudioEnabled) {
-                console.log('📱 Mobile audio not ready - using enhanced text mode');
-                this.isPlaying = true;
-                this.updateUI('speaking');
-                
-                // Enhanced reading time for mobile
-                const readingTime = Math.min(Math.max(responseText.length * 80, 4000), 12000);
-                console.log(`📱 Mobile reading time: ${readingTime}ms for ${responseText.length} characters`);
-                
-                return new Promise((resolve) => {
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, readingTime);
-                });
-            }
+            this.isProcessing = false;
+            this.isPlaying = false;
+            this.currentLanguage = 'en-US';
+            this.recognition = null;
+            this.currentAudio = null;
+            this.userInteracted = false;
+            this.isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            this.processTimeout = null;
+            this.audioContext = null;
+            this.recognitionTimeout = null;
+            this.mobileAudioEnabled = false;
             
-            // Try to play audio on mobile with enhanced error handling
-            console.log('📱 Attempting mobile audio playback...');
-        }
-        
-        try {
-            // Decode audio data
-            const audioData = atob(audioBase64);
-            const arrayBuffer = new ArrayBuffer(audioData.length);
-            const uint8Array = new Uint8Array(arrayBuffer);
-            
-            for (let i = 0; i < audioData.length; i++) {
-                uint8Array[i] = audioData.charCodeAt(i);
-            }
-
-            const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            this.currentAudio = new Audio(audioUrl);
-            
-            // NEW: Enhanced mobile audio configuration
             if (this.isMobile) {
-                this.currentAudio.preload = 'auto';
-                this.currentAudio.volume = 1.0;
-                
-                // Try to resume audio context if needed
-                if (this.audioContext && this.audioContext.state === 'suspended') {
-                    await this.audioContext.resume();
-                }
+                this.initMobileAudio();
             }
             
-            return new Promise((resolve) => {
-                let audioStarted = false;
-                
-                // Shorter timeout for mobile
-                const timeoutDuration = this.isMobile ? 3000 : 5000;
-                const playTimeout = setTimeout(() => {
-                    if (!audioStarted) {
-                        console.log('⚠️ Audio timeout - fallback to text');
-                        this.currentAudio = null;
-                        URL.revokeObjectURL(audioUrl);
-                        
-                        if (!showText && !this.isMobile) {
-                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        }
-                        
-                        // Show text for longer on mobile
-                        const fallbackTime = this.isMobile ? 3000 : 2000;
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, fallbackTime);
-                    }
-                }, timeoutDuration);
-                
-                this.currentAudio.onplay = () => {
-                    console.log('✅ Audio started playing');
-                    audioStarted = true;
-                    clearTimeout(playTimeout);
-                    this.isPlaying = true;
-                    this.updateUI('speaking');
-                    
-                    if (!showText && !this.isMobile) {
-                        this.updateStatus('🔊 Rachel is speaking...');
-                    }
-                };
-                
-                this.currentAudio.onended = () => {
-                    console.log('✅ Audio playback completed');
-                    clearTimeout(playTimeout);
-                    URL.revokeObjectURL(audioUrl);
-                    this.audioFinished();
-                    resolve();
-                };
-                
-                this.currentAudio.onerror = (error) => {
-                    console.error('❌ Audio playback error:', error);
-                    clearTimeout(playTimeout);
-                    this.currentAudio = null;
-                    URL.revokeObjectURL(audioUrl);
-                    
-                    // On mobile, show a user-friendly message
-                    if (this.isMobile) {
-                        this.updateStatus('💬 ' + responseText);
-                        console.log('📱 Mobile audio failed - showing text instead');
-                    } else if (!showText) {
-                        this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                    }
-                    
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, this.isMobile ? 3000 : 2000);
-                };
-                
-                // Play audio with enhanced mobile handling
-                this.currentAudio.play().then(() => {
-                    console.log('🎵 Audio play() succeeded');
-                }).catch((error) => {
-                    console.log('⚠️ Audio play() failed:', error);
-                    clearTimeout(playTimeout);
-                    
-                    // Enhanced mobile fallback
-                    if (this.isMobile) {
-                        console.log('📱 Mobile audio play failed - trying alternative approach');
-                        
-                        // Try playing after a short delay (sometimes helps on mobile)
-                        setTimeout(() => {
-                            if (this.currentAudio) {
-                                this.currentAudio.play().catch(() => {
-                                    console.log('📱 Mobile audio retry failed - using text mode');
-                                    this.updateStatus('💬 ' + responseText);
-                                    setTimeout(() => {
-                                        this.audioFinished();
-                                        resolve();
-                                    }, 3000);
-                                });
-                            }
-                        }, 100);
-                    } else {
-                        if (!showText) {
-                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-                        }
-                        setTimeout(() => {
-                            this.audioFinished();
-                            resolve();
-                        }, 2000);
-                    }
-                });
-            });
-            
-        } catch (error) {
-            console.error('❌ Premium audio processing failed:', error);
-            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
-            setTimeout(() => {
-                this.audioFinished();
-            }, this.isMobile ? 3000 : 2000);
-            return Promise.resolve();
+            this.init();
         }
-    }
 
-    // UPDATED: Enhanced browser TTS with mobile support
-    async playBrowserTTS(text) {
-        console.log('🔊 Playing browser TTS - Mobile:', this.isMobile);
-        
-        // Don't skip TTS on mobile - try to make it work
-        return new Promise((resolve) => {
-            try {
-                // Check if speech synthesis is available
-                if (!('speechSynthesis' in window)) {
-                    console.log('⚠️ Speech synthesis not available');
-                    this.updateStatus('💬 ' + text);
-                    setTimeout(() => {
-                        this.audioFinished();
-                        resolve();
-                    }, this.isMobile ? 4000 : 3000);
+        initMobileAudio() {
+            console.log('📱 Initializing mobile audio support...');
+            
+            const enableMobileAudio = () => {
+                try {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (AudioContext && !this.audioContext) {
+                        this.audioContext = new AudioContext();
+                    }
+                    
+                    if (this.audioContext && this.audioContext.state === 'suspended') {
+                        this.audioContext.resume().then(() => {
+                            console.log('✅ Mobile audio context resumed');
+                            this.mobileAudioEnabled = true;
+                            this.updateStatus('🎤 Mobile audio ready! Tap to talk');
+                        }).catch(err => {
+                            console.log('⚠️ Audio context resume failed:', err);
+                        });
+                    } else if (this.audioContext && this.audioContext.state === 'running') {
+                        this.mobileAudioEnabled = true;
+                        console.log('✅ Mobile audio context already running');
+                    }
+                    
+                    const testAudio = new Audio();
+                    testAudio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N+VQAoUXrTp66hVFApGn+H38GccBz2a2/LCdSMFLIHO8tiJOQcZZ7zs7KFODgtPqOPwtmQdBjuO2fDNeSsF';
+                    testAudio.volume = 0.01;
+                    testAudio.play().then(() => {
+                        console.log('✅ Mobile audio test successful');
+                        this.mobileAudioEnabled = true;
+                    }).catch(err => {
+                        console.log('⚠️ Mobile audio test failed:', err);
+                    });
+                    
+                } catch (error) {
+                    console.log('⚠️ Mobile audio init error:', error);
+                }
+                
+                document.removeEventListener('touchstart', enableMobileAudio);
+                document.removeEventListener('click', enableMobileAudio);
+            };
+            
+            document.addEventListener('touchstart', enableMobileAudio, { once: true });
+            document.addEventListener('click', enableMobileAudio, { once: true });
+            
+            if (this.micBtn) {
+                this.micBtn.addEventListener('touchstart', enableMobileAudio, { once: true });
+            }
+        }
+        async init() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                this.showError('Speech recognition not supported. Please use Chrome or Edge.');
+                return;
+            }
+
+            this.setupEventListeners();
+            this.initSpeechRecognition();
+        }
+
+        initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            this.recognition = new SpeechRecognition();
+            this.recognition.continuous = false;
+            this.recognition.interimResults = false;
+            this.recognition.lang = this.currentLanguage;
+
+            this.recognition.onstart = () => {
+                console.log('Recognition started');
+                this.isListening = true;
+                this.updateUI('listening');
+                this.updateStatus('🎙️ Listening... Speak now');
+            };
+
+            this.recognition.onresult = (event) => {
+                console.log('Recognition result received');
+                if (event.results && event.results.length > 0) {
+                    const transcript = event.results[0][0].transcript.trim();
+                    console.log('Transcript:', transcript);
+                    this.processTranscript(transcript);
+                }
+            };
+
+            this.recognition.onerror = (event) => {
+                console.error('Recognition error:', event.error);
+                
+                if (event.error === 'no-speech') {
+                    this.isListening = false;
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ No speech detected. Tap to try again');
                     return;
                 }
                 
-                // Enhanced mobile TTS handling
-                if (this.isMobile) {
-                    console.log('📱 Configuring mobile TTS...');
+                this.handleError('Speech recognition error: ' + event.error);
+            };
+
+            this.recognition.onend = () => {
+                console.log('Recognition ended');
+                this.isListening = false;
+                if (!this.isProcessing) {
+                    this.updateUI('ready');
+                    this.updateStatus('🎙️ Tap to talk');
+                }
+            };
+        }
+
+        async processTranscript(transcript) {
+            if (!transcript || transcript.length < 2) {
+                this.handleError('No speech detected');
+                return;
+            }
+
+            console.log('Processing transcript:', transcript);
+            this.isProcessing = true;
+            this.updateUI('processing');
+            this.updateStatus('🤖 Processing...');
+            
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+            }
+            
+            this.processTimeout = setTimeout(() => {
+                if (this.isProcessing) {
+                    console.log('Processing timeout - resetting UI');
+                    this.handleError('Processing took too long. Please try again.');
+                }
+            }, 15000);
+
+            try {
+                const response = await fetch('/process-text-enhanced', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        text: transcript,
+                        language: this.currentLanguage,
+                        mobile: this.isMobile
+                    })
+                });
+
+                clearTimeout(this.processTimeout);
+
+                if (!response.ok) throw new Error('Server error: ' + response.status);
+
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                console.log('Received data:', data);
+
+                if (data.show_text && data.response) {
+                    this.updateStatus('💬 ' + data.response.substring(0, 150) + (data.response.length > 150 ? '...' : ''));
+                }
+
+                if (data.action === 'show_subscription_popup') {
+                    console.log('🎯 Subscription popup triggered');
                     
-                    // Ensure audio context is ready
-                    if (this.audioContext && this.audioContext.state === 'suspended') {
-                        this.audioContext.resume().catch(err => {
-                            console.log('⚠️ Audio context resume failed:', err);
-                        });
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
                     }
+                    
+                    setTimeout(() => {
+                        showSubscriptionPopup();
+                    }, 500);
+                    return;
                 }
-                
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = this.currentLanguage;
-                utterance.rate = 0.9; // Slightly slower for better clarity
-                utterance.pitch = 1.0;
-                utterance.volume = 1.0;
-                
-                // Enhanced mobile voice selection
-                if (this.isMobile) {
-                    const voices = speechSynthesis.getVoices();
-                    if (voices.length > 0) {
-                        // Try to find a good female voice
-                        const femaleVoice = voices.find(voice => 
-                            voice.name.toLowerCase().includes('female') || 
-                            voice.name.toLowerCase().includes('woman') ||
-                            voice.name.toLowerCase().includes('samantha') ||
-                            voice.name.toLowerCase().includes('karen')
-                        );
-                        
-                        if (femaleVoice) {
-                            utterance.voice = femaleVoice;
-                            console.log('📱 Using voice:', femaleVoice.name);
-                        }
+
+                if (data.action === 'redirect_to_booking') {
+                    console.log('🎯 Booking redirect detected');
+                    
+                    if (data.audio) {
+                        console.log('Playing audio response');
+                        await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                    } else {
+                        console.log('No audio, using browser TTS');
+                        await this.playBrowserTTS(data.response);
                     }
+                    
+                    setTimeout(() => {
+                        this.showInlineBookingForm();
+                    }, 500);
+                    return;
                 }
-                
-                utterance.onstart = () => {
-                    console.log('🔊 TTS started');
+
+                if (data.audio) {
+                    console.log('Playing Rachel audio response');
+                    await this.playPremiumAudio(data.audio, data.response, data.show_text);
+                } else if (data.response) {
+                    console.log('Using browser TTS');
+                    await this.playBrowserTTS(data.response);
+                } else {
+                    this.audioFinished();
+                }
+
+            } catch (error) {
+                clearTimeout(this.processTimeout);
+                this.handleError('Processing error: ' + error.message);
+            }
+        }
+
+        async playPremiumAudio(audioBase64, responseText, showText = false) {
+            console.log('🔊 Playing premium audio - Mobile:', this.isMobile, 'Audio Enabled:', this.mobileAudioEnabled);
+            
+            if (showText || this.isMobile) {
+                this.updateStatus('🔊 ' + responseText);
+            }
+            
+            if (this.isMobile) {
+                if (!this.mobileAudioEnabled) {
+                    console.log('📱 Mobile audio not ready - using enhanced text mode');
                     this.isPlaying = true;
                     this.updateUI('speaking');
-                    this.updateStatus('🔊 Speaking...');
-                };
+                    
+                    const readingTime = Math.min(Math.max(responseText.length * 80, 4000), 12000);
+                    console.log(`📱 Mobile reading time: ${readingTime}ms for ${responseText.length} characters`);
+                    
+                    return new Promise((resolve) => {
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, readingTime);
+                    });
+                }
                 
-                utterance.onend = () => {
-                    console.log('✅ TTS completed');
+                console.log('📱 Attempting mobile audio playback...');
+            }
+            
+            try {
+                const audioData = atob(audioBase64);
+                const arrayBuffer = new ArrayBuffer(audioData.length);
+                const uint8Array = new Uint8Array(arrayBuffer);
+                
+                for (let i = 0; i < audioData.length; i++) {
+                    uint8Array[i] = audioData.charCodeAt(i);
+                }
+
+                const audioBlob = new Blob([arrayBuffer], { type: 'audio/mpeg' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                this.currentAudio = new Audio(audioUrl);
+                
+                if (this.isMobile) {
+                    this.currentAudio.preload = 'auto';
+                    this.currentAudio.volume = 1.0;
+                    
+                    if (this.audioContext && this.audioContext.state === 'suspended') {
+                        await this.audioContext.resume();
+                    }
+                }
+                
+                return new Promise((resolve) => {
+                    let audioStarted = false;
+                    
+                    const timeoutDuration = this.isMobile ? 3000 : 5000;
+                    const playTimeout = setTimeout(() => {
+                        if (!audioStarted) {
+                            console.log('⚠️ Audio timeout - fallback to text');
+                            this.currentAudio = null;
+                            URL.revokeObjectURL(audioUrl);
+                            
+                            if (!showText && !this.isMobile) {
+                                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                            }
+                            
+                            const fallbackTime = this.isMobile ? 3000 : 2000;
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, fallbackTime);
+                        }
+                    }, timeoutDuration);
+                    
+                    this.currentAudio.onplay = () => {
+                        console.log('✅ Audio started playing');
+                        audioStarted = true;
+                        clearTimeout(playTimeout);
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        
+                        if (!showText && !this.isMobile) {
+                            this.updateStatus('🔊 Rachel is speaking...');
+                        }
+                    };
+                    
+                    this.currentAudio.onended = () => {
+                        console.log('✅ Audio playback completed');
+                        clearTimeout(playTimeout);
+                        URL.revokeObjectURL(audioUrl);
+                        this.audioFinished();
+                        resolve();
+                    };
+                    
+                    this.currentAudio.onerror = (error) => {
+                        console.error('❌ Audio playback error:', error);
+                        clearTimeout(playTimeout);
+                        this.currentAudio = null;
+                        URL.revokeObjectURL(audioUrl);
+                        
+                        if (this.isMobile) {
+                            this.updateStatus('💬 ' + responseText);
+                            console.log('📱 Mobile audio failed - showing text instead');
+                        } else if (!showText) {
+                            this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                        }
+                        
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, this.isMobile ? 3000 : 2000);
+                    };
+                    
+                    this.currentAudio.play().then(() => {
+                        console.log('🎵 Audio play() succeeded');
+                    }).catch((error) => {
+                        console.log('⚠️ Audio play() failed:', error);
+                        clearTimeout(playTimeout);
+                        
+                        if (this.isMobile) {
+                            console.log('📱 Mobile audio play failed - trying alternative approach');
+                            
+                            setTimeout(() => {
+                                if (this.currentAudio) {
+                                    this.currentAudio.play().catch(() => {
+                                        console.log('📱 Mobile audio retry failed - using text mode');
+                                        this.updateStatus('💬 ' + responseText);
+                                        setTimeout(() => {
+                                            this.audioFinished();
+                                            resolve();
+                                        }, 3000);
+                                    });
+                                }
+                            }, 100);
+                        } else {
+                            if (!showText) {
+                                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                            }
+                            setTimeout(() => {
+                                this.audioFinished();
+                                resolve();
+                            }, 2000);
+                        }
+                    });
+                });
+                
+            } catch (error) {
+                console.error('❌ Premium audio processing failed:', error);
+                this.updateStatus('💬 ' + responseText.substring(0, 150) + '...');
+                setTimeout(() => {
                     this.audioFinished();
-                    resolve();
-                };
-                
-                utterance.onerror = (error) => {
-                    console.log('⚠️ TTS error:', error);
+                }, this.isMobile ? 3000 : 2000);
+                return Promise.resolve();
+            }
+        }
+
+        async playBrowserTTS(text) {
+            console.log('🔊 Playing browser TTS - Mobile:', this.isMobile);
+            
+            return new Promise((resolve) => {
+                try {
+                    if (!('speechSynthesis' in window)) {
+                        console.log('⚠️ Speech synthesis not available');
+                        this.updateStatus('💬 ' + text);
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, this.isMobile ? 4000 : 3000);
+                        return;
+                    }
+                    
+                    if (this.isMobile) {
+                        console.log('📱 Configuring mobile TTS...');
+                        
+                        if (this.audioContext && this.audioContext.state === 'suspended') {
+                            this.audioContext.resume().catch(err => {
+                                console.log('⚠️ Audio context resume failed:', err);
+                            });
+                        }
+                    }
+                    
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = this.currentLanguage;
+                    utterance.rate = 0.9;
+                    utterance.pitch = 1.0;
+                    utterance.volume = 1.0;
+                    
+                    if (this.isMobile) {
+                        const voices = speechSynthesis.getVoices();
+                        if (voices.length > 0) {
+                            const femaleVoice = voices.find(voice => 
+                                voice.name.toLowerCase().includes('female') || 
+                                voice.name.toLowerCase().includes('woman') ||
+                                voice.name.toLowerCase().includes('samantha') ||
+                                voice.name.toLowerCase().includes('karen')
+                            );
+                            
+                            if (femaleVoice) {
+                                utterance.voice = femaleVoice;
+                                console.log('📱 Using voice:', femaleVoice.name);
+                            }
+                        }
+                    }
+                    
+                    utterance.onstart = () => {
+                        console.log('🔊 TTS started');
+                        this.isPlaying = true;
+                        this.updateUI('speaking');
+                        this.updateStatus('🔊 Speaking...');
+                    };
+                    
+                    utterance.onend = () => {
+                        console.log('✅ TTS completed');
+                        this.audioFinished();
+                        resolve();
+                    };
+                    
+                    utterance.onerror = (error) => {
+                        console.log('⚠️ TTS error:', error);
+                        this.updateStatus('💬 ' + text.substring(0, 150) + '...');
+                        setTimeout(() => {
+                            this.audioFinished();
+                            resolve();
+                        }, this.isMobile ? 4000 : 3000);
+                    };
+                    
+                    if (this.isMobile) {
+                        speechSynthesis.cancel();
+                        
+                        setTimeout(() => {
+                            speechSynthesis.speak(utterance);
+                            console.log('📱 Mobile TTS initiated');
+                        }, 100);
+                    } else {
+                        speechSynthesis.speak(utterance);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Browser TTS error:', error);
                     this.updateStatus('💬 ' + text.substring(0, 150) + '...');
                     setTimeout(() => {
                         this.audioFinished();
                         resolve();
                     }, this.isMobile ? 4000 : 3000);
-                };
+                }
+            });
+        }
+
+        audioFinished() {
+            console.log('Audio finished');
+            this.isPlaying = false;
+            this.isProcessing = false;
+            this.updateUI('ready');
+            this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to continue');
+        }
+
+        setupEventListeners() {
+            this.micBtn.addEventListener('click', () => {
+                console.log('Mic button clicked');
                 
-                // Enhanced mobile TTS initiation
-                if (this.isMobile) {
-                    // Cancel any existing speech first
-                    speechSynthesis.cancel();
-                    
-                    // Wait a bit for the cancel to take effect
-                    setTimeout(() => {
-                        speechSynthesis.speak(utterance);
-                        console.log('📱 Mobile TTS initiated');
-                    }, 100);
-                } else {
-                    speechSynthesis.speak(utterance);
+                if (this.isMobile && !this.mobileAudioEnabled) {
+                    this.initMobileAudio();
                 }
                 
-            } catch (error) {
-                console.error('❌ Browser TTS error:', error);
-                this.updateStatus('💬 ' + text.substring(0, 150) + '...');
-                setTimeout(() => {
-                    this.audioFinished();
-                    resolve();
-                }, this.isMobile ? 4000 : 3000);
-            }
-        });
-    }
-
-    // Rest of the methods remain the same...
-    audioFinished() {
-        console.log('Audio finished');
-        this.isPlaying = false;
-        this.isProcessing = false;
-        this.updateUI('ready');
-        this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to continue');
-    }
-
-    setupEventListeners() {
-        this.micBtn.addEventListener('click', () => {
-            console.log('Mic button clicked');
-            
-            // Enable mobile audio on first click if not already enabled
-            if (this.isMobile && !this.mobileAudioEnabled) {
-                this.initMobileAudio();
-            }
-            
-            this.toggleListening();
-        });
-        
-        this.stopBtn.addEventListener('click', () => {
-            if (this.isListening) this.stopListening();
-            if (this.isPlaying) this.stopAudio();
-        });
-        
-        this.clearBtn.addEventListener('click', () => this.clearAll());
-        
-        this.langBtns.forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                this.changeLanguage(e.target.dataset.lang);
+                this.toggleListening();
             });
-        });
-    }
-
-    changeLanguage(lang) {
-        this.currentLanguage = lang;
-        if (this.recognition) this.recognition.lang = lang;
-        
-        this.langBtns.forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.lang === lang);
-        });
-    }
-
-    toggleListening() {
-        if (this.isListening) {
-            this.stopListening();
-        } else {
-            this.startListening();
-        }
-    }
-
-    async startListening() {
-        if (this.isProcessing || !this.recognition) {
-            console.log('Cannot start: processing or no recognition');
-            return;
-        }
-        
-        try {
-            console.log('Starting speech recognition...');
             
-            // Ensure audio context is active on mobile
-            if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
-                await this.audioContext.resume();
-                console.log('Audio context resumed before listening');
+            this.stopBtn.addEventListener('click', () => {
+                if (this.isListening) this.stopListening();
+                if (this.isPlaying) this.stopAudio();
+            });
+            
+            this.clearBtn.addEventListener('click', () => this.clearAll());
+            
+            this.langBtns.forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    this.changeLanguage(e.target.dataset.lang);
+                });
+            });
+        }
+
+        changeLanguage(lang) {
+            this.currentLanguage = lang;
+            if (this.recognition) this.recognition.lang = lang;
+            
+            this.langBtns.forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.lang === lang);
+            });
+        }
+
+        toggleListening() {
+            if (this.isListening) {
+                this.stopListening();
+            } else {
+                this.startListening();
+            }
+        }
+
+        async startListening() {
+            if (this.isProcessing || !this.recognition) {
+                console.log('Cannot start: processing or no recognition');
+                return;
             }
             
-            this.clearError();
+            try {
+                console.log('Starting speech recognition...');
+                
+                if (this.isMobile && this.audioContext && this.audioContext.state === 'suspended') {
+                    await this.audioContext.resume();
+                    console.log('Audio context resumed before listening');
+                }
+                
+                this.clearError();
+                speechSynthesis.cancel();
+                this.recognition.start();
+                this.stopBtn.disabled = false;
+                
+            } catch (error) {
+                console.error('Failed to start:', error);
+                this.handleError('Failed to start listening: ' + error.message);
+            }
+        }
+
+        stopListening() {
+            if (this.isListening && this.recognition) {
+                this.recognition.stop();
+            }
+        }
+
+        stopAudio() {
+            if (this.currentAudio) {
+                this.currentAudio.pause();
+                this.currentAudio = null;
+            }
             speechSynthesis.cancel();
-            this.recognition.start();
-            this.stopBtn.disabled = false;
+            this.audioFinished();
+        }
+
+        updateUI(state) {
+            this.micBtn.className = 'mic-button';
             
-        } catch (error) {
-            console.error('Failed to start:', error);
-            this.handleError('Failed to start listening: ' + error.message);
+            switch (state) {
+                case 'listening':
+                    this.micBtn.classList.add('listening');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'processing':
+                    this.micBtn.classList.add('processing');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'speaking':
+                    this.micBtn.classList.add('speaking');
+                    this.stopBtn.disabled = false;
+                    break;
+                case 'ready':
+                default:
+                    this.stopBtn.disabled = true;
+                    break;
+            }
         }
-    }
 
-    stopListening() {
-        if (this.isListening && this.recognition) {
-            this.recognition.stop();
+        updateStatus(message) {
+            this.status.textContent = message;
         }
-    }
 
-    stopAudio() {
-        if (this.currentAudio) {
-            this.currentAudio.pause();
-            this.currentAudio = null;
-        }
-        speechSynthesis.cancel();
-        this.audioFinished();
-    }
-
-    updateUI(state) {
-        this.micBtn.className = 'mic-button';
-        
-        switch (state) {
-            case 'listening':
-                this.micBtn.classList.add('listening');
-                this.stopBtn.disabled = false;
-                break;
-            case 'processing':
-                this.micBtn.classList.add('processing');
-                this.stopBtn.disabled = false;
-                break;
-            case 'speaking':
-                this.micBtn.classList.add('speaking');
-                this.stopBtn.disabled = false;
-                break;
-            case 'ready':
-            default:
-                this.stopBtn.disabled = true;
-                break;
-        }
-    }
-
-    updateStatus(message) {
-        this.status.textContent = message;
-    }
-
-    handleError(message) {
-        console.error('Error:', message);
-        this.showError(message);
-        this.isProcessing = false;
-        this.isListening = false;
-        this.isPlaying = false;
-        this.updateUI('ready');
-        
-        if (this.processTimeout) {
-            clearTimeout(this.processTimeout);
-            this.processTimeout = null;
-        }
-        
-        setTimeout(() => {
-            this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to try again');
-        }, 3000);
-    }
-
-    showError(message) {
-        this.errorMessage.textContent = message;
-        this.errorMessage.classList.add('show');
-        setTimeout(() => this.clearError(), 8000);
-    }
-
-    clearError() {
-        this.errorMessage.classList.remove('show');
-    }
-
-    showInlineBookingForm() {
-        const overlay = document.getElementById('bookingFormOverlay');
-        const dateInput = document.getElementById('inlineAppointmentDate');
-        
-        const today = new Date().toISOString().split('T')[0];
-        dateInput.min = today;
-        
-        overlay.style.display = 'flex';
-        
-        if (!this.isMobile) {
+        handleError(message) {
+            console.error('Error:', message);
+            this.showError(message);
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            this.updateUI('ready');
+            
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
+            
             setTimeout(() => {
-                document.getElementById('inlineCustomerName').focus();
-            }, 100);
+                this.updateStatus('🎙️ Say "subscribe" or "book appointment" or tap to try again');
+            }, 3000);
         }
-        
-        this.updateStatus('📅 Fill out the booking form above');
-    }
 
-    clearAll() {
-        this.stopAudio();
-        if (this.isListening) this.stopListening();
-        
-        if (this.processTimeout) {
-            clearTimeout(this.processTimeout);
-            this.processTimeout = null;
+        showError(message) {
+            this.errorMessage.textContent = message;
+            this.errorMessage.classList.add('show');
+            setTimeout(() => this.clearError(), 8000);
         }
-        
-        this.isProcessing = false;
-        this.isListening = false;
-        this.isPlaying = false;
-        this.updateUI('ready');
-        this.clearError();
-        
-        const overlay = document.getElementById('bookingFormOverlay');
-        if (overlay) overlay.style.display = 'none';
-        
-        const subscriptionPopup = document.getElementById('subscriptionPopup');
-        if (subscriptionPopup) subscriptionPopup.style.display = 'none';
-        
-        this.updateStatus('🎙️ Ready! Say "subscribe" or "book appointment"');
+
+        clearError() {
+            this.errorMessage.classList.remove('show');
+        }
+
+        showInlineBookingForm() {
+            const overlay = document.getElementById('bookingFormOverlay');
+            const dateInput = document.getElementById('inlineAppointmentDate');
+            
+            const today = new Date().toISOString().split('T')[0];
+            dateInput.min = today;
+            
+            overlay.style.display = 'flex';
+            
+            if (!this.isMobile) {
+                setTimeout(() => {
+                    document.getElementById('inlineCustomerName').focus();
+                }, 100);
+            }
+            
+            this.updateStatus('📅 Fill out the booking form above');
+        }
+
+        clearAll() {
+            this.stopAudio();
+            if (this.isListening) this.stopListening();
+            
+            if (this.processTimeout) {
+                clearTimeout(this.processTimeout);
+                this.processTimeout = null;
+            }
+            
+            this.isProcessing = false;
+            this.isListening = false;
+            this.isPlaying = false;
+            this.updateUI('ready');
+            this.clearError();
+            
+            const overlay = document.getElementById('bookingFormOverlay');
+            if (overlay) overlay.style.display = 'none';
+            
+            const subscriptionPopup = document.getElementById('subscriptionPopup');
+            if (subscriptionPopup) subscriptionPopup.style.display = 'none';
+            
+            this.updateStatus('🎙️ Ready! Say "subscribe" or "book appointment"');
+        }
     }
-}
 
     // Subscription Popup Functions
     function showSubscriptionPopup() {
@@ -4046,15 +3327,12 @@ class EnhancedVoiceBot {
         if (popup) {
             popup.style.display = 'flex';
             
-            // Animate entrance
             setTimeout(() => {
                 popup.classList.add('active');
             }, 10);
             
-            // Log analytics event
             console.log('📊 Subscription popup shown');
             
-            // Update status
             if (window.voiceBot) {
                 window.voiceBot.updateStatus('🎯 Choose your perfect plan above!');
             }
@@ -4066,7 +3344,6 @@ class EnhancedVoiceBot {
         if (popup) {
             popup.style.display = 'none';
             
-            // Update status
             if (window.voiceBot) {
                 window.voiceBot.updateStatus('🎙️ Ready! Say "subscribe" to see plans again');
             }
@@ -4074,13 +3351,10 @@ class EnhancedVoiceBot {
     }
 
     function selectPlan(planType) {
-        // Log the plan selection
         console.log(`📊 Plan selected: ${planType}`);
         
-        // Redirect to subscription page with plan parameter
         const subscriptionUrl = `https://ringlypro.com/subscribe?plan=${planType}`;
         
-        // Show confirmation before redirect
         const planNames = {
             'starter': 'Scheduling Assistant ($97/month)',
             'pro': 'Office Manager ($297/month)',
@@ -4089,7 +3363,6 @@ class EnhancedVoiceBot {
         
         const selectedPlanName = planNames[planType] || planType;
         
-        // Update the popup content to show confirmation
         const container = document.querySelector('.subscription-popup-container');
         if (container) {
             container.innerHTML = `
@@ -4112,21 +3385,17 @@ class EnhancedVoiceBot {
             `;
         }
         
-        // Redirect after a short delay
         setTimeout(() => {
             window.open(subscriptionUrl, '_blank');
         }, 2000);
     }
 
     function contactSales() {
-        // Close the subscription popup
         closeSubscriptionPopup();
         
-        // Show the booking form for sales consultation
         if (window.voiceBot && window.voiceBot.showInlineBookingForm) {
             window.voiceBot.showInlineBookingForm();
             
-            // Pre-fill the purpose field if possible
             setTimeout(() => {
                 const purposeField = document.getElementById('inlineAppointmentPurpose');
                 if (purposeField) {
@@ -4134,12 +3403,10 @@ class EnhancedVoiceBot {
                 }
             }, 100);
         } else {
-            // Fallback: redirect to contact page
             window.location.href = '/chat-enhanced';
         }
     }
 
-    // Initialize when page loads
     document.addEventListener('DOMContentLoaded', () => {
         try {
             window.voiceBot = new EnhancedVoiceBot();
@@ -4149,7 +3416,6 @@ class EnhancedVoiceBot {
         }
     });
 
-    // Booking form functions remain the same
     let selectedInlineTimeSlot = null;
 
     function closeBookingForm() {
@@ -4723,7 +3989,6 @@ CHAT_HTML_TEMPLATE = '''
             });
         }
 
-        // Store last question for context
         document.getElementById('userInput').addEventListener('input', function() {
             sessionStorage.setItem('lastQuestion', this.value);
         });
@@ -4731,7 +3996,6 @@ CHAT_HTML_TEMPLATE = '''
 </body>
 </html>
 '''
-
 ENHANCED_CHAT_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -4907,20 +4171,20 @@ ENHANCED_CHAT_TEMPLATE = '''
 <body>
     <div class="chat-container">
         <div class="header">
-            <button class="interface-switcher" onclick="window.location.href='/'">🎤 Voice Chat</button>
-            <h1>📅 RinglyPro Booking Assistant</h1>
+            <button class="interface-switcher" onclick="window.location.href='/'">Voice Chat</button>
+            <h1>RinglyPro Booking Assistant</h1>
             <p>Schedule appointments & get answers instantly!</p>
         </div>
         
         <div class="chat-messages" id="chatMessages">
             <div class="message bot">
                 <div class="message-content">
-                    👋 Hello! I'm your RinglyPro booking assistant. I can help you:
+                    Hello! I'm your RinglyPro booking assistant. I can help you:
                     
-                    📅 Schedule a free consultation
-                    💬 Answer questions about our services
-                    💰 Explain our pricing plans
-                    🔧 Describe our features
+                    Schedule a free consultation
+                    Answer questions about our services
+                    Explain our pricing plans
+                    Describe our features
                     
                     Just type "book appointment" or ask me anything!
                 </div>
@@ -5011,7 +4275,7 @@ ENHANCED_CHAT_TEMPLATE = '''
             const formDiv = document.createElement('div');
             formDiv.className = 'booking-form';
             formDiv.innerHTML = `
-                <h4>📅 Schedule Your Free Consultation</h4>
+                <h4>Schedule Your Free Consultation</h4>
                 <form id="appointmentForm">
                     <div class="form-group">
                         <label>Full Name *</label>
@@ -5052,7 +4316,6 @@ ENHANCED_CHAT_TEMPLATE = '''
             chatMessages.appendChild(formDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
-            // Focus on first field
             setTimeout(() => {
                 document.getElementById('customerName').focus();
             }, 100);
@@ -5093,12 +4356,10 @@ ENHANCED_CHAT_TEMPLATE = '''
         }
 
         function selectTimeSlot(time, element) {
-            // Remove previous selection
             document.querySelectorAll('.time-slot').forEach(slot => {
                 slot.classList.remove('selected');
             });
             
-            // Add selection to clicked slot
             element.classList.add('selected');
             selectedTimeSlot = time;
         }
@@ -5123,7 +4384,6 @@ ENHANCED_CHAT_TEMPLATE = '''
                 return;
             }
             
-            // Disable submit button
             const submitBtn = document.querySelector('.submit-btn');
             submitBtn.disabled = true;
             submitBtn.textContent = 'Booking...';
@@ -5163,28 +4423,25 @@ ENHANCED_CHAT_TEMPLATE = '''
         function showBookingConfirmation(appointment) {
             const chatMessages = document.getElementById('chatMessages');
             
-            // Remove the booking form
             const bookingForm = document.querySelector('.booking-form');
             if (bookingForm) bookingForm.remove();
             
-            // Format date and time for display
             const date = new Date(appointment.date + 'T' + appointment.time);
             const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
             const formattedDate = date.toLocaleDateString('en-US', options);
             const formattedTime = formatTimeSlot(appointment.time);
             
-            // Add confirmation message
             const confirmDiv = document.createElement('div');
             confirmDiv.className = 'success-message';
             confirmDiv.innerHTML = `
-                <strong>✅ Appointment Confirmed!</strong><br><br>
-                📅 <strong>Date:</strong> ${formattedDate}<br>
-                🕐 <strong>Time:</strong> ${formattedTime} EST<br>
-                👤 <strong>Name:</strong> ${appointment.customer_name}<br>
-                📧 <strong>Email:</strong> ${appointment.customer_email}<br>
-                📞 <strong>Phone:</strong> ${appointment.customer_phone}<br>
-                🔗 <strong>Zoom Link:</strong> <a href="${appointment.zoom_url}" target="_blank" style="color: #2196F3;">Join Meeting</a><br>
-                📋 <strong>Confirmation Code:</strong> ${appointment.confirmation_code}<br><br>
+                <strong>Appointment Confirmed!</strong><br><br>
+                Date: ${formattedDate}<br>
+                Time: ${formattedTime} EST<br>
+                Name: ${appointment.customer_name}<br>
+                Email: ${appointment.customer_email}<br>
+                Phone: ${appointment.customer_phone}<br>
+                Zoom Link: <a href="${appointment.zoom_url}" target="_blank" style="color: #2196F3;">Join Meeting</a><br>
+                Confirmation Code: ${appointment.confirmation_code}<br><br>
                 
                 You'll receive email and SMS confirmations shortly. Save your confirmation code for any changes.
             `;
@@ -5192,7 +4449,6 @@ ENHANCED_CHAT_TEMPLATE = '''
             chatMessages.appendChild(confirmDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
-            // Reset booking state
             bookingStep = 'none';
             bookingData = {};
             selectedTimeSlot = null;
@@ -5203,7 +4459,7 @@ ENHANCED_CHAT_TEMPLATE = '''
             
             const errorDiv = document.createElement('div');
             errorDiv.className = 'error-message';
-            errorDiv.innerHTML = `<strong>❌ Booking Error:</strong><br>${message}`;
+            errorDiv.innerHTML = `<strong>Booking Error:</strong><br>${message}`;
             
             chatMessages.appendChild(errorDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -5212,7 +4468,8 @@ ENHANCED_CHAT_TEMPLATE = '''
 </body>
 </html>
 '''
-# ==================== ROUTES ====================
+
+# ==================== ROUTES (POSTGRESQL VIA CRM API) ====================
 
 @app.route('/')
 def serve_index():
@@ -5231,7 +4488,7 @@ def serve_enhanced_chat():
 
 @app.route('/chat', methods=['POST'])
 def handle_chat():
-    """Handle chat messages with SMS integration"""
+    """Handle chat messages with SMS integration - PostgreSQL backend"""
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
@@ -5239,15 +4496,13 @@ def handle_chat():
         if not user_message:
             return jsonify({'response': 'Please enter a question.', 'needs_phone_collection': False})
         
-        # Store the question in session for potential phone collection
         session['last_question'] = user_message
         
-        logger.info(f"💬 Chat message received: {user_message}")
+        logger.info(f"Chat message received: {user_message}")
         
-        # Get FAQ response with SMS capability
         response, is_faq_match, needs_phone_collection = get_faq_response_with_sms(user_message)
         
-        logger.info(f"📋 FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
+        logger.info(f"FAQ match: {is_faq_match}, Phone collection needed: {needs_phone_collection}")
         
         return jsonify({
             'response': response,
@@ -5256,7 +4511,7 @@ def handle_chat():
         })
         
     except Exception as e:
-        logger.error(f"❌ Error in chat endpoint: {str(e)}")
+        logger.error(f"Error in chat endpoint: {str(e)}")
         return jsonify({
             'response': 'Sorry, there was an error processing your request. Please try again.',
             'needs_phone_collection': False
@@ -5264,7 +4519,7 @@ def handle_chat():
 
 @app.route('/chat-enhanced', methods=['POST'])
 def handle_enhanced_chat():
-    """Enhanced chat handler with appointment booking capabilities"""
+    """Enhanced chat handler with appointment booking capabilities - PostgreSQL backend"""
     try:
         data = request.get_json()
         user_message = data.get('message', '').strip()
@@ -5274,16 +4529,15 @@ def handle_enhanced_chat():
         if not user_message:
             return jsonify({'response': 'Please enter a question.', 'action': 'none'})
         
-        logger.info(f"💬 Enhanced chat message: {user_message}")
-        logger.info(f"📊 Current booking step: {booking_step}")
+        logger.info(f"Enhanced chat message: {user_message}")
+        logger.info(f"Current booking step: {booking_step}")
         
         user_message_lower = user_message.lower().strip()
         
-        # Handle follow-up responses based on conversation context
         if booking_step == 'awaiting_confirmation':
-            logger.info("🔄 Processing follow-up response")
+            logger.info("Processing follow-up response")
             if user_message_lower in ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'y']:
-                logger.info("✅ User confirmed booking")
+                logger.info("User confirmed booking")
                 return jsonify({
                     'response': 'Perfect! Let me set up the booking form for you.',
                     'action': 'start_booking',
@@ -5291,7 +4545,7 @@ def handle_enhanced_chat():
                     'is_faq_match': True
                 })
             elif user_message_lower in ['no', 'nope', 'not now', 'maybe later', 'n']:
-                logger.info("❌ User declined booking")
+                logger.info("User declined booking")
                 return jsonify({
                     'response': 'No problem! Feel free to ask me any questions about RinglyPro services, or let me know if you change your mind about scheduling.',
                     'action': 'none',
@@ -5299,11 +4553,10 @@ def handle_enhanced_chat():
                     'is_faq_match': True
                 })
         
-        # Get enhanced FAQ response
         response, is_faq_match, action_needed = get_enhanced_faq_response(user_message)
         
-        logger.info(f"📤 Response: {response[:50]}...")
-        logger.info(f"🎬 Action needed: {action_needed}")
+        logger.info(f"Response: {response[:50]}...")
+        logger.info(f"Action needed: {action_needed}")
         
         response_data = {
             'response': response,
@@ -5312,9 +4565,8 @@ def handle_enhanced_chat():
             'booking_step': booking_step
         }
         
-        # Handle specific booking actions
         if action_needed == "start_booking":
-            logger.info("🚀 Setting action to start_booking")
+            logger.info("Setting action to start_booking")
             response_data['action'] = 'start_booking'
             response_data['booking_step'] = 'form_ready'
         elif action_needed == "suggest_booking":
@@ -5323,11 +4575,11 @@ def handle_enhanced_chat():
         elif action_needed == "offer_booking":
             response_data['booking_step'] = 'awaiting_confirmation'
         
-        logger.info(f"📨 Final response data: {response_data}")
+        logger.info(f"Final response data: {response_data}")
         return jsonify(response_data)
         
     except Exception as e:
-        logger.error(f"❌ Error in enhanced chat endpoint: {str(e)}")
+        logger.error(f"Error in enhanced chat endpoint: {str(e)}")
         return jsonify({
             'response': 'Sorry, there was an error processing your request. Please try again.',
             'action': 'none'
@@ -5335,7 +4587,7 @@ def handle_enhanced_chat():
 
 @app.route('/get-available-slots', methods=['POST'])
 def get_available_slots():
-    """Get available appointment slots for a date"""
+    """Get available appointment slots for a date - PostgreSQL backend"""
     try:
         data = request.get_json()
         date = data.get('date')
@@ -5343,7 +4595,8 @@ def get_available_slots():
         if not date:
             return jsonify({'error': 'Date is required'}), 400
         
-        slots = AppointmentManager.get_available_slots(date)
+        appointment_manager = AppointmentManager()
+        slots = appointment_manager.get_available_slots(date)
         
         return jsonify({
             'success': True,
@@ -5352,12 +4605,12 @@ def get_available_slots():
         })
         
     except Exception as e:
-        logger.error(f"Error getting available slots: {e}")
+        logger.error(f"Error getting available slots from PostgreSQL: {e}")
         return jsonify({'error': 'Failed to get available slots'}), 500
 
 @app.route('/book-appointment', methods=['POST'])
 def book_appointment():
-    """Book a new appointment"""
+    """Book a new appointment - PostgreSQL backend"""
     try:
         data = request.get_json()
         
@@ -5377,7 +4630,7 @@ def book_appointment():
             }), 400
             
     except Exception as e:
-        logger.error(f"Error booking appointment: {e}")
+        logger.error(f"Error booking appointment in PostgreSQL: {e}")
         return jsonify({
             'success': False,
             'message': 'Failed to book appointment'
@@ -5385,9 +4638,10 @@ def book_appointment():
 
 @app.route('/appointment/<confirmation_code>')
 def get_appointment(confirmation_code):
-    """Get appointment details by confirmation code"""
+    """Get appointment details by confirmation code - PostgreSQL backend"""
     try:
-        appointment = AppointmentManager.get_appointment_by_code(confirmation_code)
+        appointment_manager = AppointmentManager()
+        appointment = appointment_manager.get_appointment_by_code(confirmation_code)
         
         if appointment:
             return jsonify({
@@ -5401,7 +4655,7 @@ def get_appointment(confirmation_code):
             }), 404
             
     except Exception as e:
-        logger.error(f"Error getting appointment: {e}")
+        logger.error(f"Error getting appointment from PostgreSQL: {e}")
         return jsonify({
             'success': False,
             'message': 'Failed to retrieve appointment'
@@ -5409,7 +4663,7 @@ def get_appointment(confirmation_code):
 
 @app.route('/submit_phone', methods=['POST'])
 def submit_phone():
-    """Handle phone number submission and send SMS notification"""
+    """Handle phone number submission and send SMS notification - PostgreSQL backend"""
     try:
         data = request.get_json()
         phone_number = data.get('phone', '').strip()
@@ -5421,7 +4675,6 @@ def submit_phone():
                 'message': 'Please provide a phone number.'
             })
         
-        # Validate phone number
         validated_phone = validate_phone_number(phone_number)
         if not validated_phone:
             return jsonify({
@@ -5429,12 +4682,11 @@ def submit_phone():
                 'message': 'Please enter a valid phone number (e.g., (555) 123-4567).'
             })
         
-        logger.info(f"📞 Phone submitted: {validated_phone}, Question: {last_question}")
+        logger.info(f"Phone submitted: {validated_phone}, Question: {last_question}")
         
-        # Send SMS notification
         sms_success, sms_result = send_sms_notification(validated_phone, last_question)
         
-        # Save to database
+        # Save to PostgreSQL via CRM API
         db_saved = save_customer_inquiry(validated_phone, last_question, sms_success, sms_result)
         
         if sms_success:
@@ -5448,14 +4700,15 @@ def submit_phone():
         })
             
     except Exception as e:
-        logger.error(f"❌ Error in submit_phone endpoint: {str(e)}")
+        logger.error(f"Error in submit_phone endpoint: {str(e)}")
         return jsonify({
             'success': False,
             'message': 'There was an error processing your request. Please try again or contact us directly at (656) 213-3300.'
         })
+
 @app.route('/test-appointment-system', methods=['GET'])
 def test_appointment_system():
-    """Test appointment system configuration and integrations"""
+    """Test appointment system configuration and integrations - PostgreSQL backend"""
     try:
         results = {
             "timestamp": datetime.now().isoformat(),
@@ -5463,8 +4716,11 @@ def test_appointment_system():
             "tests": {}
         }
         
-        # Check environment variables
         results["configurations"] = {
+            "crm_api": {
+                "base_url": CRM_BASE_URL,
+                "configured": True
+            },
             "hubspot": {
                 "api_token_configured": bool(hubspot_api_token),
                 "token_preview": hubspot_api_token[:20] + "..." if hubspot_api_token else None,
@@ -5488,6 +4744,13 @@ def test_appointment_system():
                 "meeting_id": zoom_meeting_id,
                 "password": zoom_password
             }
+        }
+        
+        # Test PostgreSQL connection via CRM API
+        crm_test = init_crm_connection()
+        results["tests"]["postgresql_via_crm"] = {
+            "success": crm_test,
+            "message": "PostgreSQL connection via CRM API successful" if crm_test else "PostgreSQL connection failed"
         }
         
         # Test HubSpot connection
@@ -5517,7 +4780,6 @@ def test_appointment_system():
             try:
                 from twilio.rest import Client
                 client = Client(twilio_account_sid, twilio_auth_token)
-                # Just try to fetch account info
                 account = client.api.accounts(twilio_account_sid).fetch()
                 results["tests"]["twilio"] = {
                     "success": True, 
@@ -5529,44 +4791,23 @@ def test_appointment_system():
         else:
             results["tests"]["twilio"] = {"success": False, "error": "Twilio credentials not configured"}
         
-        # Check recent appointments in database
+        # Check recent appointments in PostgreSQL via CRM API
         try:
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            
-            # Get last 5 appointments
-            cursor.execute('''SELECT customer_name, customer_email, customer_phone, 
-                             appointment_date, appointment_time, confirmation_code,
-                             hubspot_contact_id, hubspot_meeting_id, created_at
-                             FROM appointments 
-                             ORDER BY created_at DESC 
-                             LIMIT 5''')
-            recent_appointments = cursor.fetchall()
-            
-            results["recent_appointments"] = []
-            for apt in recent_appointments:
-                results["recent_appointments"].append({
-                    "name": apt[0],
-                    "email": apt[1],
-                    "phone": apt[2],
-                    "date": apt[3],
-                    "time": apt[4],
-                    "confirmation": apt[5],
-                    "hubspot_contact": apt[6],
-                    "hubspot_meeting": apt[7],
-                    "created": apt[8]
-                })
-            
-            conn.close()
+            appointments_result = crm_client._make_request('GET', '/appointments')
+            if appointments_result and appointments_result.get('success'):
+                appointments = appointments_result.get('appointments', [])
+                results["recent_postgresql_appointments"] = appointments[:5]
+            else:
+                results["postgresql_error"] = "Failed to fetch appointments from PostgreSQL"
         except Exception as e:
-            results["database_error"] = str(e)
+            results["postgresql_error"] = str(e)
         
         # Format as HTML for easy reading
         html = f"""
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Appointment System Test</title>
+            <title>Appointment System Test - PostgreSQL Backend</title>
             <style>
                 body {{ font-family: monospace; padding: 20px; background: #f0f0f0; }}
                 .success {{ color: green; font-weight: bold; }}
@@ -5577,39 +4818,44 @@ def test_appointment_system():
             </style>
         </head>
         <body>
-            <h1>🔍 Appointment System Configuration Test</h1>
+            <h1>Appointment System Configuration Test - PostgreSQL Backend</h1>
             <h2>Environment Status:</h2>
             <pre>{json.dumps(results["configurations"], indent=2)}</pre>
             
             <h2>Integration Tests:</h2>
             <pre>{json.dumps(results["tests"], indent=2)}</pre>
             
-            <h2>Recent Appointments:</h2>
-            <pre>{json.dumps(results.get("recent_appointments", []), indent=2)}</pre>
+            <h2>Recent PostgreSQL Appointments:</h2>
+            <pre>{json.dumps(results.get("recent_postgresql_appointments", []), indent=2)}</pre>
             
             <h2>Quick Fix Checklist:</h2>
             <ul>
         """
         
         # Add recommendations based on test results
-        if not results["tests"].get("hubspot", {}).get("success"):
-            html += "<li class='error'>❌ HubSpot: Check HUBSPOT_ACCESS_TOKEN environment variable</li>"
+        if not results["tests"].get("postgresql_via_crm", {}).get("success"):
+            html += "<li class='error'>PostgreSQL: Check CRM API connection</li>"
         else:
-            html += "<li class='success'>✅ HubSpot: Connected</li>"
+            html += "<li class='success'>PostgreSQL: Connected via CRM API</li>"
+            
+        if not results["tests"].get("hubspot", {}).get("success"):
+            html += "<li class='error'>HubSpot: Check HUBSPOT_ACCESS_TOKEN environment variable</li>"
+        else:
+            html += "<li class='success'>HubSpot: Connected</li>"
             
         if not results["tests"].get("email", {}).get("success"):
-            html += "<li class='error'>❌ Email: Check EMAIL_USER and EMAIL_PASSWORD environment variables</li>"
+            html += "<li class='error'>Email: Check EMAIL_USER and EMAIL_PASSWORD environment variables</li>"
         else:
-            html += "<li class='success'>✅ Email: Connected</li>"
+            html += "<li class='success'>Email: Connected</li>"
             
         if not results["tests"].get("twilio", {}).get("success"):
-            html += "<li class='error'>❌ Twilio: Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables</li>"
+            html += "<li class='error'>Twilio: Check TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables</li>"
         else:
-            html += "<li class='success'>✅ Twilio: Connected</li>"
+            html += "<li class='success'>Twilio: Connected</li>"
         
         html += """
             </ul>
-            <h2>Test Booking:</h2>
+            <h2>Test Booking (PostgreSQL):</h2>
             <button onclick="testBooking()">Test Book Appointment</button>
             <div id="result"></div>
             
@@ -5624,7 +4870,7 @@ def test_appointment_system():
                         phone: '(555) 123-4567',
                         date: new Date().toISOString().split('T')[0],
                         time: '14:00',
-                        purpose: 'System test booking'
+                        purpose: 'PostgreSQL system test booking'
                     })
                 })
                 .then(r => r.json())
@@ -5645,13 +4891,13 @@ def test_appointment_system():
 @app.route('/process-text-enhanced', methods=['POST'])
 def process_text_enhanced():
     """Enhanced text processing with premium audio and subscription detection"""
-    logger.info("🎤 Enhanced text processing request")
+    logger.info("Enhanced text processing request")
     
     try:
         data = request.get_json()
         
         if not data or 'text' not in data:
-            logger.error("❌ Missing text data")
+            logger.error("Missing text data")
             return jsonify({"error": "Missing text data"}), 400
             
         user_text = data['text'].strip()
@@ -5668,7 +4914,7 @@ def process_text_enhanced():
         is_echo = any(phrase in user_lower for phrase in echo_phrases) and len(user_text) > 30
         
         if is_echo:
-            logger.warning(f"🔄 Echo detected: {user_text[:50]}...")
+            logger.warning(f"Echo detected: {user_text[:50]}...")
             return jsonify({
                 "response": "I think I heard an echo. Please speak again.",
                 "language": user_language,
@@ -5682,9 +4928,9 @@ def process_text_enhanced():
                         else "Text too short. Please try again.")
             return jsonify({"error": error_msg}), 400
         
-        logger.info(f"📝 Processing: {user_text}")
+        logger.info(f"Processing: {user_text}")
         
-        # ENHANCED: Check for subscription intent FIRST (before booking)
+        # Check for subscription intent FIRST
         subscription_keywords = [
             'subscribe', 'subscription', 'sign up', 'signup', 'get started',
             'join', 'register', 'start service', 'want to subscribe',
@@ -5695,16 +4941,15 @@ def process_text_enhanced():
         subscription_detected = any(keyword in user_lower for keyword in subscription_keywords)
         
         if subscription_detected:
-            logger.info("🎯 Subscription intent detected in voice!")
+            logger.info("Subscription intent detected in voice!")
             subscription_response = "Wonderful! I'm excited to help you get started with RinglyPro. I'm opening our subscription options for you right now. You'll see our plans and can choose the one that best fits your business needs."
             
-            # Try to generate premium audio with Rachel's voice
             audio_data = None
             engine_used = "browser_fallback"
             
             if elevenlabs_api_key:
                 try:
-                    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel's voice
+                    voice_id = "21m00Tcm4TlvDq8ikWAM"
                     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
                     
                     headers = {
@@ -5728,44 +4973,42 @@ def process_text_enhanced():
                     if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                         audio_data = base64.b64encode(tts_response.content).decode('utf-8')
                         engine_used = "elevenlabs_rachel"
-                        logger.info("✅ Rachel's voice audio generated for subscription")
+                        logger.info("Rachel's voice audio generated for subscription")
                     else:
-                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                        logger.warning(f"ElevenLabs failed: {tts_response.status_code}")
                     
                 except Exception as tts_error:
-                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+                    logger.error(f"ElevenLabs Rachel error: {tts_error}")
             
             response_payload = {
                 "response": subscription_response,
                 "language": user_language,
                 "context": "subscription_redirect",
-                "action": "show_subscription_popup",  # NEW ACTION
+                "action": "show_subscription_popup",
                 "engine_used": engine_used,
                 "show_text": True
             }
             
             if audio_data:
                 response_payload["audio"] = audio_data
-                logger.info("✅ Subscription response with Rachel's voice")
+                logger.info("Subscription response with Rachel's voice")
             else:
-                logger.info("✅ Subscription response with browser TTS fallback")
+                logger.info("Subscription response with browser TTS fallback")
             
             return jsonify(response_payload)
-        
-        # Check for booking intent (after subscription check)
+            # Check for appointment booking intent
         booking_keywords = [
             'book', 'schedule', 'appointment', 'meeting', 'consultation',
-            'want to book', 'book an appointment', 'schedule meeting',
-            'yes i want to book', 'book appointment', 'schedule appointment'
+            'available', 'calendar', 'time', 'when can', 'set up',
+            'book an', 'make an appointment', 'schedule a meeting'
         ]
         
         booking_detected = any(keyword in user_lower for keyword in booking_keywords)
         
         if booking_detected:
-            logger.info("🎯 Booking intent detected in voice!")
-            booking_response = "Perfect! Thank you for wanting to book an appointment. I'm opening the appointment form for you right here. Please fill out your details and I'll get you scheduled right away."
+            logger.info("Booking intent detected in voice!")
+            booking_response = "Perfect! I'd be happy to help you schedule a consultation. Let me open the booking form for you right now where you can select your preferred date and time."
             
-            # Try to generate premium audio with Rachel's voice
             audio_data = None
             engine_used = "browser_fallback"
             
@@ -5789,18 +5032,15 @@ def process_text_enhanced():
                         }
                     }
                     
-                    timeout = 10
-                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                    tts_response = requests.post(url, json=tts_data, headers=headers, timeout=10)
                     
                     if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                         audio_data = base64.b64encode(tts_response.content).decode('utf-8')
                         engine_used = "elevenlabs_rachel"
-                        logger.info("✅ Rachel's voice audio generated successfully")
-                    else:
-                        logger.warning(f"⚠️ ElevenLabs failed: {tts_response.status_code}")
+                        logger.info("Rachel's voice audio generated for booking")
                     
                 except Exception as tts_error:
-                    logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+                    logger.error(f"ElevenLabs booking error: {tts_error}")
             
             response_payload = {
                 "response": booking_response,
@@ -5813,18 +5053,20 @@ def process_text_enhanced():
             
             if audio_data:
                 response_payload["audio"] = audio_data
-                logger.info("✅ Booking response with Rachel's voice")
-            else:
-                logger.info("✅ Booking response with browser TTS fallback")
             
             return jsonify(response_payload)
         
-        # Regular FAQ processing for non-booking/non-subscription requests
-        faq_response, is_faq = get_faq_response(user_text)
-        response_text = faq_response
-        context = "professional" if is_faq else "friendly"
+        # For other queries, process through FAQ system
+        response, is_faq_match = get_faq_response(user_text)
         
-        # Try to generate premium audio with Rachel's voice
+        if not is_faq_match or is_no_answer_response(response):
+            log_inquiry_to_crm(
+                phone="voice_inquiry",
+                question=user_text,
+                source="voice"
+            )
+        
+        # Generate audio response
         audio_data = None
         engine_used = "browser_fallback"
         
@@ -5839,7 +5081,7 @@ def process_text_enhanced():
                     "xi-api-key": elevenlabs_api_key
                 }
                 
-                speech_text = response_text.replace("RinglyPro", "Ringly Pro")
+                speech_text = response.replace("RinglyPro", "Ringly Pro")
                 speech_text = speech_text.replace("AI", "A.I.")
                 speech_text = speech_text.replace("$", " dollars")
                 
@@ -5852,558 +5094,578 @@ def process_text_enhanced():
                     }
                 }
                 
-                timeout = 10
-                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=timeout)
+                tts_response = requests.post(url, json=tts_data, headers=headers, timeout=10)
                 
                 if tts_response.status_code == 200 and len(tts_response.content) > 1000:
                     audio_data = base64.b64encode(tts_response.content).decode('utf-8')
                     engine_used = "elevenlabs_rachel"
-                    logger.info(f"✅ Rachel's voice audio generated ({len(tts_response.content)} bytes)")
+                    logger.info("Rachel's voice audio generated successfully")
                 else:
-                    logger.warning(f"⚠️ ElevenLabs failed: Status {tts_response.status_code}")
-                    
+                    logger.warning(f"ElevenLabs failed: {tts_response.status_code}")
+                
             except Exception as tts_error:
-                logger.error(f"❌ ElevenLabs Rachel error: {tts_error}")
+                logger.error(f"ElevenLabs error: {tts_error}")
         
         response_payload = {
-            "response": response_text,
+            "response": response,
             "language": user_language,
-            "context": context,
-            "is_faq": is_faq,
+            "context": "general_inquiry",
+            "is_faq_match": is_faq_match,
             "engine_used": engine_used,
-            "show_text": True
+            "show_text": is_mobile
         }
         
         if audio_data:
             response_payload["audio"] = audio_data
-            logger.info("✅ Response with Rachel's voice audio")
-        else:
-            logger.info("✅ Response with browser TTS fallback")
         
         return jsonify(response_payload)
         
     except Exception as e:
-        logger.error(f"❌ Processing error: {e}")
-        return jsonify({"error": "I had a technical issue. Please try again."}), 5000
-
-# ==================== TELEPHONY WEBHOOK ROUTES ====================
-
-@app.route('/audio/<filename>')
-def serve_audio(filename):
-    """Serve audio files for Twilio to play"""
-    try:
-        audio_path = f'/tmp/{filename}'
-        if os.path.exists(audio_path):
-            from flask import make_response
-            with open(audio_path, 'rb') as f:
-                audio_data = f.read()
-            
-            response = make_response(audio_data)
-            response.headers['Content-Type'] = 'audio/mpeg'
-            response.headers['Cache-Control'] = 'no-cache'
-            return response
-        else:
-            return "Audio file not found", 404
-    except Exception as e:
-        logger.error(f"Error serving audio: {e}")
-        return "Error serving audio", 500
+        logger.error(f"Enhanced text processing error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         
+        error_response = ("Lo siento, hubo un error. Por favor intenta de nuevo." 
+                         if data.get('language', '').startswith('es') 
+                         else "Sorry, there was an error. Please try again.")
+        
+        return jsonify({
+            "response": error_response,
+            "language": data.get('language', 'en-US'),
+            "context": "error",
+            "show_text": True
+        }), 500
+
+# ==================== TWILIO PHONE WEBHOOK ROUTES ====================
+
 @app.route('/phone/webhook', methods=['POST'])
 def phone_webhook():
-    """Main entry point for incoming phone calls"""
+    """Main Twilio webhook for incoming calls"""
     try:
-        logger.info("📞 Incoming phone call received")
+        logger.info("Incoming call received")
         
-        # Get call details from Twilio
-        from_number = request.form.get('From', 'Unknown')
-        to_number = request.form.get('To', '')
-        call_sid = request.form.get('CallSid', '')
-        
-        # === INSERT THIS NEW CRM CODE HERE ===
+        # Log call data to PostgreSQL via CRM webhook
         call_data = {
-            'CallSid': call_sid,
-            'From': from_number,
-            'To': to_number,
-            'CallStatus': request.form.get('CallStatus', ''),
-            'Direction': 'inbound'
+            'CallSid': request.form.get('CallSid'),
+            'From': request.form.get('From'),
+            'To': request.form.get('To'),
+            'CallStatus': request.form.get('CallStatus'),
+            'Direction': request.form.get('Direction', 'inbound'),
+            'AccountSid': request.form.get('AccountSid')
         }
         
-        try:
-            send_call_data_to_crm(call_data)
-        except Exception as crm_error:
-            logger.warning(f"CRM integration error (non-blocking): {crm_error}")
-        # === END NEW CRM CODE ===
+        send_call_data_to_crm(call_data)
         
-        logger.info(f"Call from {from_number} to {to_number} (SID: {call_sid})")
-        
-        # Log the call in database
-        try:
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            cursor.execute('''INSERT INTO inquiries (phone, question, source, notes)
-                             VALUES (?, ?, ?, ?)''',
-                          (from_number, 'Incoming phone call', 'phone', f'Call SID: {call_sid}'))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to log call: {e}")
-        
-        # ... rest of your existing function continues unchanged ...
-        
-        # Create greeting response
-        handler = PhoneCallHandler()
-        response = handler.create_greeting_response()
+        # Create phone handler and generate greeting
+        phone_handler = PhoneCallHandler()
+        response = phone_handler.create_greeting_response()
         
         return str(response), 200, {'Content-Type': 'text/xml'}
         
     except Exception as e:
         logger.error(f"Phone webhook error: {e}")
         response = VoiceResponse()
-        response.say("We're experiencing technical difficulties. Please call back later or visit ringly pro dot com.")
+        response.say("Sorry, there was a technical issue. Please call back.", voice='Polly.Joanna')
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/process-speech', methods=['POST'])
-def process_phone_speech():
-    """Process speech input from phone call"""
+def process_speech():
+    """Process speech input from caller"""
     try:
-        speech_result = request.form.get('SpeechResult', '')
-        confidence = request.form.get('Confidence', '0')
-
-        # === ADD THIS BLOCK ===
-        try:
-            speech_data = {
-                'CallSid': request.form.get('CallSid', ''),
-                'SpeechResult': speech_result,
-                'From': request.form.get('From', ''),
-                'CallStatus': 'in-progress'
-            }
-            send_call_data_to_crm(speech_data)
-        except Exception as crm_error:
-            logger.warning(f"⚠️ CRM speech logging error: {crm_error}")        
-        logger.info(f"🎤 Speech detected: '{speech_result}' (confidence: {confidence})")
+        speech_result = request.form.get('SpeechResult', '').strip()
+        call_sid = request.form.get('CallSid', 'unknown')
+        caller_phone = request.form.get('From', '')
         
-        if not speech_result:
-            response = VoiceResponse()
-            response.say("I didn't catch that. Please try again.", voice='Polly.Joanna')
-            response.redirect('/phone/webhook')
-            return str(response), 200, {'Content-Type': 'text/xml'}
+        logger.info(f"Speech processed: {speech_result}")
         
-        handler = PhoneCallHandler()
-        response = handler.process_speech_input(speech_result)
+        # Log speech to PostgreSQL
+        call_data = {
+            'CallSid': call_sid,
+            'From': caller_phone,
+            'SpeechResult': speech_result,
+            'CallStatus': 'in-progress'
+        }
+        send_call_data_to_crm(call_data)
+        
+        phone_handler = PhoneCallHandler()
+        response = phone_handler.process_speech_input(speech_result)
         
         return str(response), 200, {'Content-Type': 'text/xml'}
         
     except Exception as e:
         logger.error(f"Speech processing error: {e}")
         response = VoiceResponse()
-        response.say("I'm having trouble understanding. Let me transfer you to someone who can help.")
-        response.dial('+16566001400')
-        return str(response), 200, {'Content-Type': 'text/xml'}
-
-@app.route('/phone/pricing-followup', methods=['POST'])
-def pricing_followup():
-    """Handle follow-up after pricing information"""
-    try:
-        speech_result = request.form.get('SpeechResult', '').lower()
+        response.say("I'm sorry, I didn't understand that. Let me transfer you to our team.", voice='Polly.Joanna')
         
-        response = VoiceResponse()
+        dial = Dial()
+        dial.number('+16566001400')
+        response.append(dial)
         
-        if 'yes' in speech_result or 'book' in speech_result or 'demo' in speech_result:
-            handler = PhoneCallHandler()
-            return str(handler.handle_demo_booking()), 200, {'Content-Type': 'text/xml'}
-        elif 'repeat' in speech_result or 'again' in speech_result:
-            handler = PhoneCallHandler()
-            return str(handler.handle_pricing_inquiry()), 200, {'Content-Type': 'text/xml'}
-        else:
-            response.say("Thank you for calling Ringly Pro. Have a great day!", voice='Polly.Joanna')
-            response.hangup()
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
-    except Exception as e:
-        logger.error(f"Pricing followup error: {e}")
-        response = VoiceResponse()
-        response.say("Thank you for your interest. Please visit ringly pro dot com for more information.")
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/collect-name', methods=['POST'])
 def collect_name():
-    """Collect customer name for booking"""
+    """Collect customer name during booking"""
     try:
-        speech_result = request.form.get('SpeechResult', '')
-        call_sid = request.form.get('CallSid', '')
+        speech_result = request.form.get('SpeechResult', '').strip()
+        call_sid = request.form.get('CallSid', 'unknown')
         
-        if not speech_result:
-            response = VoiceResponse()
-            response.say("I didn't get your name. Let's try again.", voice='Polly.Joanna')
-            response.redirect('/phone/webhook')
+        if speech_result and len(speech_result) >= 2:
+            session[f'call_{call_sid}_name'] = speech_result
+            
+            phone_handler = PhoneCallHandler()
+            response = phone_handler.collect_booking_info('name', speech_result)
+            
             return str(response), 200, {'Content-Type': 'text/xml'}
-        
-        # Store name in session or temporary storage
-        session[f'call_{call_sid}_name'] = speech_result
-        
-        handler = PhoneCallHandler()
-        response = handler.collect_booking_info('name', speech_result)
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
+        else:
+            response = VoiceResponse()
+            
+            gather = Gather(
+                input='speech',
+                timeout=5,
+                action='/phone/collect-name',
+                method='POST'
+            )
+            gather.say("I didn't catch that. Please say your full name clearly.", voice='Polly.Joanna')
+            response.append(gather)
+            
+            return str(response), 200, {'Content-Type': 'text/xml'}
+            
     except Exception as e:
         logger.error(f"Name collection error: {e}")
         response = VoiceResponse()
-        response.say("Let me transfer you to schedule your appointment.")
-        response.dial('+16566001400')
+        response.say("There was an error. Let me connect you with our team.", voice='Polly.Joanna')
+        
+        dial = Dial()
+        dial.number('+16566001400')
+        response.append(dial)
+        
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/collect-phone', methods=['POST'])
 def collect_phone():
-    """Collect customer phone for booking"""
+    """Collect customer phone number during booking"""
     try:
-        # Try speech first, then DTMF
-        phone_number = request.form.get('SpeechResult', '')
-        if not phone_number:
-            phone_number = request.form.get('Digits', '')
+        speech_result = request.form.get('SpeechResult', '').strip()
+        digits = request.form.get('Digits', '').strip()
+        call_sid = request.form.get('CallSid', 'unknown')
         
-        call_sid = request.form.get('CallSid', '')
-        from_number = request.form.get('From', '')
+        # Use digits if available, otherwise use speech
+        phone_input = digits if digits else speech_result
         
-        # Clean up phone number
-        phone_digits = re.sub(r'\D', '', phone_number)
+        if phone_input:
+            # Clean phone number
+            phone_digits = re.sub(r'\D', '', phone_input)
+            
+            if len(phone_digits) >= 10:
+                formatted_phone = f"+1{phone_digits[-10:]}"
+                
+                customer_name = session.get(f'call_{call_sid}_name', 'Customer')
+                
+                phone_handler = PhoneCallHandler()
+                response = phone_handler.collect_booking_info('phone', formatted_phone)
+                
+                return str(response), 200, {'Content-Type': 'text/xml'}
         
-        if len(phone_digits) < 10:
-            # Use caller's number
-            phone_digits = re.sub(r'\D', '', from_number)
+        # If we get here, the phone number wasn't valid
+        response = VoiceResponse()
         
-        # Format phone number
-        if len(phone_digits) == 10:
-            formatted_phone = f"+1{phone_digits}"
-        elif len(phone_digits) == 11 and phone_digits[0] == '1':
-            formatted_phone = f"+{phone_digits}"
-        else:
-            formatted_phone = from_number
-        
-        # Get name from session
-        customer_name = session.get(f'call_{call_sid}_name', 'Customer')
-        
-        # Save to database
-        try:
-            conn = sqlite3.connect('ringlypro.db')
-            cursor = conn.cursor()
-            cursor.execute('''INSERT INTO inquiries (phone, question, source, notes)
-                             VALUES (?, ?, ?, ?)''',
-                          (formatted_phone, f'Demo booking request from {customer_name}', 
-                           'phone', f'Call SID: {call_sid}'))
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            logger.error(f"Failed to save booking request: {e}")
-        
-        handler = PhoneCallHandler()
-        response = handler.collect_booking_info('phone', formatted_phone)
+        gather = Gather(
+            input='speech dtmf',
+            timeout=10,
+            action='/phone/collect-phone',
+            method='POST',
+            numDigits=10,
+            finishOnKey='#'
+        )
+        gather.say("I need a valid phone number. Please say it clearly or enter it using the keypad.", voice='Polly.Joanna')
+        response.append(gather)
         
         return str(response), 200, {'Content-Type': 'text/xml'}
         
     except Exception as e:
         logger.error(f"Phone collection error: {e}")
         response = VoiceResponse()
-        response.say("I'll send you information to the number you're calling from.")
-        handler = PhoneCallHandler()
-        handler.send_booking_sms(request.form.get('From', ''))
-        response.say("The information has been sent. Thank you for calling!")
+        response.say("There was an error collecting your phone number. Let me connect you with our team.", voice='Polly.Joanna')
+        
+        dial = Dial()
+        dial.number('+16566001400')
+        response.append(dial)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+
+@app.route('/phone/pricing-followup', methods=['POST'])
+def pricing_followup():
+    """Handle followup after pricing information"""
+    try:
+        speech_result = request.form.get('SpeechResult', '').strip().lower()
+        
+        phone_handler = PhoneCallHandler()
+        
+        if any(word in speech_result for word in ['yes', 'book', 'demo', 'consultation', 'schedule']):
+            response = phone_handler.handle_demo_booking()
+        elif any(word in speech_result for word in ['repeat', 'again', 'pricing', 'prices']):
+            response = phone_handler.handle_pricing_inquiry()
+        else:
+            response = VoiceResponse()
+            response.say("Thank you for your interest in RinglyPro. Let me connect you with our team for more information.", voice='Polly.Joanna')
+            
+            dial = Dial()
+            dial.number('+16566001400')
+            response.append(dial)
+        
+        return str(response), 200, {'Content-Type': 'text/xml'}
+        
+    except Exception as e:
+        logger.error(f"Pricing followup error: {e}")
+        response = VoiceResponse()
+        response.say("Let me connect you with our team.", voice='Polly.Joanna')
+        
+        dial = Dial()
+        dial.number('+16566001400')
+        response.append(dial)
+        
         return str(response), 200, {'Content-Type': 'text/xml'}
 
 @app.route('/phone/call-complete', methods=['POST'])
 def call_complete():
-    """Handle call completion and logging"""
+    """Handle call completion"""
     try:
-        call_sid = request.form.get('CallSid', '')
-        dial_status = request.form.get('DialCallStatus', '')
-        duration = request.form.get('DialCallDuration', '0')
-
-         # === ADD THIS BLOCK ===
-        try:
-            completion_data = {
-                'CallSid': call_sid,
-                'CallStatus': 'completed',
-                'CallDuration': duration,
-                'From': request.form.get('From', '')
-            }
-            send_call_data_to_crm(completion_data)
-        except Exception as crm_error:
-            logger.warning(f"⚠️ CRM completion logging error: {crm_error}")
-        # === END ADD ===
+        call_sid = request.form.get('CallSid', 'unknown')
+        call_duration = request.form.get('CallDuration', '0')
+        call_status = request.form.get('CallStatus', 'completed')
         
-        logger.info(f"📞 Call completed: {call_sid} - Status: {dial_status}, Duration: {duration}s")
+        # Log final call data to PostgreSQL
+        call_data = {
+            'CallSid': call_sid,
+            'CallStatus': call_status,
+            'CallDuration': call_duration,
+            'FinalStatus': 'completed'
+        }
+        send_call_data_to_crm(call_data)
         
         response = VoiceResponse()
+        response.say("Thank you for calling RinglyPro. Have a great day!", voice='Polly.Joanna')
         
-        if dial_status != 'completed':
-            response.say(
-                "We couldn't connect your call. Please try again later or visit ringly pro dot com.",
-                voice='Polly.Joanna'
-            )
-        else:
-            response.say("Thank you for calling Ringly Pro. Have a great day!", voice='Polly.Joanna')
-        
-        response.hangup()
         return str(response), 200, {'Content-Type': 'text/xml'}
         
     except Exception as e:
         logger.error(f"Call completion error: {e}")
         response = VoiceResponse()
-        response.hangup()
+        response.say("Thank you for calling.", voice='Polly.Joanna')
         return str(response), 200, {'Content-Type': 'text/xml'}
 
-@app.route('/phone/voicemail', methods=['POST'])
-def handle_voicemail():
-    """Handle voicemail recording"""
-    try:
-        response = VoiceResponse()
-        
-        response.say(
-            "Please leave your message after the beep. Press star when you're finished.",
-            voice='Polly.Joanna'
-        )
-        
-        response.record(
-            action='/phone/voicemail-complete',
-            method='POST',
-            maxLength=120,
-            finishOnKey='*',
-            transcribe=True,
-            transcribeCallback='/phone/transcription-ready'
-        )
-        
-        response.say("I didn't receive a recording. Goodbye.", voice='Polly.Joanna')
-        response.hangup()
-        
-        return str(response), 200, {'Content-Type': 'text/xml'}
-        
-    except Exception as e:
-        logger.error(f"Voicemail error: {e}")
-        response = VoiceResponse()
-        response.say("Unable to record message. Please call back.")
-        response.hangup()
-        return str(response), 200, {'Content-Type': 'text/xml'}
+# ==================== AUDIO SERVING ROUTES ====================
 
-@app.route('/phone/test-call', methods=['GET'])
-def test_call():
-    """Test endpoint to initiate an outbound call"""
+@app.route('/audio/<filename>')
+def serve_audio(filename):
+    """Serve audio files for Rachel's voice"""
     try:
-        if not all([twilio_account_sid, twilio_auth_token, twilio_phone]):
-            return jsonify({'error': 'Twilio not configured'}), 500
+        audio_path = f"/tmp/{filename}"
         
-        client = Client(twilio_account_sid, twilio_auth_token)
-        
-        # Use the actual URL directly
-        webhook_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
-        
-        call = client.calls.create(
-            url=f'{webhook_url}/phone/webhook',
-            to='+16566001400',  # Test number
-            from_='+18886103810'  # Use the actual number
-        )
-        
-        return jsonify({
-            'success': True,
-            'call_sid': call.sid,
-            'status': 'Call initiated'
-        })
-        
+        if os.path.exists(audio_path):
+            def generate():
+                with open(audio_path, 'rb') as f:
+                    data = f.read(1024)
+                    while data:
+                        yield data
+                        data = f.read(1024)
+                
+                # Clean up file after serving
+                try:
+                    os.remove(audio_path)
+                except:
+                    pass
+            
+            response = make_response(generate())
+            response.headers['Content-Type'] = 'audio/mpeg'
+            response.headers['Cache-Control'] = 'no-cache'
+            return response
+        else:
+            logger.warning(f"Audio file not found: {filename}")
+            return "Audio file not found", 404
+            
     except Exception as e:
-        logger.error(f"Test call error: {e}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error serving audio {filename}: {e}")
+        return "Error serving audio", 500
 
-
-@app.route('/admin')
-def admin_dashboard():
-    """Enhanced admin dashboard with appointments and inquiries"""
-    try:
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
-        
-        # Get inquiries
-        cursor.execute('''SELECT phone, question, timestamp, status, sms_sent, source 
-                          FROM inquiries ORDER BY timestamp DESC LIMIT 50''')
-        inquiries = cursor.fetchall()
-        
-        # Get appointments
-        cursor.execute('''SELECT customer_name, customer_email, customer_phone, appointment_date, 
-                          appointment_time, purpose, status, confirmation_code, created_at,
-                          hubspot_contact_id, hubspot_meeting_id
-                          FROM appointments ORDER BY appointment_date DESC, appointment_time DESC LIMIT 50''')
-        appointments = cursor.fetchall()
-        
-        conn.close()
-        
-        html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>RinglyPro Admin Dashboard</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 1400px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; }}
-        h1 {{ color: #2196F3; text-align: center; margin-bottom: 30px; }}
-        .stats {{ display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }}
-        .stat-card {{ background: linear-gradient(135deg, #2196F3, #1976D2); color: white; padding: 20px; border-radius: 10px; text-align: center; flex: 1; min-width: 200px; }}
-        .stat-card h3 {{ font-size: 2.5em; margin: 0; }}
-        .stat-card p {{ margin: 10px 0 0 0; opacity: 0.9; }}
-        table {{ width: 100%; border-collapse: collapse; margin-top: 20px; background: white; }}
-        th, td {{ padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }}
-        th {{ background: #f8f9fa; font-weight: bold; color: #333; }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>📊 RinglyPro Admin Dashboard</h1>
-        
-        <div class="stats">
-            <div class="stat-card">
-                <h3>{len(inquiries)}</h3>
-                <p>Recent Inquiries</p>
-            </div>
-            <div class="stat-card">
-                <h3>{len(appointments)}</h3>
-                <p>Total Appointments</p>
-            </div>
-        </div>
-        
-        <h2>Recent Appointments</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Customer</th>
-                    <th>Contact Info</th>
-                    <th>Date & Time</th>
-                    <th>Purpose</th>
-                    <th>Status</th>
-                    <th>Confirmation</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-        
-        for apt in appointments[:10]:  # Show first 10
-            name, email, phone, date, time, purpose, status, code, created, hubspot_contact_id, hubspot_meeting_id = apt
-            html += f"""
-                <tr>
-                    <td>{name}</td>
-                    <td>{email}<br>{phone}</td>
-                    <td>{date} {time}</td>
-                    <td>{purpose[:50]}</td>
-                    <td>{status}</td>
-                    <td>{code}</td>
-                </tr>
-            """
-        
-        html += """
-            </tbody>
-        </table>
-        
-        <h2>Recent Inquiries</h2>
-        <table>
-            <thead>
-                <tr>
-                    <th>Phone</th>
-                    <th>Question</th>
-                    <th>Timestamp</th>
-                    <th>Source</th>
-                    <th>SMS Sent</th>
-                </tr>
-            </thead>
-            <tbody>
-        """
-        
-        for inquiry in inquiries[:10]:  # Show first 10
-            phone, question, timestamp, status, sms_sent, source = inquiry
-            html += f"""
-                <tr>
-                    <td>{phone}</td>
-                    <td>{question[:100]}</td>
-                    <td>{timestamp}</td>
-                    <td>{source}</td>
-                    <td>{'✅' if sms_sent else '❌'}</td>
-                </tr>
-            """
-        
-        html += """
-            </tbody>
-        </table>
-    </div>
-</body>
-</html>
-        """
-        
-        return html
-        
-    except Exception as e:
-        logger.error(f"❌ Admin dashboard error: {e}")
-        return f"<h1>Admin Dashboard Error</h1><p>{e}</p>"
+# ==================== HEALTH CHECK & ADMIN ROUTES ====================
 
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
     try:
-        conn = sqlite3.connect('ringlypro.db')
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM inquiries')
-        inquiry_count = cursor.fetchone()[0]
-        cursor.execute('SELECT COUNT(*) FROM appointments')
-        appointment_count = cursor.fetchone()[0]
-        conn.close()
+        # Test PostgreSQL connection via CRM API
+        crm_test = crm_client._make_request('GET', '/health')
+        postgresql_status = bool(crm_test and crm_test.get('success'))
         
-        return jsonify({
+        status = {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "version": "3.0.0",
-            "database": {
-                "inquiries": inquiry_count,
-                "appointments": appointment_count
-            },
             "services": {
-                "anthropic": bool(anthropic_api_key),
-                "elevenlabs": bool(elevenlabs_api_key),
-                "twilio": bool(twilio_account_sid and twilio_auth_token),
-                "email": bool(email_user and email_password),
-                "hubspot": bool(hubspot_api_token)
+                "postgresql_crm_api": postgresql_status,
+                "elevenlabs_api": bool(elevenlabs_api_key),
+                "anthropic_api": bool(anthropic_api_key),
+                "twilio_api": bool(twilio_account_sid and twilio_auth_token),
+                "email_smtp": bool(email_user and email_password),
+                "hubspot_api": bool(hubspot_api_token)
             }
-        })
+        }
+        
+        all_healthy = all(status["services"].values())
+        
+        if not all_healthy:
+            status["status"] = "degraded"
+        
+        return jsonify(status), 200 if all_healthy else 206
+        
     except Exception as e:
         logger.error(f"Health check error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now().isoformat()
+        }), 500
 
-# ==================== IFRAME EMBEDDING SUPPORT ====================
+@app.route('/admin/stats')
+def admin_stats():
+    """Admin statistics - PostgreSQL backend"""
+    try:
+        # Get stats from PostgreSQL via CRM API
+        stats_result = crm_client._make_request('GET', '/admin/stats')
+        
+        if stats_result and stats_result.get('success'):
+            stats = stats_result.get('stats', {})
+        else:
+            stats = {
+                "error": "Failed to fetch stats from PostgreSQL",
+                "fallback_mode": True
+            }
+        
+        # Add runtime information
+        stats.update({
+            "app_start_time": datetime.now().isoformat(),
+            "database_type": "PostgreSQL via CRM API",
+            "integrations": {
+                "hubspot": bool(hubspot_api_token),
+                "elevenlabs": bool(elevenlabs_api_key),
+                "twilio": bool(twilio_account_sid),
+                "email": bool(email_user)
+            }
+        })
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        logger.error(f"Stats error: {e}")
+        return jsonify({"error": str(e)}), 500
 
-@app.after_request
-def allow_iframe_embedding(response):
-    """Allow iframe embedding for widget"""
-    response.headers['X-Frame-Options'] = 'ALLOWALL'
-    response.headers['Content-Security-Policy'] = "frame-ancestors *"
-    return response
+@app.route('/admin/appointments')
+def admin_appointments():
+    """Admin view of appointments - PostgreSQL backend"""
+    try:
+        # Get appointments from PostgreSQL via CRM API
+        appointments_result = crm_client._make_request('GET', '/appointments')
+        
+        if appointments_result and appointments_result.get('success'):
+            appointments = appointments_result.get('appointments', [])
+            
+            html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>RinglyPro Appointments - PostgreSQL Backend</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 20px; }
+                    table { border-collapse: collapse; width: 100%; }
+                    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                    th { background-color: #f2f2f2; }
+                    .status-confirmed { color: green; font-weight: bold; }
+                    .status-pending { color: orange; font-weight: bold; }
+                    .status-cancelled { color: red; font-weight: bold; }
+                </style>
+            </head>
+            <body>
+                <h1>RinglyPro Appointments (PostgreSQL Backend)</h1>
+                <p>Total appointments: {count}</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Customer</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Purpose</th>
+                            <th>Confirmation Code</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            """.format(count=len(appointments))
+            
+            for appointment in appointments:
+                created_date = appointment.get('createdAt', 'Unknown')
+                if created_date and created_date != 'Unknown':
+                    try:
+                        created_dt = datetime.fromisoformat(created_date.replace('Z', '+00:00'))
+                        created_date = created_dt.strftime('%m/%d/%Y %I:%M %p')
+                    except:
+                        pass
+                
+                html += f"""
+                        <tr>
+                            <td>{appointment.get('appointmentDate', 'N/A')}</td>
+                            <td>{appointment.get('appointmentTime', 'N/A')}</td>
+                            <td>{appointment.get('customerName', 'N/A')}</td>
+                            <td>{appointment.get('customerEmail', 'N/A')}</td>
+                            <td>{appointment.get('customerPhone', 'N/A')}</td>
+                            <td>{appointment.get('purpose', 'N/A')}</td>
+                            <td><code>{appointment.get('confirmationCode', 'N/A')}</code></td>
+                            <td>{created_date}</td>
+                        </tr>
+                """
+            
+            html += """
+                    </tbody>
+                </table>
+                <br>
+                <p><strong>Database:</strong> PostgreSQL via CRM API</p>
+                <p><strong>Last Updated:</strong> {timestamp}</p>
+            </body>
+            </html>
+            """.format(timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+            
+            return html
+        else:
+            return f"""
+            <html>
+            <body>
+                <h1>PostgreSQL Connection Error</h1>
+                <p>Unable to fetch appointments from PostgreSQL database via CRM API.</p>
+                <p>Error: {appointments_result.get('error', 'Unknown error')}</p>
+            </body>
+            </html>
+            """, 500
+            
+    except Exception as e:
+        logger.error(f"Admin appointments error: {e}")
+        return f"""
+        <html>
+        <body>
+            <h1>Error</h1>
+            <p>Failed to load appointments: {str(e)}</p>
+        </body>
+        </html>
+        """, 500
 
-# ==================== DATABASE INITIALIZATION ====================
+# ==================== ERROR HANDLERS ====================
 
-# Setup database on startup
-init_database()
+@app.errorhandler(404)
+def not_found(error):
+    """Handle 404 errors"""
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    logger.error(f"Internal server error: {error}")
+    return jsonify({"error": "Internal server error"}), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle all other exceptions"""
+    logger.error(f"Unhandled exception: {e}")
+    import traceback
+    logger.error(traceback.format_exc())
+    return jsonify({"error": "An unexpected error occurred"}), 500
+
+# ==================== APPLICATION STARTUP ====================
+
+def is_render_environment():
+    """Check if running on Render"""
+    return os.getenv('RENDER') == 'true'
+
+def initialize_application():
+    """Initialize the application and all services"""
+    try:
+        logger.info("🚀 Starting RinglyPro Voice Assistant with PostgreSQL Backend")
+        logger.info("=" * 80)
+        
+        # Test PostgreSQL connection via CRM API
+        logger.info("🗄️ Testing PostgreSQL connection via CRM API...")
+        crm_connected = init_crm_connection()
+        
+        if crm_connected:
+            logger.info("✅ PostgreSQL connection successful via CRM API")
+        else:
+            logger.warning("⚠️ PostgreSQL connection failed - app will run with limited functionality")
+        
+        # Test integrations
+        logger.info("🔧 Testing integrations...")
+        
+        if hubspot_api_token:
+            logger.info("✅ HubSpot API configured")
+        else:
+            logger.warning("⚠️ HubSpot API not configured")
+        
+        if elevenlabs_api_key:
+            logger.info("✅ ElevenLabs API configured (Rachel's voice available)")
+        else:
+            logger.warning("⚠️ ElevenLabs API not configured (fallback to browser TTS)")
+        
+        if twilio_account_sid and twilio_auth_token:
+            logger.info("✅ Twilio API configured")
+        else:
+            logger.warning("⚠️ Twilio API not configured")
+        
+        if email_user and email_password:
+            logger.info("✅ Email SMTP configured")
+        else:
+            logger.warning("⚠️ Email SMTP not configured")
+        
+        logger.info("=" * 80)
+        logger.info("🎤 RinglyPro Voice Assistant Ready!")
+        logger.info("📊 Database: PostgreSQL via CRM API")
+        logger.info("🔗 Health Check: /health")
+        logger.info("📋 Admin Panel: /admin/appointments")
+        logger.info("🧪 Test System: /test-appointment-system")
+        logger.info("=" * 80)
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Application initialization failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 # ==================== MAIN APPLICATION STARTUP ====================
 
 if __name__ == "__main__":
-    print("🚀 Starting RinglyPro AI Assistant v3.0")
-    print("\n" + "="*60)
+    print("🚀 Starting RinglyPro AI Assistant v3.0 - PostgreSQL Edition")
+    print("\n" + "="*70)
     print("📋 API STATUS:")
     print(f"   • Claude API: {'✅ Ready' if anthropic_api_key else '❌ Missing'}")
     print(f"   • ElevenLabs TTS: {'✅ Ready' if elevenlabs_api_key else '⚠️ Browser Fallback'}")
     print(f"   • Twilio SMS: {'✅ Ready' if (twilio_account_sid and twilio_auth_token) else '⚠️ Disabled'}")
     print(f"   • Email SMTP: {'✅ Ready' if (email_user and email_password) else '⚠️ Disabled'}")
     print(f"   • HubSpot CRM: {'✅ Ready' if hubspot_api_token else '⚠️ Disabled'}")
+    
+    print("\n🗄️ DATABASE STATUS:")
+    # Test PostgreSQL connection via CRM API
+    crm_connected = init_crm_connection()
+    print(f"   • PostgreSQL (CRM API): {'✅ Connected' if crm_connected else '❌ Connection Failed'}")
+    print(f"   • CRM API Endpoint: {CRM_BASE_URL}")
+    
     print("\n🌐 ACCESS URLS:")
     print("   • Voice Interface: http://localhost:5000")
     print("   • Text Chat: http://localhost:5000/chat")
     print("   • Enhanced Chat: http://localhost:5000/chat-enhanced")
-    print("   • Admin Dashboard: http://localhost:5000/admin")
+    print("   • Admin Appointments: http://localhost:5000/admin/appointments")
+    print("   • System Test: http://localhost:5000/test-appointment-system")
     print("   • Health Check: http://localhost:5000/health")
-    print("\n" + "="*60)
+    print("\n" + "="*70)
     
     # Start the application
     port = int(os.environ.get("PORT", 5000))
