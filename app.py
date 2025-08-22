@@ -148,8 +148,19 @@ def init_crm_connection():
     try:
         logger.info("Testing CRM API connection to PostgreSQL...")
         
-        # Test CRM API connectivity to PostgreSQL
-        result = crm_client._make_request('GET', '/appointments/today')
+        # Test CRM API connectivity to PostgreSQL - try multiple endpoints
+        result = None
+        
+        # Try /health endpoint first
+        result = crm_client._make_request('GET', '/health')
+        
+        # If /health fails, try /appointments endpoint
+        if not result:
+            result = crm_client._make_request('GET', '/appointments')
+        
+        # If both fail, try the base endpoint
+        if not result:
+            result = crm_client._make_request('GET', '/')
         
         if result:
             logger.info("CRM API connection to PostgreSQL successful")
