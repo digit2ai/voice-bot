@@ -567,44 +567,6 @@ class AppointmentManager:
                 logger.info("Appointment successfully created in PostgreSQL database")
                 crm_appointment = result.get('appointment', {})
                 
-                # HubSpot integration
-                hubspot_contact_id = None
-                hubspot_meeting_id = None
-                
-                if self.hubspot_service.api_token:
-                    logger.info("Attempting HubSpot integration...")
-                    try:
-                        appointment_datetime = datetime.combine(
-                            datetime.strptime(customer_data['date'], '%Y-%m-%d').date(),
-                            datetime.strptime(customer_data['time'], '%H:%M').time()
-                        )
-                        
-                        contact_result = self.hubspot_service.create_contact(
-                            customer_data['name'], 
-                            customer_data['email'], 
-                            formatted_phone,
-                            "RinglyPro Voice Prospect"
-                        )
-                        
-                        if contact_result.get("success"):
-                            hubspot_contact_id = contact_result.get("contact_id")
-                            logger.info(f"HubSpot contact created/updated: {hubspot_contact_id}")
-                            
-                            meeting_title = f"RinglyPro Voice Consultation - {customer_data.get('purpose', 'General consultation')}"
-                            meeting_result = self.hubspot_service.create_meeting(
-                                meeting_title, 
-                                hubspot_contact_id, 
-                                appointment_datetime,
-                                30
-                            )
-                            
-                            if meeting_result.get("success"):
-                                hubspot_meeting_id = meeting_result.get("meeting_id")
-                                logger.info(f"HubSpot meeting created: {hubspot_meeting_id}")
-                        
-                    except Exception as hubspot_error:
-                        logger.error(f"HubSpot integration error: {hubspot_error}")
-                
                 # Create response appointment object
                 appointment = {
                     'id': crm_appointment.get('id'),
@@ -617,9 +579,7 @@ class AppointmentManager:
                     'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
                     'zoom_url': zoom_meeting_url,
                     'zoom_id': zoom_meeting_id,
-                    'zoom_password': zoom_password,
-                    'hubspot_contact_id': hubspot_contact_id,
-                    'hubspot_meeting_id': hubspot_meeting_id
+                    'zoom_password': zoom_password
                 }
                 
                 # Send confirmations
@@ -629,7 +589,6 @@ class AppointmentManager:
                 APPOINTMENT BOOKING SUMMARY:
                 - Confirmation Code: {confirmation_code}
                 - PostgreSQL Database: Saved
-                - HubSpot: {'Integrated' if hubspot_meeting_id else 'Failed/Skipped'}
                 - Email: {confirmation_results.get('email', 'Failed')}
                 - SMS: {confirmation_results.get('sms', 'Failed')}
                 """)
@@ -664,7 +623,8 @@ class AppointmentManager:
         except Exception as e:
             logger.error(f"Error getting appointment from PostgreSQL: {e}")
             return None
-            @staticmethod
+    
+    @staticmethod
     def send_appointment_confirmations(appointment: dict) -> dict:
         """Send email and SMS confirmations"""
         results = {'email': 'Failed', 'sms': 'Failed'}
