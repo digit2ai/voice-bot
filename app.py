@@ -546,18 +546,19 @@ class AppointmentManager:
             logger.info(f"Formatted phone: {phone_input} -> {formatted_phone}")
             
             # Prepare data for PostgreSQL via CRM API
-            crm_appointment_data = {
-                'customerName': customer_data['name'],
-                'customerEmail': customer_data['email'],
-                'customerPhone': formatted_phone,
-                'appointmentDate': customer_data['date'],
-                'appointmentTime': customer_data['time'],
-                'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
-                'confirmationCode': confirmation_code,
-                'source': 'voice_booking',
-                'duration': 30,
-                'timezone': customer_data.get('timezone', 'America/New_York')
-            }
+# Prepare data for PostgreSQL via CRM API
+crm_appointment_data = {
+    'customerName': customer_data['name'],
+    'customerEmail': customer_data['email'],
+    'customerPhone': formatted_phone,
+    'appointmentDate': customer_data['date'],
+    'appointmentTime': customer_data['time'],
+    'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
+    'confirmationCode': confirmation_code,
+    'source': 'voice_booking',
+    'duration': 30
+    # Removed timezone field since it doesn't exist in database
+}
             
             # Send to PostgreSQL via CRM API
             logger.info("Sending appointment to PostgreSQL database...")
