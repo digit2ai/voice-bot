@@ -463,28 +463,24 @@ class AppointmentManager:
         """Generate unique confirmation code"""
         return str(uuid.uuid4())[:8].upper()
     
-def get_available_slots(self, date_str: str, timezone_str: str = 'America/New_York') -> List[str]:
-    """Get available appointment slots from PostgreSQL via CRM API"""
-    try:
-        logger.info(f"Getting available slots from PostgreSQL for {date_str}")
-        
-        data = {
-            'date': date_str
-        }
-        
-        result = self.crm_client._make_request('POST', '/appointments/available-slots', data=data)
-        
-        if result and result.get('success'):
-            slots = result.get('slots', [])
-            logger.info(f"Got {len(slots)} available slots from PostgreSQL")
-            return slots
-        else:
-            logger.warning("PostgreSQL API failed, falling back to default slots")
-            return self._get_fallback_slots(date_str)
+    def get_available_slots(self, date_str: str, timezone_str: str = 'America/New_York') -> List[str]:
+        """Get available appointment slots from PostgreSQL via CRM API"""
+        try:
+            logger.info(f"Getting available slots from PostgreSQL for {date_str}")
             
-    except Exception as e:
-        logger.error(f"Error getting slots from PostgreSQL: {e}")
-        return self._get_fallback_slots(date_str)
+            data = {
+                'date': date_str
+            }
+            
+            result = self.crm_client._make_request('POST', '/appointments/available-slots', data=data)
+            
+            if result and result.get('success'):
+                slots = result.get('slots', [])
+                logger.info(f"Got {len(slots)} available slots from PostgreSQL")
+                return slots
+            else:
+                logger.warning("PostgreSQL API failed, falling back to default slots")
+                return self._get_fallback_slots(date_str)
                 
         except Exception as e:
             logger.error(f"Error getting slots from PostgreSQL: {e}")
@@ -521,132 +517,104 @@ def get_available_slots(self, date_str: str, timezone_str: str = 'America/New_Yo
             logger.error(f"Error checking slot availability: {e}")
             return True
     
-def book_appointment(self, customer_data: dict) -> Tuple[bool, str, dict]:
-    """Book appointment via PostgreSQL API (NO MORE SQLITE)"""
-    try:
-        confirmation_code = self.generate_confirmation_code()
-        logger.info(f"Starting PostgreSQL appointment booking with code: {confirmation_code}")
-        
-        # Validate required fields
-        required_fields = ['name', 'email', 'phone', 'date', 'time']
-        for field in required_fields:
-            if not customer_data.get(field):
-                logger.error(f"Missing required field: {field}")
-                return False, f"Missing required field: {field}", {}
-        
-        # Format phone number
-        phone_input = customer_data['phone']
-        phone_digits = re.sub(r'\D', '', phone_input)
-        
-        if len(phone_digits) == 10:
-            formatted_phone = f"+1{phone_digits}"
-        elif len(phone_digits) == 11 and phone_digits[0] == '1':
-            formatted_phone = f"+{phone_digits}"
-        else:
-            logger.error(f"Invalid phone format: {phone_input}")
-            return False, "Invalid phone number format", {}
-        
-        logger.info(f"Formatted phone: {phone_input} -> {formatted_phone}")
-        
-        # Prepare data for PostgreSQL via CRM API
-        crm_appointment_data = {
-            'customerName': customer_data['name'],
-            'customerEmail': customer_data['email'],
-            'customerPhone': formatted_phone,
-            'appointmentDate': customer_data['date'],
-            'appointmentTime': customer_data['time'],
-            'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
-            'confirmationCode': confirmation_code,
-            'source': 'voice_booking',
-            'duration': 30
-        }
-        
-        # Send to PostgreSQL via CRM API
-        logger.info("Sending appointment to PostgreSQL database...")
-        result = self.crm_client._make_request('POST', '/appointments', data=crm_appointment_data)
-        
-        if result and result.get('success'):
-            logger.info("Appointment successfully created in PostgreSQL database")
-            crm_appointment = result.get('appointment', {})
+    def book_appointment(self, customer_data: dict) -> Tuple[bool, str, dict]:
+        """Book appointment via PostgreSQL API (NO MORE SQLITE)"""
+        try:
+            confirmation_code = self.generate_confirmation_code()
+            logger.info(f"Starting PostgreSQL appointment booking with code: {confirmation_code}")
             
-            # HubSpot integration
-            hubspot_contact_id = None
-            hubspot_meeting_id = None
+            # Validate required fields
+            required_fields = ['name', 'email', 'phone', 'date', 'time']
+            for field in required_fields:
+                if not customer_data.get(field):
+                    logger.error(f"Missing required field: {field}")
+                    return False, f"Missing required field: {field}", {}
             
-            if self.hubspot_service.api_token:
-                logger.info("Attempting HubSpot integration...")
-                try:
-                    appointment_datetime = datetime.combine(
-                        datetime.strptime(customer_data['date'], '%Y-%m-%d').date(),
-                        datetime.strptime(customer_data['time'], '%H:%M').time()
-                    )
-                    
-                    contact_result = self.hubspot_service.create_contact(
-                        customer_data['name'], 
-                        customer_data['email'], 
-                        formatted_phone,
-                        "RinglyPro Voice Prospect"
-                    )
-                    
-                    if contact_result.get("success"):
-                        hubspot_contact_id = contact_result.get("contact_id")
-                        logger.info(f"HubSpot contact created/updated: {hubspot_contact_id}")
-                        
-                        meeting_title = f"RinglyPro Voice Consultation - {customer_data.get('purpose', 'General consultation')}"
-                        meeting_result = self.hubspot_service.create_meeting(
-                            meeting_title, 
-                            hubspot_contact_id, 
-                            appointment_datetime,
-                            30
-                        )
-                        
-                        if meeting_result.get("success"):
-                            hubspot_meeting_id = meeting_result.get("meeting_id")
-                            logger.info(f"HubSpot meeting created: {hubspot_meeting_id}")
-                
-                except Exception as hubspot_error:
-                    logger.error(f"HubSpot integration error: {hubspot_error}")
+            # Format phone number
+            phone_input = customer_data['phone']
+            phone_digits = re.sub(r'\D', '', phone_input)
             
-            # Create response appointment object
-            appointment = {
-                'id': crm_appointment.get('id'),
-                'confirmation_code': confirmation_code,
-                'customer_name': customer_data['name'],
-                'customer_email': customer_data['email'],
-                'customer_phone': formatted_phone,
-                'date': customer_data['date'],
-                'time': customer_data['time'],
+            if len(phone_digits) == 10:
+                formatted_phone = f"+1{phone_digits}"
+            elif len(phone_digits) == 11 and phone_digits[0] == '1':
+                formatted_phone = f"+{phone_digits}"
+            else:
+                logger.error(f"Invalid phone format: {phone_input}")
+                return False, "Invalid phone number format", {}
+            
+            logger.info(f"Formatted phone: {phone_input} -> {formatted_phone}")
+            
+            # Prepare data for PostgreSQL via CRM API
+            crm_appointment_data = {
+                'customerName': customer_data['name'],
+                'customerEmail': customer_data['email'],
+                'customerPhone': formatted_phone,
+                'appointmentDate': customer_data['date'],
+                'appointmentTime': customer_data['time'],
                 'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
-                'zoom_url': zoom_meeting_url,
-                'zoom_id': zoom_meeting_id,
-                'zoom_password': zoom_password,
-                'hubspot_contact_id': hubspot_contact_id,
-                'hubspot_meeting_id': hubspot_meeting_id
+                'confirmationCode': confirmation_code,
+                'source': 'voice_booking',
+                'duration': 30
             }
             
-            # Send confirmations
-            confirmation_results = self.send_appointment_confirmations(appointment)
+            # Send to PostgreSQL via CRM API
+            logger.info("Sending appointment to PostgreSQL database...")
+            result = self.crm_client._make_request('POST', '/appointments', data=crm_appointment_data)
             
-            logger.info(f"""
-            APPOINTMENT BOOKING SUMMARY:
-            - Confirmation Code: {confirmation_code}
-            - PostgreSQL Database: Saved
-            - HubSpot: {'Integrated' if hubspot_meeting_id else 'Failed/Skipped'}
-            - Email: {confirmation_results.get('email', 'Failed')}
-            - SMS: {confirmation_results.get('sms', 'Failed')}
-            """)
+            if result and result.get('success'):
+                logger.info("Appointment successfully created in PostgreSQL database")
+                crm_appointment = result.get('appointment', {})
+                
+                # Create response appointment object
+                appointment = {
+                    'id': crm_appointment.get('id'),
+                    'confirmation_code': confirmation_code,
+                    'customer_name': customer_data['name'],
+                    'customer_email': customer_data['email'],
+                    'customer_phone': formatted_phone,
+                    'date': customer_data['date'],
+                    'time': customer_data['time'],
+                    'purpose': customer_data.get('purpose', 'Phone consultation via Rachel AI'),
+                    'zoom_url': zoom_meeting_url,
+                    'zoom_id': zoom_meeting_id,
+                    'zoom_password': zoom_password
+                }
+                
+                # Send confirmations
+                confirmation_results = self.send_appointment_confirmations(appointment)
+                
+                logger.info(f"Appointment booked: {confirmation_code}")
+                
+                return True, "Appointment booked successfully in PostgreSQL", appointment
+                
+            else:
+                logger.error("PostgreSQL API failed to create appointment")
+                return False, "Failed to book appointment in PostgreSQL system", {}
+                
+        except Exception as e:
+            logger.error(f"Critical error booking appointment via PostgreSQL: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False, f"Booking error: {str(e)}", {}
+    
+    def get_appointment_by_code(self, confirmation_code: str) -> Optional[dict]:
+        """Get appointment by confirmation code from PostgreSQL API"""
+        try:
+            logger.info(f"Looking up appointment {confirmation_code} in PostgreSQL")
             
-            return True, "Appointment booked successfully in PostgreSQL", appointment
+            result = self.crm_client._make_request('GET', f'/appointments/confirmation/{confirmation_code}')
             
-        else:
-            logger.error("PostgreSQL API failed to create appointment")
-            return False, "Failed to book appointment in PostgreSQL system", {}
-            
-    except Exception as e:
-        logger.error(f"Critical error booking appointment via PostgreSQL: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False, f"Booking error: {str(e)}", {}
+            if result and result.get('success'):
+                appointment = result.get('appointment', {})
+                logger.info(f"Found appointment in PostgreSQL: {appointment.get('customerName', 'Unknown')}")
+                return appointment
+            else:
+                logger.warning(f"Appointment {confirmation_code} not found in PostgreSQL")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error getting appointment from PostgreSQL: {e}")
+            return None
     
     @staticmethod
     def send_appointment_confirmations(appointment: dict) -> dict:
