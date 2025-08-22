@@ -497,28 +497,27 @@ class AppointmentManager:
             logger.error(f"Error getting slots from PostgreSQL: {e}")
             return self._get_fallback_slots(date_str)
     
-def _get_fallback_slots(self, date_str: str) -> List[str]:
-    """Fallback slot generation when PostgreSQL API is unavailable"""
-    try:
-        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-        day_name = target_date.strftime('%A').lower()
-        
-        if day_name not in business_hours or business_hours[day_name]['start'] == 'closed':
-            return []
-        
-        basic_slots = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
+    def _get_fallback_slots(self, date_str: str) -> List[str]:
+        """Fallback slot generation when PostgreSQL API is unavailable"""
+        try:
+            target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+            day_name = target_date.strftime('%A').lower()
+            
+            if day_name not in business_hours or business_hours[day_name]['start'] == 'closed':
+                return []
+            
+            basic_slots = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', 
                           '14:00', '14:30', '15:00', '15:30', '16:00', '16:30']
-        
-        # If it's today, filter out past slots
-        if target_date == datetime.now().date():
-            current_hour = datetime.now().hour
-            return [slot for slot in basic_slots if int(slot.split(':')[0]) > current_hour]
-        
-        return basic_slots
-        
-    except Exception as e:
-        logger.error(f"Fallback slots error: {e}")
-        return ['10:00', '14:00', '15:00']
+            
+            if target_date == datetime.now().date():
+                current_hour = datetime.now().hour
+                return [slot for slot in basic_slots if int(slot.split(':')[0]) > current_hour]
+            
+            return basic_slots
+            
+        except Exception as e:
+            logger.error(f"Fallback slots error: {e}")
+            return ['10:00', '14:00', '15:00']
     
     def is_slot_available(self, date_str: str, time_str: str) -> bool:
         """Check if slot is available via PostgreSQL API"""
