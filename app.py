@@ -1788,6 +1788,7 @@ html, body {
       font-weight: 500;
     }
 
+/* Updated interface-switcher for both desktop and mobile */
 .interface-switcher {
     position: absolute;
     top: 20px;
@@ -1801,12 +1802,49 @@ html, body {
     font-size: 0.8rem;
     transition: all 0.3s ease;
     box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+    font-weight: 500;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .interface-switcher:hover {
     background: linear-gradient(135deg, #1976D2, #1565C0);
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+}
+
+/* Mobile-specific styling for better contrast */
+@media (max-width: 768px) {
+    .interface-switcher {
+        top: 10px;
+        right: 10px;
+        font-size: 0.7rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 12px;
+        min-height: 32px;
+        /* Orange gradient for better contrast on blue mobile background */
+        background: linear-gradient(135deg, #FF6B35, #F7931E);
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4);
+    }
+
+    .interface-switcher:hover {
+        background: linear-gradient(135deg, #E55A2B, #E8851A);
+        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.5);
+    }
+}
+
+/* For touch devices */
+@media (pointer: coarse) {
+    .interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E);
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4);
+    }
+
+    .interface-switcher:hover {
+        background: linear-gradient(135deg, #E55A2B, #E8851A);
+    }
 }
 
     .booking-button {
