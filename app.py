@@ -1723,7 +1723,7 @@ html, body {
   padding: 0;
   font-family: 'Inter', sans-serif;
   background: white;
-  color: #ffffff;
+  color: #333333;  /* Dark gray text for visibility */
   width: 100%;
   height: 100vh;
   display: flex;
