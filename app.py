@@ -1718,20 +1718,20 @@ VOICE_HTML_TEMPLATE = '''
       -webkit-tap-highlight-color: transparent;
     }
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #2c3e50 0%, #0d1b2a 100%);
-      color: #ffffff;
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      overflow: hidden;
-    }
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background: white;
+  color: #ffffff;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+}
 
     @media (max-width: 768px) {
       html, body {
