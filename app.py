@@ -2069,23 +2069,24 @@ html, body {
       margin-bottom: 2rem;
     }
 
-    .control-btn {
-      padding: 0.75rem 1.5rem;
-      background: rgba(255, 255, 255, 0.2);
-      border: none;
-      border-radius: 25px;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      font-weight: 500;
-      touch-action: manipulation;
-      min-height: 44px;
-    }
+.control-btn {
+  padding: 0.75rem 1.5rem;
+  background: #f5f5f5;
+  border: 2px solid #ddd;
+  border-radius: 25px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  touch-action: manipulation;
+  min-height: 44px;
+}
 
-    .control-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-      transform: translateY(-2px);
-    }
+.control-btn:hover {
+  background: #e0e0e0;
+  border-color: #ccc;
+  transform: translateY(-2px);
+}
 
     .control-btn:disabled {
       opacity: 0.5;
