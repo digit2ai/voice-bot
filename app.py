@@ -764,7 +764,7 @@ class PhoneCallHandler:
     
     def __init__(self):
         self.elevenlabs_api_key = elevenlabs_api_key
-        self.rachel_voice_id = "XrExE9yKIg1WjnnlVkGX"
+        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
         self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
     
     def generate_rachel_audio(self, text: str) -> Optional[str]:
@@ -4436,8 +4436,6 @@ ENHANCED_CHAT_TEMPLATE = '''
 
 # ==================== ROUTES (POSTGRESQL VIA CRM API) ====================
 
-
-
 @app.route('/')
 def serve_index():
     """Voice interface"""
@@ -5358,34 +5356,7 @@ def serve_audio(filename):
 
 # ==================== HEALTH CHECK & ADMIN ROUTES ====================
 
-@app.route('/test-voices')
-def test_voices():
-    """Check available voices in your ElevenLabs account"""
-    try:
-        response = requests.get(
-            "https://api.elevenlabs.io/v1/voices",
-            headers={"xi-api-key": sk_129ff2de60c66f7eb2e98123351c267ad97ee38b480f142c}
-        )
-        
-        if response.status_code == 200:
-            voices_data = response.json()
-            
-            html = "<h1>Your Available Voices</h1><ul>"
-            for voice in voices_data.get('voices', []):
-                html += f"""<li>
-                    <strong>{voice['name']}</strong><br>
-                    ID: <code>{voice['voice_id']}</code><br>
-                    Category: {voice.get('category', 'N/A')}<br>
-                    <hr>
-                </li>"""
-            html += "</ul>"
-            
-            return html
-        else:
-            return f"API Error: {response.status_code} - {response.text}"
-    
-    except Exception as e:
-        return f"Error: {str(e)}"@app.route('/health')
+@app.route('/health')
 def health_check():
     """Health check endpoint"""
     try:
