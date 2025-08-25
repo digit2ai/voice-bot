@@ -1718,20 +1718,20 @@ VOICE_HTML_TEMPLATE = '''
       -webkit-tap-highlight-color: transparent;
     }
 
-    html, body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #2c3e50 0%, #0d1b2a 100%);
-      color: #ffffff;
-      width: 100%;
-      height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      overflow: hidden;
-    }
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', sans-serif;
+  background: white;
+  color: #333333;  /* Dark gray text for visibility */
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  overflow: hidden;
+}
 
     @media (max-width: 768px) {
       html, body {
@@ -1788,23 +1788,52 @@ VOICE_HTML_TEMPLATE = '''
       font-weight: 500;
     }
 
-    .interface-switcher {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: rgba(255, 255, 255, 0.2);
-      border: none;
-      border-radius: 15px;
-      color: white;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
-      font-size: 0.8rem;
-      transition: all 0.3s ease;
-    }
+/* Updated interface-switcher for both desktop and mobile */
+/* More specific targeting for mobile interface switcher */
+.interface-switcher {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #2196F3, #1976D2) !important;
+    border: none;
+    border-radius: 15px;
+    color: white !important;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
 
-    .interface-switcher:hover {
-      background: rgba(255, 255, 255, 0.3);
+/* Force orange on mobile with higher specificity */
+@media (max-width: 768px) {
+    .container .interface-switcher,
+    .interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
+        top: 10px !important;
+        right: 10px !important;
+        font-size: 0.7rem !important;
+        padding: 0.4rem 0.8rem !important;
+        border-radius: 12px !important;
     }
+}
+
+/* Alternative: Force on all small screens */
+@media screen and (max-width: 480px) {
+    button.interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
+    }
+}
+
+/* Touch devices override */
+@media (pointer: coarse) and (max-width: 768px) {
+    .interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
+    }
+}
 
     .booking-button {
       position: absolute;
@@ -2069,23 +2098,24 @@ VOICE_HTML_TEMPLATE = '''
       margin-bottom: 2rem;
     }
 
-    .control-btn {
-      padding: 0.75rem 1.5rem;
-      background: rgba(255, 255, 255, 0.2);
-      border: none;
-      border-radius: 25px;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      font-weight: 500;
-      touch-action: manipulation;
-      min-height: 44px;
-    }
+.control-btn {
+  padding: 0.75rem 1.5rem;
+  background: #f5f5f5;
+  border: 2px solid #ddd;
+  border-radius: 25px;
+  color: #333;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-weight: 500;
+  touch-action: manipulation;
+  min-height: 44px;
+}
 
-    .control-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-      transform: translateY(-2px);
-    }
+.control-btn:hover {
+  background: #e0e0e0;
+  border-color: #ccc;
+  transform: translateY(-2px);
+}
 
     .control-btn:disabled {
       opacity: 0.5;
@@ -3563,7 +3593,9 @@ CHAT_HTML_TEMPLATE = '''
         
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            body {
+    background: white;
+}
             height: 100vh;
             display: flex;
             justify-content: center;
