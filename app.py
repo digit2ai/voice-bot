@@ -1789,61 +1789,49 @@ html, body {
     }
 
 /* Updated interface-switcher for both desktop and mobile */
+/* More specific targeting for mobile interface switcher */
 .interface-switcher {
     position: absolute;
     top: 20px;
     right: 20px;
-    background: linear-gradient(135deg, #2196F3, #1976D2);
+    background: linear-gradient(135deg, #2196F3, #1976D2) !important;
     border: none;
     border-radius: 15px;
-    color: white;
+    color: white !important;
     padding: 0.5rem 1rem;
     cursor: pointer;
     font-size: 0.8rem;
     transition: all 0.3s ease;
     box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
-    font-weight: 500;
-    min-height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
-.interface-switcher:hover {
-    background: linear-gradient(135deg, #1976D2, #1565C0);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
-}
-
-/* Mobile-specific styling for better contrast */
+/* Force orange on mobile with higher specificity */
 @media (max-width: 768px) {
+    .container .interface-switcher,
     .interface-switcher {
-        top: 10px;
-        right: 10px;
-        font-size: 0.7rem;
-        padding: 0.4rem 0.8rem;
-        border-radius: 12px;
-        min-height: 32px;
-        /* Orange gradient for better contrast on blue mobile background */
-        background: linear-gradient(135deg, #FF6B35, #F7931E);
-        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4);
-    }
-
-    .interface-switcher:hover {
-        background: linear-gradient(135deg, #E55A2B, #E8851A);
-        box-shadow: 0 4px 14px rgba(255, 107, 53, 0.5);
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
+        top: 10px !important;
+        right: 10px !important;
+        font-size: 0.7rem !important;
+        padding: 0.4rem 0.8rem !important;
+        border-radius: 12px !important;
     }
 }
 
-/* For touch devices */
-@media (pointer: coarse) {
-    .interface-switcher {
-        background: linear-gradient(135deg, #FF6B35, #F7931E);
-        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4);
+/* Alternative: Force on all small screens */
+@media screen and (max-width: 480px) {
+    button.interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
     }
+}
 
-    .interface-switcher:hover {
-        background: linear-gradient(135deg, #E55A2B, #E8851A);
+/* Touch devices override */
+@media (pointer: coarse) and (max-width: 768px) {
+    .interface-switcher {
+        background: linear-gradient(135deg, #FF6B35, #F7931E) !important;
+        box-shadow: 0 3px 10px rgba(255, 107, 53, 0.4) !important;
     }
 }
 
