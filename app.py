@@ -764,7 +764,7 @@ class PhoneCallHandler:
     
     def __init__(self):
         self.elevenlabs_api_key = elevenlabs_api_key
-        self.rachel_voice_id = "21m00Tcm4TlvDq8ikWAM"
+        self.rachel_voice_id = "XrExE9yKIg1WjnnlVkGX"
         self.webhook_base_url = os.getenv("WEBHOOK_BASE_URL", "https://voice-bot-r91r.onrender.com")
     
     def generate_rachel_audio(self, text: str) -> Optional[str]:
