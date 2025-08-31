@@ -818,43 +818,43 @@ class PhoneCallHandler:
         except Exception as e:
             logger.error(f"Error generating Rachel audio: {e}")
             return None
-    
-def create_greeting_response(self) -> VoiceResponse:
-    """Create the initial greeting when someone calls"""
-    response = VoiceResponse()
-    
-    greeting_text = f"""
-    Thank you for calling {CLIENT_NAME}, your A.I. powered business assistant. 
-    I'm Lina, your virtual receptionist. 
-    To better serve you, please tell me what you'd like to do. 
-    Say book a demo to schedule a consultation, 
-    pricing to hear about our plans, 
-    subscribe to get started with our service, 
-    or support for customer service.
-    """
-    
-    gather = Gather(
-        input='speech',
-        timeout=5,
-        action='/phone/process-speech',
-        method='POST',
-        speechTimeout='auto',
-        language='en-US'
-    )
-    
-    audio_url = self.generate_rachel_audio(greeting_text)
-    
-    if audio_url:
-        gather.play(audio_url)
-        logger.info("Using Rachel's premium voice from ElevenLabs")
-    else:
-        gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
-        logger.info("Falling back to Twilio's Polly voice")
-    
-    response.append(gather)
-    response.redirect('/phone/webhook')
-    
-    return response
+
+    def create_greeting_response(self) -> VoiceResponse:
+        """Create the initial greeting when someone calls"""
+        response = VoiceResponse()
+        
+        greeting_text = f"""
+        Thank you for calling {CLIENT_NAME}, your A.I. powered business assistant. 
+        I'm Rachel, your virtual receptionist. 
+        To better serve you, please tell me what you'd like to do. 
+        Say book a demo to schedule a consultation, 
+        pricing to hear about our plans, 
+        subscribe to get started with our service, 
+        or support for customer service.
+        """
+        
+        gather = Gather(
+            input='speech',
+            timeout=5,
+            action='/phone/process-speech',
+            method='POST',
+            speechTimeout='auto',
+            language='en-US'
+        )
+        
+        audio_url = self.generate_rachel_audio(greeting_text)
+        
+        if audio_url:
+            gather.play(audio_url)
+            logger.info("Using Rachel's premium voice from ElevenLabs")
+        else:
+            gather.say(greeting_text, voice='Polly.Joanna', language='en-US')
+            logger.info("Falling back to Twilio's Polly voice")
+        
+        response.append(gather)
+        response.redirect('/phone/webhook')
+        
+        return response
     
     def process_speech_input(self, speech_result: str) -> VoiceResponse:
         """Process the caller's speech and route accordingly"""
